@@ -20,9 +20,8 @@ import gregtech.api.util.Mods;
 import gregtech.client.renderer.handler.MetaTileEntityRenderer;
 import gregtech.common.creativetab.GTCreativeTabs;
 import gregtech.common.items.MetaItems;
+import gregtech.common.items.behaviors.spray.AbstractSprayBehavior;
 import gregtech.integration.ctm.IFacadeWrapper;
-
-import gtqt.common.items.GTQTMetaItems;
 
 import net.minecraft.block.Block;
 import net.minecraft.block.ITileEntityProvider;
@@ -67,6 +66,7 @@ import codechicken.lib.raytracer.CuboidRayTraceResult;
 import codechicken.lib.raytracer.IndexedCuboid6;
 import codechicken.lib.raytracer.RayTracer;
 import codechicken.lib.vec.Cuboid6;
+import gtqt.common.items.GTQTMetaItems;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -259,9 +259,10 @@ public class BlockMachine extends BlockCustomParticle implements ITileEntityProv
     public boolean recolorBlock(@NotNull World world, @NotNull BlockPos pos, @NotNull EnumFacing side,
                                 @NotNull EnumDyeColor color) {
         MetaTileEntity metaTileEntity = getMetaTileEntity(world, pos);
-        if (metaTileEntity == null || metaTileEntity.getPaintingColor() == color.colorValue)
+        if (metaTileEntity == null || metaTileEntity.getPaintingColor() == color.colorValue) {
             return false;
-        metaTileEntity.setPaintingColor(color.colorValue);
+        }
+        metaTileEntity.setPaintingColor(color.colorValue, side);
         return true;
     }
 
@@ -328,20 +329,8 @@ public class BlockMachine extends BlockCustomParticle implements ITileEntityProv
         }
 
         // Color machines on place if holding spray can in off-hand
-        if (placer instanceof EntityPlayer) {
-            ItemStack offhand = placer.getHeldItemOffhand();
-            for (int i = 0; i < EnumDyeColor.values().length; i++) {
-                if (offhand.isItemEqual(MetaItems.SPRAY_CAN_DYES[i].getStackForm())) {
-                    MetaItems.SPRAY_CAN_DYES[i].getBehaviours().get(0).onItemUse((EntityPlayer) placer, worldIn,
-                            pos, EnumHand.OFF_HAND, EnumFacing.UP, 0, 0, 0);
-                    break;
-                }
-                if (offhand.isItemEqual(GTQTMetaItems.ENDLESS_SPRAY_CAN_DYES[i].getStackForm())) {
-                    GTQTMetaItems.ENDLESS_SPRAY_CAN_DYES[i].getBehaviours().get(0).onItemUse((EntityPlayer) placer, worldIn,
-                            pos, EnumHand.OFF_HAND, EnumFacing.UP, 0, 0, 0);
-                    break;
-                }
-            }
+        if (placer instanceof EntityPlayer player) {
+            AbstractSprayBehavior.handleExternalSpray(player, EnumHand.OFF_HAND, worldIn, pos, EnumFacing.UP);
         }
 
         metaTileEntity.onPlacement(placer);
@@ -596,5 +585,14 @@ public class BlockMachine extends BlockCustomParticle implements ITileEntityProv
         super.randomDisplayTick(stateIn, worldIn, pos, rand);
         MetaTileEntity metaTileEntity = getMetaTileEntity(worldIn, pos);
         if (metaTileEntity != null) metaTileEntity.randomDisplayTick();
+    }
+
+    @NotNull
+    @Override
+    public SoundType getSoundType(@NotNull IBlockState state, @NotNull World world, @NotNull BlockPos pos,
+                                  @Nullable Entity entity) {
+        MetaTileEntity metaTileEntity = getMetaTileEntity(world, pos);
+        if (metaTileEntity == null) return getSoundType();
+        return metaTileEntity.getSoundType();
     }
 }

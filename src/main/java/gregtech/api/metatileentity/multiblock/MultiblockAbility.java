@@ -51,6 +51,11 @@ public class MultiblockAbility<T> {
     public static final MultiblockAbility<IItemHandlerModifiable> STEAM_EXPORT_ITEMS = ability(
             "steam_export_items", IItemHandlerModifiable.class);
 
+    public static final MultiblockAbility<IFluidTank> STEAM_IMPORT_FLUID = ability(
+            "steam_import_fluid", IFluidTank.class);
+    public static final MultiblockAbility<IFluidTank> STEAM_EXPORT_FLUID = ability(
+            "steam_export_fluid", IFluidTank.class);
+
     public static final MultiblockAbility<IMaintenanceHatch> MAINTENANCE_HATCH = ability(
             "maintenance_hatch", IMaintenanceHatch.class);
     public static final MultiblockAbility<IMufflerHatch> MUFFLER_HATCH = ability(
@@ -91,6 +96,13 @@ public class MultiblockAbility<T> {
             "dual_export", DualHandler.class);
     public static final MultiblockAbility<DualHandler> DUAL_IMPORT = ability(
             "dual_import", DualHandler.class);
+    public static final MultiblockAbility<DualHandler> COMPLEX_DUAL = ability(
+            "complex_dual", DualHandler.class);
+
+    //无线管理
+    public static final MultiblockAbility<IWirelessController> WIRELESS_CONTROLLER = ability(
+            "wireless_controller", IWirelessController.class);
+
 
     public static final MultiblockAbility<IThreadHatch> THREAD_HATCH = new MultiblockAbility<>("thread_hatch", IThreadHatch.class);
 

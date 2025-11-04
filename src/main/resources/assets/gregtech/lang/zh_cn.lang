@@ -17,7 +17,6 @@ death.attack.mallet=%s被%s用锤头活活敲死了
 death.attack.mining_hammer=%s被%s当成矿石砸死了
 death.attack.spade=%s被%s用铲子挖死了
 death.attack.wrench=%s被%s用扳手夯死了！
-death.attack.choocher=%s被%s用扳手夯死了！
 death.attack.file=%s历尽了%s的“锉”折
 death.attack.crowbar=%s被%s用撬棍撬走了半条命
 death.attack.screwdriver=%s被%s用螺丝刀钻死了
@@ -36,6 +35,10 @@ death.attack.hammer_drill_mv=%2$s的中压风钻洞穿了%1$s
 death.attack.hammer_drill_hv=%2$s的高压风钻洞穿了%1$s
 death.attack.hammer_drill_ev=%2$s的超高压风钻洞穿了%1$s
 death.attack.hammer_drill_iv=%2$s的强导压风钻洞穿了%1$s
+death.attack.combination_wrench=%2$s的两用扳手送走了%1$s
+death.attack.universal_spade=%2$s的万用铲一把铲走了%1$s
+death.attack.flint_and_steel=%2$s的打火石点燃了%1$s
+death.attack.universal_tool=%2$s的万能工具变形了%1$s
 death.attack.chainsaw_lv=%2$s的链锯切碎了%1$s
 death.attack.wrench_lv=%s的血管被%s拧松了
 death.attack.wrench_hv=%s的血管被%s狠狠拧松了
@@ -54,9 +57,16 @@ gregtech.multiblock.steam_grinder.description=蒸汽时代的多方块研磨机�
 gregtech.multiblock.steam.low_steam=蒸汽不足，无法运行！
 gregtech.multiblock.steam.steam_stored=蒸汽：%s
 gregtech.machine.steam_hatch.name=蒸汽仓
+gregtech.machine.huge_steam_hatch.name=巨型蒸汽仓
 gregtech.machine.steam.steam_hatch.tooltip=§e可接受流体：§f蒸汽
 gregtech.machine.steam_import_bus.name=蒸汽输入总线
 gregtech.machine.steam_export_bus.name=蒸汽输出总线
+gregtech.machine.huge_steam_import_bus.name=巨型蒸汽输入总线
+gregtech.machine.huge_steam_export_bus.name=巨型蒸汽输出总线
+gregtech.machine.steam_import_hatch.name=蒸汽输入仓
+gregtech.machine.steam_export_hatch.name=蒸汽输出仓
+gregtech.machine.huge_steam_import_hatch.name=巨型蒸汽输入仓
+gregtech.machine.huge_steam_export_hatch.name=巨型蒸汽输出仓
 gregtech.machine.steam_bus.tooltip=无法作用于非蒸汽驱动的多方块结构
 gregtech.machine.steam_oven.name=蒸汽熔炼炉
 gregtech.multiblock.steam_oven.description=蒸汽时代的多方块熔炉。需要至少6块青铜机械方块成型。仅可使用输入/输出总线（蒸汽），并且只能用蒸汽仓供给蒸汽。蒸汽仓必须放置于结构底层，数量至多为一个。
@@ -117,6 +127,10 @@ gregtech.top.unit.fluid_buckets=kL
 
 gregtech.top.block_drops=掉落
 
+gregtech.top.has_resin=含有可采集的树脂
+gregtech.top.resin_ready=可采集
+gregtech.top.regenerating=树脂再生中
+
 gregtech.top.ld_pipe_no_network=找不到管路
 gregtech.top.ld_pipe_connected=管路已连接
 gregtech.top.ld_pipe_incomplete=管路不完整
@@ -162,6 +176,7 @@ gregtech.multiblock.extreme_combustion_engine.description=极限内燃引擎是�
 gregtech.multiblock.distillation_tower.description=蒸馏塔是种用于蒸馏不同石油及其副产品的多方块结构。
 gregtech.multiblock.electric_blast_furnace.description=电力高炉（EBF）是种用来熔炼合金、熔化金属或冶炼矿石的多方块结构。也可用于获取高级的合金和金属，例如铝、不锈钢、钛或硅岩合金。
 gregtech.multiblock.multi_furnace.description=工业熔炉是种用于一次性烧制大量物品的多方块结构。不同级别的线圈会提供速度增幅和能量效率增幅。每次运作的基础烧制数量为32，且可以使用高等级的线圈增加烧制数量。
+gregtech.multiblock.multi_alloy_furnace.description=工业合金炉是种用于一次性烧制大量合金的多方块结构。不同级别的线圈会提供速度增幅和能量效率增幅。每次运作的基础烧制数量为16，且可以使用高等级的线圈增加烧制数量。
 gregtech.multiblock.large_boiler.description=大型锅炉是种使用水和能量源产生蒸汽的多方块结构。这里说的“能量源”通常是指固体燃料和高密度流体。不同等级的锅炉仅在蒸汽产量上有所差别。
 gregtech.multiblock.large_turbine.description=大型涡轮是种使用蒸汽、燃气或等离子体转动涡轮转子来发电的多方块结构。转子效率和转子转速会影响能量的输出。
 gregtech.multiblock.assembly_line.description=装配线是台由5到16“片”相同的结构所组成的大型多方块结构。理论上讲，它就是个大号组装机，用以生产高级合成组件。
@@ -172,8 +187,8 @@ gregtech.multiblock.fusion_reactor.heat=热量：%s
 gregtech.multiblock.large_chemical_reactor.description=大型化学反应釜能够以100%%的能效进行化学反应。每次超频将使处理速度与能耗均提升4倍。该多方块结构需要在中心位置的聚四氟乙烯管道外壳旁放置一个白铜线圈方块。
 gregtech.multiblock.large_chemical_reactor.description.0=执行所有 §eChemical Reactor§7 和 §eLarge Chemical Reactor§7 配方
 gregtech.multiblock.primitive_water_pump.description=原始水泵是台前蒸汽时代的多方块结构。它每秒收集一次水资源，基础收集量取决于其所处的生物群系。水泵输出仓以及ULV和LV的输出仓都可以使用，输出仓的等级越高，水资源收集量也会越多。收集量的公式为：生物群系系数*输出仓倍数。
-gregtech.multiblock.primitive_water_pump.extra1=生物群系系数：\n  海洋（Ocean）、河流（River）：1000 L/s\n  沼泽（Swamp）：800 L/s\n  丛林（Jungle）：350 L/s\n  积雪的（Snowy）：300 L/s\n  平原（Plains）、森林（Forest）：250 L/s\n  针叶林（Taiga）：175 L/s\n  沙滩（Beach）：170 L/s\n  其他：100 L/s
-gregtech.multiblock.primitive_water_pump.extra2=输出仓倍数：\n水泵输出仓：1x\nULV输出仓：2x\nLV输出仓：4x
+gregtech.multiblock.primitive_water_pump.extra1=生物群系系数：/n  海洋（Ocean）、河流（River）：1000 L/s/n  沼泽（Swamp）：800 L/s/n  丛林（Jungle）：350 L/s/n  积雪的（Snowy）：300 L/s/n  平原（Plains）、森林（Forest）：250 L/s/n  针叶林（Taiga）：175 L/s/n  沙滩（Beach）：170 L/s/n  其他：100 L/s
+gregtech.multiblock.primitive_water_pump.extra2=输出仓倍数：/n水泵输出仓：1x/nULV输出仓：2x/nLV输出仓：4x
 gregtech.multiblock.processing_array.description=处理阵列可将最多16个单方块机器集成在一个多方块结构中，以实现更高效的自动化。
 gregtech.multiblock.advanced_processing_array.description=处理阵列可将最多64个单方块机器集成在一个多方块结构中，以实现更高效的自动化。
 
@@ -316,7 +331,7 @@ metaitem.shape.extruder.hoe.name=模头（锄头）
 metaitem.shape.extruder.hoe.tooltip=用来制作锄的模头
 metaitem.shape.extruder.hammer.name=模头（锤头）
 metaitem.shape.extruder.hammer.tooltip=用来制作锤的模头
-metaitem.shape.extruder.file.name=模头（锉刀刃）
+metaitem.shape.extruder.file.name=模头（锉刀头）
 metaitem.shape.extruder.file.tooltip=用来制作锉的模头
 metaitem.shape.extruder.saw.name=模头（锯条）
 metaitem.shape.extruder.saw.tooltip=用来制作锯的模头
@@ -339,6 +354,30 @@ metaitem.shape.extruder.drill_head.tooltip=用来制作钻头的模头
 
 metaitem.spray.empty.name=空喷漆罐
 metaitem.spray.empty.tooltip=可充入各种颜色的喷剂
+metaitem.spray.creative.name=Creative Spray Can (%s)
+metaitem.spray.creative.name_base=Creative Spray Can
+metaitem.spray.creative.mode.normal=Normal Mode
+metaitem.spray.creative.mode.rgb=RGB Mode
+metaitem.spray.creative.tip.red=Red
+metaitem.spray.creative.tip.green=Green
+metaitem.spray.creative.tip.blue=Blue
+metaitem.spray.creative.solvent=Solvent
+metaitem.spray.creative.white=White
+metaitem.spray.creative.orange=Orange
+metaitem.spray.creative.magenta=Magenta
+metaitem.spray.creative.lightBlue=Light Blue
+metaitem.spray.creative.yellow=Yellow
+metaitem.spray.creative.lime=Lime
+metaitem.spray.creative.pink=Pink
+metaitem.spray.creative.gray=Gray
+metaitem.spray.creative.silver=Gray
+metaitem.spray.creative.cyan=Cyan
+metaitem.spray.creative.purple=Purple
+metaitem.spray.creative.blue=Blue
+metaitem.spray.creative.brown=Brown
+metaitem.spray.creative.green=Green
+metaitem.spray.creative.red=Red
+metaitem.spray.creative.black=Black
 
 metaitem.plant.ball.name=植物球
 
@@ -370,7 +409,7 @@ metaitem.spray.can.dyes.blue.name=喷漆罐（蓝色）
 metaitem.spray.can.dyes.brown.name=喷漆罐（棕色）
 metaitem.spray.can.dyes.green.name=喷漆罐（绿色）
 metaitem.spray.can.dyes.red.name=喷漆罐（红色）
-metaitem.spray.can.dyes.black.name=喷漆罐（花岗岩）
+metaitem.spray.can.dyes.black.name=喷漆罐（黑色）
 
 metaitem.tool.matches.name=火柴
 metaitem.tool.matchbox.name=火柴盒
@@ -447,13 +486,24 @@ metaitem.energy.lapotronic_orb.name=兰波顿能量球
 metaitem.energy.lapotronic_orb.tooltip=可充电电池
 metaitem.energy.lapotronic_orb_cluster.name=兰波顿能量球簇
 metaitem.energy.lapotronic_orb_cluster.tooltip=可充电电池
-metaitem.zpm.name=零点模块
+metaitem.zero_point_module.name=零点模块
 metaitem.energy.module.name=能量模块
 metaitem.energy.module.tooltip=可充电电池
 metaitem.energy.cluster.name=能量簇
 metaitem.energy.cluster.tooltip=可充电电池
-metaitem.max.battery.name=终极电池
+metaitem.max.battery.name=创世之源
 metaitem.max.battery.tooltip=填满就能通关Minecraft
+
+metaitem.battery.uhv.quantum_core.name=量子核心电池
+metaitem.battery.uhv.quantum_core.tooltip=利用量子叠加态存储能量的革命性设计
+metaitem.battery.uev.singularity_cell.name=奇点单元电池
+metaitem.battery.uev.singularity_cell.tooltip=微型人造奇点产生的引力能驱动时空连续体
+metaitem.battery.uiv.chrono_matrix.name=时空矩阵电池
+metaitem.battery.uiv.chrono_matrix.tooltip=通过折叠时空结构实现近乎无限的能量密度
+metaitem.battery.uxv.tachyon_reactor.name=快子反应堆电池
+metaitem.battery.uxv.tachyon_reactor.tooltip=超光速粒子在封闭时间曲线中循环产生能量
+metaitem.battery.opv.cosmic_string.name=宇宙弦电池
+metaitem.battery.opv.cosmic_string.tooltip=捕获原始宇宙弦振动能量，接近创世能量级别
 
 metaitem.electric.motor.lv.name=§7LV§r电动马达
 metaitem.electric.motor.mv.name=§bMV§r电动马达
@@ -468,6 +518,7 @@ metaitem.electric.motor.uev.name=§aUEV§r电动马达
 metaitem.electric.motor.uiv.name=§2UIV§r电动马达
 metaitem.electric.motor.uxv.name=§eUXV§r电动马达
 metaitem.electric.motor.opv.name=§9OpV§r电动马达
+metaitem.electric.motor.max.name=§c§lMAX§r电动马达
 
 metaitem.electric.pump.lv.name=§7LV§r电动泵
 metaitem.electric.pump.mv.name=§bMV§r电动泵
@@ -482,6 +533,7 @@ metaitem.electric.pump.uev.name=§aUEV§r电动泵
 metaitem.electric.pump.uiv.name=§2UIV§r电动泵
 metaitem.electric.pump.uxv.name=§eUXV§r电动泵
 metaitem.electric.pump.opv.name=§9OpV§r电动泵
+metaitem.electric.pump.max.name=§c§lMAX§r电动泵
 
 metaitem.electric.pump.tooltip=作§f覆盖板§7时以特定速率传输§f流体§7。
 
@@ -493,6 +545,12 @@ metaitem.fluid.regulator.iv.name=§1IV§r流体校准器
 metaitem.fluid.regulator.luv.name=§dLuV§r流体校准器
 metaitem.fluid.regulator.zpm.name=§cZPM§r流体校准器
 metaitem.fluid.regulator.uv.name=§3UV§r流体校准器
+metaitem.fluid.regulator.uhv.name=§4UHV§r流体校准器
+metaitem.fluid.regulator.uev.name=§aUEV§r流体校准器
+metaitem.fluid.regulator.uiv.name=§2UIV§r流体校准器
+metaitem.fluid.regulator.uxv.name=§eUXV§r流体校准器
+metaitem.fluid.regulator.opv.name=§9OpV§r流体校准器
+metaitem.fluid.regulator.max.name=§c§lMAX§r流体校准器
 
 metaitem.fluid.regulator.tooltip=§7作§f覆盖板§7时§7限制§f§f流体§7的流量。
 
@@ -509,6 +567,7 @@ metaitem.conveyor.module.uev.name=§aUEV§r传送带
 metaitem.conveyor.module.uiv.name=§2UIV§r传送带
 metaitem.conveyor.module.uxv.name=§eUXV§r传送带
 metaitem.conveyor.module.opv.name=§9OpV§r传送带
+metaitem.conveyor.module.max.name=§c§lMAX§r传送带
 
 metaitem.conveyor.module.tooltip=作§f覆盖板§7时以特定速率传输§f物品§7。
 
@@ -525,6 +584,7 @@ metaitem.electric.piston.uev.name=§aUEV§r电力活塞
 metaitem.electric.piston.uiv.name=§2UIV§r电力活塞
 metaitem.electric.piston.uxv.name=§eUXV§r电力活塞
 metaitem.electric.piston.opv.name=§9OpV§r电力活塞
+metaitem.electric.piston.max.name=§c§lMAX§r电力活塞
 
 metaitem.robot.arm.lv.name=§7LV§r机械臂
 metaitem.robot.arm.mv.name=§bMV§r机械臂
@@ -539,6 +599,7 @@ metaitem.robot.arm.uev.name=§aUEV§r机械臂
 metaitem.robot.arm.uiv.name=§2UIV§r机械臂
 metaitem.robot.arm.uxv.name=§eUXV§r机械臂
 metaitem.robot.arm.opv.name=§9OpV§r机械臂
+metaitem.robot.arm.max.name=§c§lMAX§r机械臂
 
 metaitem.robot.arm.tooltip=作§f覆盖板§7时限制§f物品§7到特定数量。
 
@@ -555,6 +616,7 @@ metaitem.field.generator.uev.name=§aUEV§r力场发生器
 metaitem.field.generator.uiv.name=§2UIV§r力场发生器
 metaitem.field.generator.uxv.name=§eUXV§r力场发生器
 metaitem.field.generator.opv.name=§9OpV§r力场发生器
+metaitem.field.generator.max.name=§c§lMAX§r力场发生器
 
 metaitem.emitter.lv.name=§7LV§r发射器
 metaitem.emitter.mv.name=§bMV§r发射器
@@ -569,6 +631,7 @@ metaitem.emitter.uev.name=§aUEV§r发射器
 metaitem.emitter.uiv.name=§2UIV§r发射器
 metaitem.emitter.uxv.name=§eUXV§r发射器
 metaitem.emitter.opv.name=§9OpV§r发射器
+metaitem.emitter.max.name=§c§lMAX§r发射器
 
 metaitem.sensor.lv.name=§7LV§r传感器
 metaitem.sensor.mv.name=§bMV§r传感器
@@ -583,17 +646,20 @@ metaitem.sensor.uev.name=§aUEV§r传感器
 metaitem.sensor.uiv.name=§2UIV§r传感器
 metaitem.sensor.uxv.name=§eUXV§r传感器
 metaitem.sensor.opv.name=§9OpV§r传感器
+metaitem.sensor.max.name=§c§lMAX§r传感器
 
 metaitem.tool.datastick.name=闪存
-metaitem.tool.datastick.tooltip=一个小容量的数据存储器
+metaitem.tool.datastick.tooltip=一个小容量的数据容器
 metaitem.tool.dataorb.name=数据球
-metaitem.tool.dataorb.tooltip=一个大容量的数据存储器
+metaitem.tool.dataorb.tooltip=一个大容量的数据容器
 metaitem.tool.datamodule.name=数据模块
-metaitem.tool.datamodule.tooltip=超复杂数据存储\n§c只能用数据库读取
+metaitem.tool.datamodule.tooltip=超复杂数据存储/n§c只能用数据库读取
 metaitem.circuit.integrated.name=编程电路
-metaitem.circuit.integrated.tooltip=右击以打开配置界面\n\n手持并潜行右击带有编程电路槽位的机器可应用相应配置。\n
+metaitem.circuit.integrated.tooltip=右击以打开配置界面/n/n手持并潜行右击带有编程电路槽位的机器可应用相应配置。/n
 metaitem.circuit.integrated.gui=电路配置
-metaitem.circuit.integrated.jei_description=JEI将仅显示匹配当前编程电路配置的配方。\n\n在编程电路配置界面中调整配置以查看对应配方。
+metaitem.circuit.integrated.jei_description=JEI将仅显示匹配当前编程电路配置的配方。/n/n在编程电路配置界面中调整配置以查看对应配方。
+
+metaitem.tool.mutliblock_preview.name=多方块预览器
 
 item.glass.lens=玻璃透镜（白色）
 metaitem.glass_lens.orange.name=玻璃透镜（橙色）
@@ -661,7 +727,7 @@ metaitem.circuit_board.wetware.name=大师电路基板
 metaitem.circuit_board.wetware.tooltip=维生之板
 
 metaitem.circuit.vacuum_tube.name=真空管
-metaitem.circuit.vacuum_tube.tooltip=技术上来说，是二极管\n§cULV-级电路
+metaitem.circuit.vacuum_tube.tooltip=技术上来说，是二极管/n§cULV-级电路
 metaitem.component.diode.name=二极管
 metaitem.component.diode.tooltip=基础电子元件
 metaitem.component.resistor.name=电阻
@@ -774,73 +840,73 @@ metaitem.plate.simple_system_on_chip.tooltip=简易系统级芯片
 
 # T1: Electronic
 metaitem.circuit.electronic.name=电子电路
-metaitem.circuit.electronic.tooltip=你的第一块电路\n§cLV级电路
+metaitem.circuit.electronic.tooltip=你的第一块电路/n§cLV级电路
 metaitem.circuit.good_electronic.name=优质电子电路
-metaitem.circuit.good_electronic.tooltip=你的第二块电路\n§cMV级电路
+metaitem.circuit.good_electronic.tooltip=你的第二块电路/n§cMV级电路
 
 # T2: Integrated
 metaitem.circuit.basic_integrated.name=集成逻辑电路
-metaitem.circuit.basic_integrated.tooltip=更小也更强\n§6LV级电路
+metaitem.circuit.basic_integrated.tooltip=更小也更强/n§6LV级电路
 metaitem.circuit.good_integrated.name=优质集成电路
-metaitem.circuit.good_integrated.tooltip=更小也更强\n§6MV级电路
+metaitem.circuit.good_integrated.tooltip=更小也更强/n§6MV级电路
 metaitem.circuit.advanced_integrated.name=进阶集成电路
-metaitem.circuit.advanced_integrated.tooltip=更小也更强\n§6HV级电路
+metaitem.circuit.advanced_integrated.tooltip=更小也更强/n§6HV级电路
 
 # Misc
 metaitem.circuit.nand_chip.name=NAND芯片
-metaitem.circuit.nand_chip.tooltip=卓越的简单电路\n§6ULV级电路
+metaitem.circuit.nand_chip.tooltip=卓越的简单电路/n§6ULV级电路
 metaitem.circuit.microprocessor.name=微型处理器
-metaitem.circuit.microprocessor.tooltip=卓越的基础电路\n§eLV级电路
+metaitem.circuit.microprocessor.tooltip=卓越的基础电路/n§eLV级电路
 
 # T3: Processor
 metaitem.circuit.processor.name=集成处理器
-metaitem.circuit.processor.tooltip=运算速度惊人！\n§eMV级电路
+metaitem.circuit.processor.tooltip=运算速度惊人！/n§eMV级电路
 metaitem.circuit.assembly.name=集成处理器集群
-metaitem.circuit.assembly.tooltip=运算速度惊人！\n§eHV级电路
+metaitem.circuit.assembly.tooltip=运算速度惊人！/n§eHV级电路
 metaitem.circuit.workstation.name=工作站
-metaitem.circuit.workstation.tooltip=运算速度惊人！\n§eEV级电路
+metaitem.circuit.workstation.tooltip=运算速度惊人！/n§eEV级电路
 metaitem.circuit.mainframe.name=处理器主机
-metaitem.circuit.mainframe.tooltip=运算速度惊人！\n§eIV级电路
+metaitem.circuit.mainframe.tooltip=运算速度惊人！/n§eIV级电路
 
 # T4: Nano
 metaitem.circuit.nano_processor.name=纳米处理器
-metaitem.circuit.nano_processor.tooltip=比小更小\n§bHV级电路
+metaitem.circuit.nano_processor.tooltip=比小更小/n§bHV级电路
 metaitem.circuit.nano_assembly.name=纳米处理器集群
-metaitem.circuit.nano_assembly.tooltip=比小更小\n§bEV级电路
+metaitem.circuit.nano_assembly.tooltip=比小更小/n§bEV级电路
 metaitem.circuit.nano_computer.name=纳米超级计算机
-metaitem.circuit.nano_computer.tooltip=比小更小\n§bIV级电路
+metaitem.circuit.nano_computer.tooltip=比小更小/n§bIV级电路
 metaitem.circuit.nano_mainframe.name=纳米处理器主机
-metaitem.circuit.nano_mainframe.tooltip=比小更小\n§bLuV级电路
+metaitem.circuit.nano_mainframe.tooltip=比小更小/n§bLuV级电路
 
 # T5: Quantum
 metaitem.circuit.quantum_processor.name=量子处理器
-metaitem.circuit.quantum_processor.tooltip=量子计算终成现实！\n§aEV级电路
+metaitem.circuit.quantum_processor.tooltip=量子计算终成现实！/n§aEV级电路
 metaitem.circuit.quantum_assembly.name=量子处理器集群
-metaitem.circuit.quantum_assembly.tooltip=量子计算终成现实！\n§aIV级电路
+metaitem.circuit.quantum_assembly.tooltip=量子计算终成现实！/n§aIV级电路
 metaitem.circuit.quantum_computer.name=量子超级计算机
-metaitem.circuit.quantum_computer.tooltip=量子计算终成现实！\n§aLuV级电路
+metaitem.circuit.quantum_computer.tooltip=量子计算终成现实！/n§aLuV级电路
 metaitem.circuit.quantum_mainframe.name=量子处理器主机
-metaitem.circuit.quantum_mainframe.tooltip=量子计算终成现实！\n§aZPM级电路
+metaitem.circuit.quantum_mainframe.tooltip=量子计算终成现实！/n§aZPM级电路
 
 # T6: Crystal
 metaitem.circuit.crystal_processor.name=晶体处理器
-metaitem.circuit.crystal_processor.tooltip=得益于晶体蚀刻技术\n§9IV级电路
+metaitem.circuit.crystal_processor.tooltip=得益于晶体蚀刻技术/n§9IV级电路
 metaitem.circuit.crystal_assembly.name=晶体处理器集群
-metaitem.circuit.crystal_assembly.tooltip=得益于晶体蚀刻技术\n§9LuV级电路
+metaitem.circuit.crystal_assembly.tooltip=得益于晶体蚀刻技术/n§9LuV级电路
 metaitem.circuit.crystal_computer.name=晶体超级计算机
-metaitem.circuit.crystal_computer.tooltip=得益于晶体蚀刻技术\n§9ZPM级电路
+metaitem.circuit.crystal_computer.tooltip=得益于晶体蚀刻技术/n§9ZPM级电路
 metaitem.circuit.crystal_mainframe.name=晶体处理器主机
-metaitem.circuit.crystal_mainframe.tooltip=得益于晶体蚀刻技术\n§9UV级电路
+metaitem.circuit.crystal_mainframe.tooltip=得益于晶体蚀刻技术/n§9UV级电路
 
 # T7: Wetware
 metaitem.circuit.wetware_processor.name=湿件处理器
-metaitem.circuit.wetware_processor.tooltip=祂在看我吗？\n§4LuV级电路
+metaitem.circuit.wetware_processor.tooltip=祂在看我吗？/n§4LuV级电路
 metaitem.circuit.wetware_assembly.name=湿件处理器集群
-metaitem.circuit.wetware_assembly.tooltip=可以玩Minecraft\n§4ZPM级电路
+metaitem.circuit.wetware_assembly.tooltip=可以玩Minecraft/n§4ZPM级电路
 metaitem.circuit.wetware_computer.name=湿件超级计算机
-metaitem.circuit.wetware_computer.tooltip=肉体与机器的终极结合\n§4UV级电路
+metaitem.circuit.wetware_computer.tooltip=肉体与机器的终极结合/n§4UV级电路
 metaitem.circuit.wetware_mainframe.name=湿件处理器主机
-metaitem.circuit.wetware_mainframe.tooltip=千载独步，惟公一人\n§4UHV级电路
+metaitem.circuit.wetware_mainframe.tooltip=千载独步，惟公一人/n§4UHV级电路
 
 metaitem.stem_cells.name=干细胞
 metaitem.stem_cells.tooltip=智慧原料
@@ -876,13 +942,13 @@ metaitem.gravistar.name=重力之星
 metaitem.gravistar.tooltip=终极下界之星
 
 metaitem.item_filter.name=物品过滤卡
-metaitem.item_filter.tooltip=作§f覆盖板§7时过滤§f物品§7的输入/输出。\n亦可为§f传送带§7和§f机械臂§7提供此功能。
+metaitem.item_filter.tooltip=作§f覆盖板§7时过滤§f物品§7的输入/输出。/n亦可为§f传送带§7和§f机械臂§7提供此功能。
 metaitem.ore_dictionary_filter.name=矿物词典过滤卡
-metaitem.ore_dictionary_filter.tooltip=作§f覆盖板§7时以§f矿物词典§7过滤§f物品§7的输入/输出。\n亦可为§f传送带§7和§f机械臂§7提供此功能。
+metaitem.ore_dictionary_filter.tooltip=作§f覆盖板§7时以§f矿物词典§7过滤§f物品§7的输入/输出。/n亦可为§f传送带§7和§f机械臂§7提供此功能。
 metaitem.fluid_filter.name=流体过滤卡
-metaitem.fluid_filter.tooltip=作§f覆盖板§7时过滤§f流体§7的输入/输出。\n亦可为§f电动泵§7和§f流体校准器§7提供此功能。
+metaitem.fluid_filter.tooltip=作§f覆盖板§7时过滤§f流体§7的输入/输出。/n亦可为§f电动泵§7和§f流体校准器§7提供此功能。
 metaitem.smart_item_filter.name=智能物品过滤卡
-metaitem.smart_item_filter.tooltip=作§f覆盖板§7时以§f机器的配方§7过滤§f物品§7的输入/输出。\n亦可为§f传送带§7和§f机械臂§7提供此功能。
+metaitem.smart_item_filter.tooltip=作§f覆盖板§7时以§f机器的配方§7过滤§f物品§7的输入/输出。/n亦可为§f传送带§7和§f机械臂§7提供此功能。
 behaviour.filter_ui_manager=§f右键点击§7以配置，§fShift+右键§7清除配置
 
 metaitem.cover.controller.name=机器控制覆盖板
@@ -904,15 +970,21 @@ metaitem.cover.energy.detector.tooltip=作§f覆盖板§7时依照§f能量储�
 metaitem.cover.energy.detector.advanced.name=进阶能量探测覆盖板
 metaitem.cover.energy.detector.advanced.tooltip=作§f覆盖板§7时依照由§fRS锁存器§7控制的§f能量状态§7发出红石信号。
 metaitem.cover.fluid.voiding.name=流体销毁覆盖板
-metaitem.cover.fluid.voiding.tooltip=作§f覆盖板§7时销毁§f流体§7。\n加装后使用§f软锤§7右击激活。
+metaitem.cover.fluid.voiding.tooltip=作§f覆盖板§7时销毁§f流体§7。/n加装后使用§f软锤§7右击激活。
 metaitem.cover.fluid.voiding.advanced.name=进阶流体销毁覆盖板
-metaitem.cover.fluid.voiding.advanced.tooltip=作§f覆盖板§7时允许按数量销毁§f流体§7。\n加装后使用§f软锤§7右击激活。
+metaitem.cover.fluid.voiding.advanced.tooltip=作§f覆盖板§7时允许按数量销毁§f流体§7。/n加装后使用§f软锤§7右击激活。
 metaitem.cover.item.voiding.name=物品销毁覆盖板
-metaitem.cover.item.voiding.tooltip=作§f覆盖板§7时销毁物品。\n加装后使用§f软锤§7右击激活。
+metaitem.cover.item.voiding.tooltip=作§f覆盖板§7时销毁物品。/n加装后使用§f软锤§7右击激活。
 metaitem.cover.item.voiding.advanced.name=进阶物品销毁覆盖板
-metaitem.cover.item.voiding.advanced.tooltip=作§f覆盖板§7时允许按数量销毁§f物品§7。\n加装后使用§f软锤§7右击激活。
-metaitem.cover.storage.name=存储覆盖板
+metaitem.cover.item.voiding.advanced.tooltip=作§f覆盖板§7时允许按数量销毁§f物品§7。/n加装后使用§f软锤§7右击激活。
+metaitem.cover.storage.name=小型存储覆盖板
 metaitem.cover.storage.tooltip=给零碎的小玩意准备的小型存储空间
+metaitem.cover.storage_medium.name=中型存储覆盖板
+metaitem.cover.storage_medium.tooltip=给零碎的小玩意准备的中型存储空间
+metaitem.cover.storage_large.name=大型存储覆盖板
+metaitem.cover.storage_large.tooltip=给零碎的小玩意准备的大型存储空间
+metaitem.cover.storage_huge.name=巨型存储覆盖板
+metaitem.cover.storage_huge.tooltip=给零碎的小玩意准备的巨型存储空间
 metaitem.cover.maintenance.detector.name=维护需求覆盖板
 metaitem.cover.maintenance.detector.tooltip=作§f覆盖板§7时在机器§f需要维护§7时发出红石信号。
 
@@ -936,6 +1008,12 @@ metaitem.cover.solar.panel.iv.name=强导压太阳能板（§1IV§r）
 metaitem.cover.solar.panel.luv.name=剧差压太阳能板（§dLuV§r）
 metaitem.cover.solar.panel.zpm.name=零点压太阳能板（§cZPM§r）
 metaitem.cover.solar.panel.uv.name=极限压太阳能板（§3UV§r）
+metaitem.cover.solar.panel.uhv.name=极高压太阳能板（§4UHV§r）
+metaitem.cover.solar.panel.uev.name=极超压太阳能板（§aUEV§r）
+metaitem.cover.solar.panel.uiv.name=极巨压太阳能板（§2UIV§r）
+metaitem.cover.solar.panel.uxv.name=极顶压太阳能板（§eUXV§r）
+metaitem.cover.solar.panel.opv.name=过载压太阳能板（§9OpV§r）
+metaitem.cover.solar.panel.max.name=上限压太阳能板（§c§lMAX§r）
 
 metaitem.cover.solar.panel.tooltip.1=愿太阳与你同在。
 metaitem.cover.solar.panel.tooltip.2=作§f覆盖板§7时利用§e太阳§7生产§f能量§7。
@@ -945,6 +1023,10 @@ metaitem.cover.infinite_water.tooltip.1=作§f覆盖板§7时为所附着的容�
 metaitem.cover.ender_fluid_link.name=末影流体连接覆盖板
 metaitem.cover.ender_item_link.name=末影物品连接覆盖板
 metaitem.cover.ender_fluid_link.tooltip=作§f覆盖板§7时利用§f无线§7§d末影§f连接§7传输§f流体§7。
+
+metaitem.cover.air_vent.name=通风口
+metaitem.cover.air_vent.tooltip.1=作§f覆盖板§7时向管道或机器内§f通入空气§7，空气类型视当前§f维度§7而定。
+metaitem.cover.air_vent.tooltip.2=§b传输速率：§f%,d L/s
 
 metaitem.gelled_toluene.name=胶凝甲苯
 metaitem.gelled_toluene.tooltip=炸药原料
@@ -972,9 +1054,9 @@ metaitem.dye.white.name=白色化学染料
 metaitem.rubber_drop.name=粘性树脂
 metaitem.plant_ball.name=植物球
 metaitem.tool_parts_box.name=工具零件箱
-metaitem.tool_parts_box.tooltip=收纳工具部件\n右击打开
+metaitem.tool_parts_box.tooltip=收纳工具部件/n右击打开
 metaitem.foam_sprayer.name=建筑泡沫喷罐
-metaitem.foam_sprayer.tooltip=喷射建筑泡沫\n右击框架来给框架喷上泡沫\n建筑泡沫可被染色
+metaitem.foam_sprayer.tooltip=喷射建筑泡沫/n右击框架来给框架喷上泡沫/n建筑泡沫可被染色
 metaitem.energium_dust.name=能量粉
 metaitem.compressed.clay.name=压缩粘土
 metaitem.compressed.fireclay.name=压缩耐火粘土
@@ -1021,7 +1103,8 @@ gt.tool.class.knife=刀
 gt.tool.class.butchery_knife=屠刀
 gt.tool.class.grafter=剪枝器
 gt.tool.class.plunger=搋子
-
+gt.tool.class.flint_and_steel=打火石
+gt.tool.class.tree_tap=树脂提取器
 item.gt.tool.sword.name=%s剑
 item.gt.tool.pickaxe.name=%s镐
 item.gt.tool.shovel.name=%s锹
@@ -1033,7 +1116,6 @@ item.gt.tool.hammer.tooltip=§8锤碎而非采掘方块
 item.gt.tool.mallet.name=%s软锤
 item.gt.tool.mallet.tooltip=§8关闭/开启机器
 item.gt.tool.wrench.name=%s扳手
-item.gt.tool.choocher.name=%s两用扳手
 item.gt.tool.wrench.tooltip=§8按住左键以拆卸机器
 item.gt.tool.file.name=%s锉
 item.gt.tool.crowbar.name=%s撬棍
@@ -1058,13 +1140,12 @@ item.gt.tool.hammer_drill_mv.name=%s风钻 (MV)
 item.gt.tool.hammer_drill_hv.name=%s风钻 (HV)
 item.gt.tool.hammer_drill_ev.name=%s风钻 (EV)
 item.gt.tool.hammer_drill_iv.name=%s风钻 (IV)
-item.gt.tool.once_wrench.name=一次性扳手
-item.gt.tool.once_hammer.name=一次性锤子
-item.gt.tool.once_wire_cutter.name=一次性剪线钳
-item.gt.tool.once_screwdriver.name=一次性螺丝刀
-item.gt.tool.once_file.name=一次性锉
-item.gt.tool.once_mortar.name=一次性研钵
-item.gt.tool.once_saw.name=一次性锯
+item.gt.tool.tree_tap_lv.name=电动%s质树脂提取器 (LV)
+item.gt.tool.combination_wrench.name=%s组合扳手
+item.gt.tool.universal_spade.name=%s万用铲
+item.gt.tool.flint_and_steel.name=%s打火石
+item.gt.tool.tree_tap.name=%s质树脂提取器
+item.gt.tool.universal_tool.name=%s万能工具
 item.gt.tool.mining_hammer.name=%s采矿锤
 item.gt.tool.mining_hammer.tooltip=§8一次性开采大片区域（除非你蹲下）
 item.gt.tool.spade.name=%s铲
@@ -1205,8 +1286,8 @@ metaarmor.qts.nightvision.error=夸克高科™套装：§c能量不足！
 metaarmor.jetpack.hover.enable=喷气背包：悬浮模式已启用
 metaarmor.jetpack.hover.disable=喷气背包：悬浮模式已禁用
 
-metaarmor.jetpack.cancel_inertia.enable=喷气背包: 已启用惯性消除
-metaarmor.jetpack.cancel_inertia.disable=喷气背包: 已禁用惯性取消
+metaarmor.jetpack.cancel_inertia.enable=喷气背包：无惯性已启用
+metaarmor.jetpack.cancel_inertia.disable=喷气背包：无惯性已禁用
 
 metaarmor.jetpack.emergency_hover_mode=紧急悬浮模式已启用！
 
@@ -1235,8 +1316,8 @@ metaarmor.hud.status.enabled=§a开
 metaarmor.hud.status.disabled=§c关
 metaarmor.hud.energy_lvl=能量存储：%s
 metaarmor.hud.fuel_lvl=燃料存储：%s
-metaarmor.hud.cancel_inertia_mode=惯性消除: %s
 metaarmor.hud.hover_mode=悬浮模式：%s
+metaarmor.hud.cancel_inertia_mode=惯性消除：%s
 mataarmor.hud.supply_mode=供能模式：%s
 metaarmor.hud.gravi_engine=重力引擎：%s
 
@@ -1269,7 +1350,7 @@ cover.filter.blacklist.disabled=白名单
 cover.filter.blacklist.enabled=黑名单
 
 cover.ore_dictionary_filter.title=矿物词典过滤
-cover.ore_dictionary_filter.info=§b接受复杂表达式\n§6a & b§r = 且\n§6a | b§r = 或\n§6a ^ b§r = 异或\n§6! abc§r = 非\n§6( abc )§r 表示组别\n§6*§r 表示通配（也即零或多个字符）\n§6?§r 表示任意一个字符\n§6()§r 匹配空条目（包括不带矿物词典的物品）\n§b使用范例：\n§6dust*Gold | (plate* & !*Double*)\n匹配包括小撮、小堆在内的所有金粉与双层板以外的板
+cover.ore_dictionary_filter.info=§b接受复杂表达式/n§6a & b§r = 且/n§6a | b§r = 或/n§6a ^ b§r = 异或/n§6! abc§r = 非/n§6( abc )§r 表示组别/n§6*§r 表示通配（也即零或多个字符）/n§6?§r 表示任意一个字符/n§6()§r 匹配空条目（包括不带矿物词典的物品）/n§b使用范例：/n§6dust*Gold | (plate* & !*Double*)/n匹配包括小撮、小堆在内的所有金粉与双层板以外的板
 cover.ore_dictionary_filter.match_all=匹配所有：%s
 cover.ore_dictionary_filter.case_sensitive=匹配大小写：%s
 cover.ore_dictionary_filter.test_slot.info=放入一件物品以测试是否匹配过滤表达式
@@ -1288,30 +1369,30 @@ cover.ore_dictionary_filter.button.match_all.disabled=匹配物品的任一矿�
 cover.ore_dictionary_filter.button.match_all.enabled=匹配物品的所有矿词条目
 
 cover.ore_dictionary_filter.preview.next=<text>...接着是</text>
-cover.ore_dictionary_filter.preview.match=<node>'<value>%s</value>'<\node>
-cover.ore_dictionary_filter.preview.match.not=<node><not>非 <\not>‘<value>%s</value>’<\node>
-cover.ore_dictionary_filter.preview.char=<node><value>任意一个</value>字符<\node>
-cover.ore_dictionary_filter.preview.char.not=<node><logic>要么</logic>多余<value>一个</value>字符，<logic>要么为</logic>空值<\node>
-cover.ore_dictionary_filter.preview.chars=<node><value>%s个</value>字符<\node>
-cover.ore_dictionary_filter.preview.chars.not=<node>多余<logic>或</logic>少于<value>%s个</value>字符<\node>
-cover.ore_dictionary_filter.preview.chars_or_more=<node><value>%s个</value>，或更多字符<\node>
-cover.ore_dictionary_filter.preview.chars_or_more.not=<node>少于<value>%s个</value>字符<\node>
-cover.ore_dictionary_filter.preview.group=<node><not>非<\not>：<\node>
-cover.ore_dictionary_filter.preview.or=<node><logic>匹配以下之一</logic>：<\node>
-cover.ore_dictionary_filter.preview.nor=<node><logic>匹配<not>不<\not>满足以下任意一条的矿辞</logic>：<\node>
+cover.ore_dictionary_filter.preview.match=<node>'<value>%s</value>'</node>
+cover.ore_dictionary_filter.preview.match.not=<node><not>非 </not>‘<value>%s</value>’</node>
+cover.ore_dictionary_filter.preview.char=<node><value>任意一个</value>字符</node>
+cover.ore_dictionary_filter.preview.char.not=<node><logic>要么</logic>多余<value>一个</value>字符，<logic>要么为</logic>空值</node>
+cover.ore_dictionary_filter.preview.chars=<node><value>%s个</value>字符</node>
+cover.ore_dictionary_filter.preview.chars.not=<node>多余<logic>或</logic>少于<value>%s个</value>字符</node>
+cover.ore_dictionary_filter.preview.chars_or_more=<node><value>%s个</value>，或更多字符</node>
+cover.ore_dictionary_filter.preview.chars_or_more.not=<node>少于<value>%s个</value>字符</node>
+cover.ore_dictionary_filter.preview.group=<node><not>非</not>：</node>
+cover.ore_dictionary_filter.preview.or=<node><logic>匹配以下之一</logic>：</node>
+cover.ore_dictionary_filter.preview.nor=<node><logic>匹配<not>不</not>满足以下任意一条的矿辞</logic>：</node>
 cover.ore_dictionary_filter.preview.or.entry=<label>> <logic>或</logic> </label>
 cover.ore_dictionary_filter.preview.or.entry.start=<label>&gt; </label>
-cover.ore_dictionary_filter.preview.and=<node><logic>匹配以下全部</logic>：<\node>
-cover.ore_dictionary_filter.preview.nand=<node><logic>匹配<not>不同时<\not>满足以下全部条目的矿辞</logic>：<\node>
+cover.ore_dictionary_filter.preview.and=<node><logic>匹配以下全部</logic>：</node>
+cover.ore_dictionary_filter.preview.nand=<node><logic>匹配<not>不同时</not>满足以下全部条目的矿辞</logic>：</node>
 cover.ore_dictionary_filter.preview.and.entry=<label>> <logic>且</logic> </label>
 cover.ore_dictionary_filter.preview.and.entry.start=<label>&gt; </label>
-cover.ore_dictionary_filter.preview.xor=<node><logic>匹配只满足以下任意一条的矿辞</logic>：<\node>
-cover.ore_dictionary_filter.preview.xnor=<node><logic>匹配同时满足或同时不满足以下全部的矿辞</logic>：<\node>
+cover.ore_dictionary_filter.preview.xor=<node><logic>匹配只满足以下任意一条的矿辞</logic>：</node>
+cover.ore_dictionary_filter.preview.xnor=<node><logic>匹配同时满足或同时不满足以下全部的矿辞</logic>：</node>
 cover.ore_dictionary_filter.preview.xor.entry=<label>&gt; </label>
-cover.ore_dictionary_filter.preview.everything=<node>任意字符<\node>
-cover.ore_dictionary_filter.preview.impossible=<node>（不可能匹配）<\node>
-cover.ore_dictionary_filter.preview.nonempty=<node>非空值<\node>
-cover.ore_dictionary_filter.preview.empty=<node>空值<\node>
+cover.ore_dictionary_filter.preview.everything=<node>任意字符</node>
+cover.ore_dictionary_filter.preview.impossible=<node>（不可能匹配）</node>
+cover.ore_dictionary_filter.preview.nonempty=<node>非空值</node>
+cover.ore_dictionary_filter.preview.empty=<node>空值</node>
 cover.ore_dictionary_filter.preview.error=<error>错误！</error>
 
 cover.ore_dictionary_filter.compile.eof=**表达式结尾**
@@ -1330,7 +1411,7 @@ cover.ore_dictionary_filter.compile.warn.nested_negation=嵌套否定可能不�
 cover.ore_dictionary_filter.compile.warn.consecutive_negation=连续否定可能不够直观。请检查评估结果是否理想。
 
 cover.fluid_filter.title=流体过滤
-cover.fluid_filter.config_amount=向上或向下滚动鼠标滚轮以增加或减少流体量。\nShift[§6x10§r]，Ctrl[§ex100§r]，Shift+Ctrl[§ax1000§r]\n亦可通过右击或左击来增减流体量。\n按住Shift时点击鼠标则将使流体量翻倍或减半。\n点击中键以清除
+cover.fluid_filter.config_amount=向上或向下滚动鼠标滚轮以增加或减少流体量。/nShift[§6x10§r]，Ctrl[§ex100§r]，Shift+Ctrl[§ax1000§r]/n亦可通过右击或左击来增减流体量。/n按住Shift时点击鼠标则将使流体量翻倍或减半。/n点击中键以清除
 cover.fluid_filter.mode.filter_fill=过滤输入
 cover.fluid_filter.mode.filter_drain=过滤输出
 cover.fluid_filter.mode.filter_both=过滤两者
@@ -1341,17 +1422,17 @@ cover.filter.mode.filter_insert=过滤输入
 cover.filter.mode.filter_extract=过滤输出
 cover.filter.mode.filter_both=过滤两者
 cover.filter.allow_flow.label=允许流动
-cover.filter.allow_flow.tooltip=默认情况下，物品/流体只能沿过滤器设置的方向移动。\n\n如果启用，物品/流体可以无视过滤器设置，从反方向通过。
+cover.filter.allow_flow.tooltip=默认情况下，物品/流体只能沿过滤器设置的方向移动。/n/n如果启用，物品/流体可以无视过滤器设置，从反方向通过。
 cover.item_filter.ignore_damage.enabled=无视损坏值
 cover.item_filter.ignore_damage.disabled=匹配损坏值
 cover.item_filter.ignore_nbt.enabled=忽略NBT
 cover.item_filter.ignore_nbt.disabled=匹配NBT
-cover.item_filter.config_amount=向上或向下滚动鼠标滚轮以增加或减少数量。\nShift[§6x4§r]，Ctrl[§ex16§r]，Shift+Ctrl[§ax64§r]\n亦可通过右击或左击来增减数量。\nShift+左键以清除
+cover.item_filter.config_amount=向上或向下滚动鼠标滚轮以增加或减少数量。/nShift[§6x4§r]，Ctrl[§ex16§r]，Shift+Ctrl[§ax64§r]/n亦可通过右击或左击来增减数量。/nShift+左键以清除
 
 cover.voiding.voiding_mode.void_any=销毁匹配
 cover.voiding.voiding_mode.void_overflow=销毁溢出
 cover.voiding.voiding_mode=销毁模式
-cover.voiding.voiding_mode.description=§e销毁匹配§r：匹配过滤规则即销毁。\n§e溢出销毁§r：匹配过滤规则即销毁超出设定数量的部分物品/流体。
+cover.voiding.voiding_mode.description=§e销毁匹配§r：匹配过滤规则即销毁。/n§e溢出销毁§r：匹配过滤规则即销毁超出设定数量的部分物品/流体。
 cover.fluid.voiding.title=流体销毁设置
 cover.fluid.voiding.advanced.title=进阶流体销毁设置
 cover.item.voiding.title=物品销毁设置
@@ -1369,7 +1450,7 @@ cover.smart_item_filter.title=智能物品过滤
 cover.smart_item_filter.filtering_mode.electrolyzer=电解机
 cover.smart_item_filter.filtering_mode.centrifuge=离心机
 cover.smart_item_filter.filtering_mode.sifter=筛选机
-cover.smart_item_filter.filtering_mode.description=为该智能覆盖板选择目标机器。\n它能够自动挑选符合机器配方的物品。
+cover.smart_item_filter.filtering_mode.description=为该智能覆盖板选择目标机器。/n它能够自动挑选符合机器配方的物品。
 
 cover.generic.disabled=已禁用
 cover.generic.enabled=已启用
@@ -1382,15 +1463,15 @@ cover.conveyor.transfer_rate=§7件物品/
 cover.conveyor.mode.export=模式：过滤输出
 cover.conveyor.mode.import=模式：过滤输入
 cover.conveyor.distribution.name=分配模式
-cover.conveyor.distribution.round_robin_enhanced=§b增强轮询调度§r\n§7将物品平分至所有的物品存储空间
-cover.conveyor.distribution.round_robin=§b轮询调度§r（次序式）\n§7尝试将物品平分至物品存储空间
-cover.conveyor.distribution.first_insert=§b最近优先§r\n§7将物品输入至所搜寻到的首个物品存储空间
-cover.conveyor.blocks_input.enabled=若启用，覆盖板设置为将物品从存储空间输出至管道时将阻止物品从所在面输入。\n§a已启用
-cover.conveyor.blocks_input.disabled=若启用，覆盖板设置为将物品从存储空间输出至管道时将阻止物品从所在面输入。\n§c已禁用
+cover.conveyor.distribution.round_robin_enhanced=§b增强轮询调度§r/n§7将物品平分至所有的物品存储空间
+cover.conveyor.distribution.round_robin=§b轮询调度§r（次序式）/n§7尝试将物品平分至物品存储空间
+cover.conveyor.distribution.first_insert=§b最近优先§r/n§7将物品输入至所搜寻到的首个物品存储空间
+cover.conveyor.blocks_input.enabled=若启用，覆盖板设置为将物品从存储空间输出至管道时将阻止物品从所在面输入。/n§a已启用
+cover.conveyor.blocks_input.disabled=若启用，覆盖板设置为将物品从存储空间输出至管道时将阻止物品从所在面输入。/n§c已禁用
 cover.universal.manual_import_export.mode.disabled=特殊I/O模式：禁用
 cover.universal.manual_import_export.mode.filtered=特殊I/O模式：过滤
 cover.universal.manual_import_export.mode.unfiltered=特殊I/O模式：无过滤
-cover.universal.manual_import_export.mode.description=§e禁用§r-仅依照覆盖板与内部过滤器的指定规则传输。\n§e过滤§r-外部I/O将只根据过滤器的指定规则传输，不受覆盖板的限制。\n§e无过滤§r-外部I/O无视所有传输规则，过滤器将仅控制覆盖板进行的I/O。
+cover.universal.manual_import_export.mode.description=§e禁用§r-仅依照覆盖板与内部过滤器的指定规则传输。/n§e过滤§r-外部I/O将只根据过滤器的指定规则传输，不受覆盖板的限制。/n§e无过滤§r-外部I/O无视所有传输规则，过滤器将仅控制覆盖板进行的I/O。
 cover.conveyor.item_filter.title=物品过滤
 cover.conveyor.ore_dictionary.title=矿物词典
 cover.conveyor.ore_dictionary.title2=（*可作通配符）
@@ -1399,7 +1480,7 @@ cover.robotic_arm.exact=§7物品
 cover.robotic_arm.transfer_mode.transfer_any=任意传输
 cover.robotic_arm.transfer_mode.transfer_exact=精确补给
 cover.robotic_arm.transfer_mode.keep_exact=保持补给
-cover.robotic_arm.transfer_mode.description=§e任意传输§r-在此模式下，覆盖板将尽可能传输一切符合过滤设置的物品。\n§e精确补给§r-在此模式下，覆盖板每次都会输入在物品过滤器的过滤槽中指定（或者在矿典过滤器按钮里指定）数量的物品。若物品的数量小于指定数量，则不会被输入。\n§e保持补给§r-在此模式下，覆盖板将保持目标容器中指定物品的数量，需要物品时则供应相应量的物品。\n§7小提示：左/右击过滤槽可以调整物品数量，同时按住Shift可以更快地调整。
+cover.robotic_arm.transfer_mode.description=§e任意传输§r-在此模式下，覆盖板将尽可能传输一切符合过滤设置的物品。/n§e精确补给§r-在此模式下，覆盖板每次都会输入在物品过滤器的过滤槽中指定（或者在矿典过滤器按钮里指定）数量的物品。若物品的数量小于指定数量，则不会被输入。/n§e保持补给§r-在此模式下，覆盖板将保持目标容器中指定物品的数量，需要物品时则供应相应量的物品。/n§7小提示：左/右击过滤槽可以调整物品数量，同时按住Shift可以更快地调整。
 
 cover.pump.title=泵覆盖板设置（%s）
 cover.pump.transfer_rate=%s
@@ -1413,7 +1494,7 @@ cover.bucket.mode.bucket_exact=kL
 cover.bucket.mode.milli_bucket_rate=L/
 cover.bucket.mode.milli_bucket_exact=L
 cover.fluid_regulator.title=流体校准器设置（%s）
-cover.fluid_regulator.transfer_mode.description=§e任意传输§r - 在此模式下，覆盖板将尽可能传输一切符合过滤设置的流体。\n§e精确供应-在此模式下，覆盖板会将此按钮下方窗口中指定的流体按指定量打包传输。若流体量小于指定量，流体不会被传输。\n§e保持供应-在此模式下，覆盖板将在目标容器中保持指定数量的液体，低于保持量时传输相应量的流体。\n§7小提示：按住Shift/Crtl把增加或减少的数量乘以10/100。
+cover.fluid_regulator.transfer_mode.description=§e任意传输§r - 在此模式下，覆盖板将尽可能传输一切符合过滤设置的流体。/n§e精确供应-在此模式下，覆盖板会将此按钮下方窗口中指定的流体按指定量打包传输。若流体量小于指定量，流体不会被传输。/n§e保持供应-在此模式下，覆盖板将在目标容器中保持指定数量的液体，低于保持量时传输相应量的流体。/n§7小提示：按住Shift/Crtl把增加或减少的数量乘以10/100。
 cover.fluid_regulator.supply_exact=精确补给：%s
 cover.fluid_regulator.keep_exact=保持补给：%s
 
@@ -1434,9 +1515,9 @@ cover.machine_controller.disable_with_redstone=接收红石信号时关闭
 cover.ender_fluid_link.title=末影流体连接
 cover.ender_fluid_link.iomode.enabled=已启用I/O
 cover.ender_fluid_link.iomode.disabled=已禁用I/O
-cover.ender_fluid_link.private.tooltip.disabled=切换至私有储罐模式\n私有权归最初加装该覆盖板的玩家所有
+cover.ender_fluid_link.private.tooltip.disabled=切换至私有储罐模式/n私有权归最初加装该覆盖板的玩家所有
 cover.ender_fluid_link.private.tooltip.enabled=切换至公共储罐模式
-cover.ender_fluid_link.incomplete_hex=输入的颜色不正确！\n输入正确的八位十六进制颜色码方可应用\n此时关闭界面将导致丢失编辑内容！
+cover.ender_fluid_link.incomplete_hex=输入的颜色不正确！/n输入正确的八位十六进制颜色码方可应用/n此时关闭界面将导致丢失编辑内容！
 cover.ender_fluid_link.transfer_unit=L/t
 
 cover.generic.ender.known_channels=已知频道
@@ -1447,7 +1528,7 @@ cover.generic.ender.delete_entry=删除条目
 
 cover.generic.advanced_detector.latched=锁存
 cover.generic.advanced_detector.continuous=线性
-cover.generic.advanced_detector.latch_tooltip=更改此覆盖板的红石行为。\n§e线性§7 - 默认模式；物品数量小于最小值时不发出红石信号，大于最大值时发出信号强度15的红石信号，数量介于二者之间发出信号强度在0 - 15之间的红石信号\n§e锁存§7 - 发出满级红石信号，直到物品数量大于最大值；然后停止发出红石信号，直到数量低于最小值。
+cover.generic.advanced_detector.latch_tooltip=更改此覆盖板的红石行为。/n§e线性§7 - 默认模式；物品数量小于最小值时不发出红石信号，大于最大值时发出信号强度15的红石信号，数量介于二者之间发出信号强度在0 - 15之间的红石信号/n§e锁存§7 - 发出满级红石信号，直到物品数量大于最大值；然后停止发出红石信号，直到数量低于最小值。
 cover.generic.advanced_detector.invert_label=红石输出：
 cover.generic.advanced_detector.latch_label=行为：
 cover.generic.advanced_detector.invert_tooltip=切换以反转红石逻辑
@@ -1455,7 +1536,7 @@ cover.generic.advanced_detector.invert_tooltip=切换以反转红石逻辑
 cover.advanced_energy_detector.label=进阶能量探测覆盖板
 cover.advanced_energy_detector.min=最小：
 cover.advanced_energy_detector.max=最大：
-cover.advanced_energy_detector.invert_tooltip=启用反相以反转红石逻辑\n默认情况下，能量小于所设定的最小EU时覆盖板将发出红石信号，大于最大EU时则停止发出红石信号
+cover.advanced_energy_detector.invert_tooltip=启用反相以反转红石逻辑/n默认情况下，能量小于所设定的最小EU时覆盖板将发出红石信号，大于最大EU时则停止发出红石信号
 cover.advanced_energy_detector.normal=普通
 cover.advanced_energy_detector.inverted=反相
 cover.advanced_energy_detector.modes_tooltip=使用给定的EU数值或百分比来比较所附着的能量存储中能量的最大/最小值。
@@ -1467,7 +1548,7 @@ cover.advanced_fluid_detector.label=进阶流体探测器
 cover.advanced_fluid_detector.max=最大流体量：
 cover.advanced_fluid_detector.min=最小流体量：
 cover.advanced_item_detector.label=进阶物品探测器
-cover.advanced_item_detector.invert_tooltip=启用反相以反转红石逻辑\n默认情况下，物品数量处于所设定的最小值和最大值之间时覆盖板将发出红石信号，小于最小值时则停止发出红石信号
+cover.advanced_item_detector.invert_tooltip=启用反相以反转红石逻辑/n默认情况下，物品数量处于所设定的最小值和最大值之间时覆盖板将发出红石信号，小于最小值时则停止发出红石信号
 cover.advanced_item_detector.max=最大物品数量：
 cover.advanced_item_detector.min=最小物品数量：
 
@@ -1529,7 +1610,7 @@ item.material.oreprefix.toolHeadShovel=%s锹头
 item.material.oreprefix.toolHeadAxe=%s斧头
 item.material.oreprefix.toolHeadHoe=%s锄头
 item.material.oreprefix.toolHeadScythe=%s镰刀刃
-item.material.oreprefix.toolHeadFile=%s锉刀刃
+item.material.oreprefix.toolHeadFile=%s锉刀头
 item.material.oreprefix.toolHeadHammer=%s锤头
 item.material.oreprefix.toolHeadSaw=%s锯条
 item.material.oreprefix.toolHeadBuzzSaw=%s圆锯锯片
@@ -1739,6 +1820,8 @@ gregtech.material.chromium_dioxide=二氧化铬
 gregtech.material.cinnabar=朱砂
 gregtech.material.water=水
 gregtech.material.liquid_oxygen=液氧
+gregtech.material.liquid_methane=液态甲烷
+gregtech.material.liquid_ammonia=液态氨气
 gregtech.material.coal=煤炭
 gregtech.material.cobaltite=辉钴矿
 gregtech.material.cooperite=谢尔顿矿
@@ -1759,6 +1842,14 @@ gregtech.material.invar=殷钢
 gregtech.material.kanthal=坎塔尔合金
 gregtech.material.lazurite=蓝金石
 gregtech.material.liquid_helium=液氦
+gregtech.material.liquid_hydrogen=液态氢
+gregtech.material.liquid_krypton=液态氪
+gregtech.material.liquid_radon=液态氡
+gregtech.material.liquid_argon=液态氩
+gregtech.material.liquid_neon=液态氖
+gregtech.material.liquid_xenon=液态氙
+gregtech.material.liquid_nitrogen=液态氮
+gregtech.material.liquid_carbon_dioxide=液态二氧化碳
 gregtech.material.magnalium=镁铝合金
 gregtech.material.magnesite=菱镁矿
 gregtech.material.magnetite=磁铁矿
@@ -1925,8 +2016,8 @@ gregtech.material.hafnia=二氧化铪
 gregtech.material.hafnium_tetrachloride=四氯化铪
 gregtech.material.zircaloy_4=锆-4合金
 gregtech.material.inconel_718=因科镍-718
-
-
+gregtech.material.high_grade_soldering_alloy=高级焊接合金
+gregtech.material.antimony_telluride=碲化锑
 # Organic Chemistry Materials
 gregtech.material.silicone_rubber=硅橡胶
 gregtech.material.raw_rubber=生橡胶
@@ -2144,6 +2235,7 @@ gregtech.material.bauxite_sludge=铝土泥渣
 gregtech.material.decalcified_bauxite_sludge=脱钙铝土泥渣
 gregtech.material.bauxite_slag=铝土矿渣
 gregtech.material.sewage=污水
+gregtech.material.molybdenite_lubricant=辉钼润滑剂
 
 # Second Degree Materials
 gregtech.material.glass=玻璃
@@ -2199,7 +2291,7 @@ gregtech.material.aqua_regia=王水
 gregtech.material.salt_water=盐水
 gregtech.material.clay=粘土
 gregtech.material.redstone=红石
-
+gregtech.material.chromium_doped_molybdenite=铬掺杂辉钼矿
 
 # Third Degree Materials
 gregtech.material.electrotine=蓝石
@@ -2217,7 +2309,8 @@ gregtech.material.granite=花岗岩
 gregtech.material.brick=砖
 gregtech.material.fireclay=耐火粘土
 gregtech.material.diorite=闪长岩
-
+gregtech.material.water_coolant=冷却液
+gregtech.material.hot_water_coolant=热冷却液
 
 # Fourth Degree Materials
 gregtech.material.red_alloy=红色合金
@@ -2396,6 +2489,7 @@ recipemap.assembler.name=组装机
 recipemap.macerator.name=研磨机
 recipemap.arc_furnace.name=电弧炉
 recipemap.sifter.name=筛选机
+recipemap.polisher.name=抛光机
 recipemap.laser_engraver.name=精密激光蚀刻机
 recipemap.mixer.name=搅拌机
 recipemap.autoclave.name=高压釜
@@ -2407,6 +2501,8 @@ recipemap.fluid_heater.name=流体加热器
 recipemap.distillery.name=蒸馏室
 recipemap.fermenter.name=发酵槽
 recipemap.fluid_solidifier.name=流体固化器
+recipemap.tool_caster.name=工具铸造器
+recipemap.bath_condenser.name=水浴冷凝
 recipemap.fusion_reactor.name=核聚变反应堆
 recipemap.fusion_reactor.value=启动耗能：%s EU
 recipemap.centrifuge.name=离心机
@@ -2414,6 +2510,7 @@ recipemap.electrolyzer.name=电解机
 recipemap.electric_blast_furnace.name=电力高炉
 recipemap.blast_furnace.value=温度：%s K
 recipemap.implosion_compressor.name=聚爆压缩机
+recipemap.electric_implosion_recipes.name=电力聚爆压缩
 recipemap.vacuum_freezer.name=真空冷冻机
 recipemap.chemical_reactor.name=化学反应釜
 recipemap.large_chemical_reactor.name=大型化学反应釜
@@ -2432,6 +2529,7 @@ recipemap.forming_press.name=冲压机床
 recipemap.forge_hammer.name=锻造锤
 recipemap.compressor.name=压缩机
 recipemap.packer.name=打包机
+recipemap.unpacker.name=解包机
 recipemap.combustion_generator.name=内燃发电机燃料
 recipemap.gas_turbine.name=燃气轮机燃料
 recipemap.steam_turbine.name=蒸汽轮机燃料
@@ -2442,6 +2540,12 @@ recipemap.mass_fabricator.name=质量发生器
 recipemap.materialtree.name=材料处理树
 recipemap.gas_collector.name=集气室
 recipemap.rock_breaker.name=碎岩机
+recipemap.laminator.name=过胶器
+recipemap.polymerization_tank.name=聚合反应
+recipemap.desulfurizer.name=脱硫机
+recipemap.bio_reactor.name=生物反应
+recipemap.component_assembler.name=部件组装机
+recipemap.loom.name=纺线器
 recipemap.primitive_blast_furnace.name=土高炉
 recipemap.coke_oven.name=焦炉
 recipemap.research_station.name=研究站
@@ -2520,7 +2624,8 @@ metaitem.prospector.tooltip.ores=在半径为%s个区块的范围内扫描矿物
 metaitem.prospector.tooltip.fluids=在半径为%s个区块的范围内扫描矿物与流体
 behavior.prospector.not_enough_energy=能量不足！
 behavior.prospector.added_waypoint=路径点已添加！
-
+metaitem.mining_laser.name=采矿镭射枪
+metaitem.vajra.name=金刚杵
 metaitem.tricorder_scanner.name=便携式扫描仪
 metaitem.tricorder_scanner.tooltip=三录仪
 metaitem.debug_scanner.name=调试扫描仪
@@ -2863,6 +2968,7 @@ itemGroup.gregtech.decorations=格雷科技 | 装饰
 # Drums
 gregtech.machine.drum.wood.name=木桶
 gregtech.machine.drum.bronze.name=青铜桶
+gregtech.machine.drum.tin.name=锡桶
 gregtech.machine.drum.steel.name=钢桶
 gregtech.machine.drum.aluminium.name=铝桶
 gregtech.machine.drum.stainless_steel.name=不锈钢桶
@@ -2894,13 +3000,18 @@ gregtech.machine.crate.darmstadtium.name=钅达板条箱
 gregtech.machine.crate.neutronium.name=中子素板条箱
 gregtech.crate.tooltip.taped_movement=可以用胶带打包库存，在破坏时一起带走
 
+# Safe
+gregtech.machine.locked_safe.name=上锁的保险柜
+gregtech.machine.locked_safe.malfunctioning=§c运行故障！
+gregtech.machine.locked_safe.requirements=§7替换部件需求：
+
 # Workbench
 gregtech.machine.workbench.name=合成站
 gregtech.machine.workbench.tooltip1=比林业的好
 gregtech.machine.workbench.tooltip2=能存物品，能放工具，能从紧邻的物品容器里取出东西，还能保存配方。
 gregtech.machine.workbench.tab.workbench=合成界面
 gregtech.machine.workbench.tab.item_list=存储空间
-gregtech.machine.workbench.storage_note=（相邻的物品容器中\n可参与合成的物品）
+gregtech.machine.workbench.storage_note=（相邻的物品容器中/n可参与合成的物品）
 gregtech.machine.workbench.clear_grid=清除合成格
 gregtech.item_list.item_stored=§7储量：%,d
 
@@ -3123,9 +3234,25 @@ gregtech.machine.gas_turbine.hv.name=涡轮燃气轮机
 gregtech.machine.gas_turbine.ev.name=爆喷燃气轮机
 gregtech.machine.gas_turbine.iv.name=爆震燃气轮机
 
+gregtech.machine.semi_fluid_generator.tooltip=黏糊糊的也能烧？
+
+gregtech.machine.semi_fluid_generator.lv.name=基础半流质发电机
+gregtech.machine.semi_fluid_generator.mv.name=进阶半流质发电机
+gregtech.machine.semi_fluid_generator.hv.name=涡轮半流质发电机
+gregtech.machine.semi_fluid_generator.ev.name=爆喷半流质发电机
+gregtech.machine.semi_fluid_generator.iv.name=爆震半流质发电机
+
+gregtech.machine.plasma_generator.tooltip=迷你小太阳
+
+gregtech.machine.plasma_generator.ev.name=等离子发电机-MKI
+gregtech.machine.plasma_generator.iv.name=等离子发电机-MKII
+gregtech.machine.plasma_generator.luv.name=等离子发电机-MKIII
+gregtech.machine.plasma_generator.zpm.name=等离子发电机-MKIV
+gregtech.machine.plasma_generator.uv.name=等离子发电机-MKV
+
 
 gregtech.machine.magic_energy_absorber.name=魔法能源吸收器
-gregtech.machine.magic_energy_absorber.tooltip=最大输出电压：§a2048 §7(§aEV§7)\n从 64 格内在末地黑曜石柱上自然生成的末影水晶中收集能量。\n每个末影水晶增加 32 EU/t 的输出\n将龙蛋放在上面放大输出\n此时：每个末影水晶增加 128 EU/t
+gregtech.machine.magic_energy_absorber.tooltip=最大输出电压：§a2048 §7(§aEV§7)/n从 64 格内在末地黑曜石柱上自然生成的末影水晶中收集能量。/n每个末影水晶增加 32 EU/t 的输出/n将龙蛋放在上面放大输出/n此时：每个末影水晶增加 128 EU/t
 
 # Machines
 
@@ -3136,6 +3263,30 @@ gregtech.machine.block_breaker.hv.name=进阶方块破坏器 II
 gregtech.machine.block_breaker.ev.name=进阶方块破坏器 III
 gregtech.machine.block_breaker.tooltip=挖掘面前的方块并收集掉落物
 gregtech.machine.block_breaker.speed_bonus=§e速度加成：§f%,d%%
+
+# Tool Caster
+gregtech.machine.tool_caster.lv.name=基础工具铸造机
+gregtech.machine.tool_caster.lv.tooltip=工匠作坊
+gregtech.machine.tool_caster.mv.name=进阶工具铸造机
+gregtech.machine.tool_caster.mv.tooltip=工匠作坊
+gregtech.machine.tool_caster.hv.name=进阶工具铸造机 II
+gregtech.machine.tool_caster.hv.tooltip=工匠作坊
+gregtech.machine.tool_caster.ev.name=进阶工具铸造机 III
+gregtech.machine.tool_caster.ev.tooltip=工匠作坊
+gregtech.machine.tool_caster.iv.name=精英工具铸造机
+gregtech.machine.tool_caster.iv.tooltip=大师匠台
+
+# Bath Condenser
+gregtech.machine.bath_condenser.lv.name=基础水浴冷凝机
+gregtech.machine.bath_condenser.lv.tooltip=冷凝工坊
+gregtech.machine.bath_condenser.mv.name=进阶水浴冷凝机
+gregtech.machine.bath_condenser.mv.tooltip=冷凝工坊
+gregtech.machine.bath_condenser.hv.name=进阶水浴冷凝机 II
+gregtech.machine.bath_condenser.hv.tooltip=冷凝工坊
+gregtech.machine.bath_condenser.ev.name=进阶水浴冷凝机 III
+gregtech.machine.bath_condenser.ev.tooltip=冷凝工坊
+gregtech.machine.bath_condenser.iv.name=精英水浴冷凝机
+gregtech.machine.bath_condenser.iv.tooltip=精密冷凝装置
 
 # Electric Furnace
 gregtech.machine.electric_furnace.lv.name=基础电炉
@@ -3922,6 +4073,34 @@ gregtech.machine.packer.uxv.tooltip=亚马逊仓库
 gregtech.machine.packer.opv.name=传奇打包机
 gregtech.machine.packer.opv.tooltip=亚马逊仓库
 
+# Unpacker
+gregtech.machine.unpacker.lv.name=基础解包机
+gregtech.machine.unpacker.lv.tooltip=取出盒中，放入盒外
+gregtech.machine.unpacker.mv.name=进阶解包机
+gregtech.machine.unpacker.mv.tooltip=取出盒中，放入盒外
+gregtech.machine.unpacker.hv.name=进阶解包机 II
+gregtech.machine.unpacker.hv.tooltip=取出盒中，放入盒外
+gregtech.machine.unpacker.ev.name=进阶解包机 III
+gregtech.machine.unpacker.ev.tooltip=取出盒中，放入盒外
+gregtech.machine.unpacker.iv.name=精英解包机
+gregtech.machine.unpacker.iv.tooltip=拆箱者
+gregtech.machine.unpacker.luv.name=精英解包机 II
+gregtech.machine.unpacker.luv.tooltip=拆箱者
+gregtech.machine.unpacker.zpm.name=精英解包机 III
+gregtech.machine.unpacker.zpm.tooltip=拆箱者
+gregtech.machine.unpacker.uv.name=终极解包机
+gregtech.machine.unpacker.uv.tooltip=亚马逊退货中心
+gregtech.machine.unpacker.uhv.name=史诗解包机
+gregtech.machine.unpacker.uhv.tooltip=亚马逊退货中心
+gregtech.machine.unpacker.uev.name=史诗解包机 II
+gregtech.machine.unpacker.uev.tooltip=亚马逊退货中心
+gregtech.machine.unpacker.uiv.name=史诗解包机 III
+gregtech.machine.unpacker.uiv.tooltip=亚马逊退货中心
+gregtech.machine.unpacker.uxv.name=史诗解包机 IV
+gregtech.machine.unpacker.uxv.tooltip=亚马逊退货中心
+gregtech.machine.unpacker.opv.name=传奇解包机
+gregtech.machine.unpacker.opv.tooltip=亚马逊退货中心
+
 # Polarizer
 gregtech.machine.polarizer.lv.name=基础两极磁化机
 gregtech.machine.polarizer.lv.tooltip=将你的磁体极化
@@ -4005,6 +4184,34 @@ gregtech.machine.sifter.uxv.name=史诗筛选机 IV
 gregtech.machine.sifter.uxv.tooltip=脉冲过滤器
 gregtech.machine.sifter.opv.name=传奇筛选机
 gregtech.machine.sifter.opv.tooltip=脉冲过滤器
+
+# Polisher
+gregtech.machine.polisher.lv.name=基础抛光机
+gregtech.machine.polisher.lv.tooltip=电动切石机
+gregtech.machine.polisher.mv.name=进阶抛光机
+gregtech.machine.polisher.mv.tooltip=电动切石机
+gregtech.machine.polisher.hv.name=进阶抛光机 II
+gregtech.machine.polisher.hv.tooltip=电动切石机
+gregtech.machine.polisher.ev.name=进阶抛光机 III
+gregtech.machine.polisher.ev.tooltip=电动切石机
+gregtech.machine.polisher.iv.name=精英抛光机
+gregtech.machine.polisher.iv.tooltip=精细抛光床
+gregtech.machine.polisher.luv.name=精英抛光机 II
+gregtech.machine.polisher.luv.tooltip=精细抛光床
+gregtech.machine.polisher.zpm.name=精英抛光机 III
+gregtech.machine.polisher.zpm.tooltip=精细抛光床
+gregtech.machine.polisher.uv.name=终极抛光机
+gregtech.machine.polisher.uv.tooltip=表面光滑化器
+gregtech.machine.polisher.uhv.name=史诗抛光机
+gregtech.machine.polisher.uhv.tooltip=表面光滑化器
+gregtech.machine.polisher.uev.name=史诗抛光机 II
+gregtech.machine.polisher.uev.tooltip=表面光滑化器
+gregtech.machine.polisher.uiv.name=史诗抛光机 III
+gregtech.machine.polisher.uiv.tooltip=表面光滑化器
+gregtech.machine.polisher.uxv.name=史诗抛光机 IV
+gregtech.machine.polisher.uxv.tooltip=表面光滑化器
+gregtech.machine.polisher.opv.name=传奇抛光机
+gregtech.machine.polisher.opv.tooltip=表面光滑化器
 
 # Thermal Centrifuge
 gregtech.machine.thermal_centrifuge.lv.name=基础热力离心机
@@ -4489,12 +4696,12 @@ gregtech.machine.quantum_tank.uhv.name=量子缸 V
 
 #Quantum Storage Controller
 gregtech.machine.quantum_storage_controller.name=量子存储控制器
-gregtech.machine.quantum_storage_controller.tooltip=量子存储网络的核心\n连接能源仓以为量子存储网络供电
+gregtech.machine.quantum_storage_controller.tooltip=量子存储网络的核心/n连接能源仓以为量子存储网络供电
 gregtech.machine.quantum_storage_proxy.name=量子存储代理器
 gregtech.machine.quantum_storage_proxy.tooltip=代理量子存储网络的库存
 gregtech.machine.quantum_storage_extender.name=量子存储扩展器
 gregtech.machine.quantum_storage_extender.tooltip=将量子存储网络扩展到其他超级箱/量子箱或超级缸/量子缸
-gregtech.machine.quantum_storage.connected=已连接至位于[%d, %d, %d]的量子控制器\n\n点击以高亮控制器
+gregtech.machine.quantum_storage.connected=已连接至位于[%d, %d, %d]的量子控制器/n/n点击以高亮控制器
 gregtech.machine.quantum_storage.disconnected=未连接
 
 #Buffers
@@ -4572,7 +4779,175 @@ gregtech.machine.rock_breaker.uxv.tooltip=火山成型室
 gregtech.machine.rock_breaker.opv.name=传奇碎岩机
 gregtech.machine.rock_breaker.opv.tooltip=火山成型室
 
-#Fisher
+# Laminator
+gregtech.machine.laminator.lv.name=基础过胶机
+gregtech.machine.laminator.lv.tooltip=防腐蚀助手
+gregtech.machine.laminator.mv.name=进阶过胶机
+gregtech.machine.laminator.mv.tooltip=防腐蚀助手
+gregtech.machine.laminator.hv.name=进阶过胶机 II
+gregtech.machine.laminator.hv.tooltip=防腐蚀助手
+gregtech.machine.laminator.ev.name=进阶过胶机 III
+gregtech.machine.laminator.ev.tooltip=防腐蚀助手
+gregtech.machine.laminator.iv.name=精英过胶机
+gregtech.machine.laminator.iv.tooltip=线材密封者
+gregtech.machine.laminator.luv.name=精英过胶机 II
+gregtech.machine.laminator.luv.tooltip=线材密封者
+gregtech.machine.laminator.zpm.name=精英过胶机 III
+gregtech.machine.laminator.zpm.tooltip=线材密封者
+gregtech.machine.laminator.uv.name=终极过胶机
+gregtech.machine.laminator.uv.tooltip=超级粘性附着器
+gregtech.machine.laminator.uhv.name=史诗过胶机
+gregtech.machine.laminator.uhv.tooltip=超级粘性附着器
+gregtech.machine.laminator.uev.name=史诗过胶机 II
+gregtech.machine.laminator.uev.tooltip=超级粘性附着器
+gregtech.machine.laminator.uiv.name=史诗过胶机 III
+gregtech.machine.laminator.uiv.tooltip=超级粘性附着器
+gregtech.machine.laminator.uxv.name=史诗过胶机 IV
+gregtech.machine.laminator.uxv.tooltip=超级粘性附着器
+gregtech.machine.laminator.opv.name=传奇过胶机
+gregtech.machine.laminator.opv.tooltip=超级粘性附着器
+
+# Polymerization Tank
+gregtech.machine.polymerization_tank.lv.name=基础聚合缸
+gregtech.machine.polymerization_tank.lv.tooltip=橡胶合成器
+gregtech.machine.polymerization_tank.mv.name=进阶聚合缸
+gregtech.machine.polymerization_tank.mv.tooltip=橡胶合成器
+gregtech.machine.polymerization_tank.hv.name=进阶聚合缸 II
+gregtech.machine.polymerization_tank.hv.tooltip=橡胶合成器
+gregtech.machine.polymerization_tank.ev.name=进阶聚合缸 III
+gregtech.machine.polymerization_tank.ev.tooltip=橡胶合成器
+gregtech.machine.polymerization_tank.iv.name=精英聚合缸
+gregtech.machine.polymerization_tank.iv.tooltip=塑料聚合者
+gregtech.machine.polymerization_tank.luv.name=精英聚合缸 II
+gregtech.machine.polymerization_tank.luv.tooltip=塑料聚合者
+gregtech.machine.polymerization_tank.zpm.name=精英聚合缸 III
+gregtech.machine.polymerization_tank.zpm.tooltip=塑料聚合者
+gregtech.machine.polymerization_tank.uv.name=终极聚合缸
+gregtech.machine.polymerization_tank.uv.tooltip=重力牵引装置
+gregtech.machine.polymerization_tank.uhv.name=史诗聚合缸
+gregtech.machine.polymerization_tank.uhv.tooltip=重力牵引装置
+gregtech.machine.polymerization_tank.uev.name=史诗聚合缸 II
+gregtech.machine.polymerization_tank.uev.tooltip=重力牵引装置
+gregtech.machine.polymerization_tank.uiv.name=史诗聚合缸 III
+gregtech.machine.polymerization_tank.uiv.tooltip=重力牵引装置
+gregtech.machine.polymerization_tank.uxv.name=史诗聚合缸 IV
+gregtech.machine.polymerization_tank.uxv.tooltip=重力牵引装置
+gregtech.machine.polymerization_tank.opv.name=传奇聚合缸
+gregtech.machine.polymerization_tank.opv.tooltip=重力牵引装置
+
+# Desulfurizer
+gregtech.machine.desulfurizer.lv.name=基础脱硫机
+gregtech.machine.desulfurizer.lv.tooltip=煤炭净化器
+gregtech.machine.desulfurizer.mv.name=进阶脱硫机
+gregtech.machine.desulfurizer.mv.tooltip=煤炭净化器
+gregtech.machine.desulfurizer.hv.name=进阶脱硫机 II
+gregtech.machine.desulfurizer.hv.tooltip=煤炭净化器
+gregtech.machine.desulfurizer.ev.name=进阶脱硫机 III
+gregtech.machine.desulfurizer.ev.tooltip=石油脱硫装置
+gregtech.machine.desulfurizer.iv.name=精英脱硫机
+gregtech.machine.desulfurizer.iv.tooltip=石油脱硫装置
+gregtech.machine.desulfurizer.luv.name=精英脱硫机 II
+gregtech.machine.desulfurizer.luv.tooltip=石油脱硫装置
+gregtech.machine.desulfurizer.zpm.name=精英脱硫机 III
+gregtech.machine.desulfurizer.zpm.tooltip=天然气处理器
+gregtech.machine.desulfurizer.uv.name=终极脱硫机
+gregtech.machine.desulfurizer.uv.tooltip=天然气处理器
+gregtech.machine.desulfurizer.uhv.name=史诗脱硫机
+gregtech.machine.desulfurizer.uhv.tooltip=工业废气净化器
+gregtech.machine.desulfurizer.uev.name=史诗脱硫机 II
+gregtech.machine.desulfurizer.uev.tooltip=工业废气净化器
+gregtech.machine.desulfurizer.uiv.name=史诗脱硫机 III
+gregtech.machine.desulfurizer.uiv.tooltip=工业废气净化器
+gregtech.machine.desulfurizer.uxv.name=史诗脱硫机 IV
+gregtech.machine.desulfurizer.uxv.tooltip=工业废气净化器
+gregtech.machine.desulfurizer.opv.name=传奇脱硫机
+gregtech.machine.desulfurizer.opv.tooltip=工业废气净化器
+
+# Bio Reactor
+gregtech.machine.bio_reactor.lv.name=基础生物反应室
+gregtech.machine.bio_reactor.lv.tooltip=制糖厂
+gregtech.machine.bio_reactor.mv.name=进阶生物反应室
+gregtech.machine.bio_reactor.mv.tooltip=制糖厂
+gregtech.machine.bio_reactor.hv.name=进阶生物反应室 II
+gregtech.machine.bio_reactor.hv.tooltip=制糖厂
+gregtech.machine.bio_reactor.ev.name=进阶生物反应室 III
+gregtech.machine.bio_reactor.ev.tooltip=细菌培养缸
+gregtech.machine.bio_reactor.iv.name=精英生物反应室
+gregtech.machine.bio_reactor.iv.tooltip=细菌培养缸
+gregtech.machine.bio_reactor.luv.name=精英生物反应室 II
+gregtech.machine.bio_reactor.luv.tooltip=细菌培养缸
+gregtech.machine.bio_reactor.zpm.name=精英生物反应室 III
+gregtech.machine.bio_reactor.zpm.tooltip=DNA检测器
+gregtech.machine.bio_reactor.uv.name=终极生物反应室
+gregtech.machine.bio_reactor.uv.tooltip=DNA检测器
+gregtech.machine.bio_reactor.uhv.name=史诗生物反应室
+gregtech.machine.bio_reactor.uhv.tooltip=基因编辑器
+gregtech.machine.bio_reactor.uev.name=史诗生物反应室 II
+gregtech.machine.bio_reactor.uev.tooltip=基因编辑器
+gregtech.machine.bio_reactor.uiv.name=史诗生物反应室 III
+gregtech.machine.bio_reactor.uiv.tooltip=基因编辑器
+gregtech.machine.bio_reactor.uxv.name=史诗生物反应室 IV
+gregtech.machine.bio_reactor.uxv.tooltip=基因编辑器
+gregtech.machine.bio_reactor.opv.name=传奇生物反应室
+gregtech.machine.bio_reactor.opv.tooltip=基因编辑器
+
+# Component Assembler
+gregtech.machine.component_assembler.lv.name=基础部件组装机
+gregtech.machine.component_assembler.lv.tooltip=零部件工厂
+gregtech.machine.component_assembler.mv.name=进阶部件组装机
+gregtech.machine.component_assembler.mv.tooltip=零部件工厂
+gregtech.machine.component_assembler.hv.name=进阶部件组装机 II
+gregtech.machine.component_assembler.hv.tooltip=零部件工厂
+gregtech.machine.component_assembler.ev.name=进阶部件组装机 III
+gregtech.machine.component_assembler.ev.tooltip=精密部件装配线
+gregtech.machine.component_assembler.iv.name=精英部件组装机
+gregtech.machine.component_assembler.iv.tooltip=精密部件装配线
+gregtech.machine.component_assembler.luv.name=精英部件组装机 II
+gregtech.machine.component_assembler.luv.tooltip=精密部件装配线
+gregtech.machine.component_assembler.zpm.name=精英部件组装机 III
+gregtech.machine.component_assembler.zpm.tooltip=纳米级组装单元
+gregtech.machine.component_assembler.uv.name=终极部件组装机
+gregtech.machine.component_assembler.uv.tooltip=纳米级组装单元
+gregtech.machine.component_assembler.uhv.name=史诗部件组装机
+gregtech.machine.component_assembler.uhv.tooltip=量子组装系统
+gregtech.machine.component_assembler.uev.name=史诗部件组装机 II
+gregtech.machine.component_assembler.uev.tooltip=量子组装系统
+gregtech.machine.component_assembler.uiv.name=史诗部件组装机 III
+gregtech.machine.component_assembler.uiv.tooltip=量子组装系统
+gregtech.machine.component_assembler.uxv.name=史诗部件组装机 IV
+gregtech.machine.component_assembler.uxv.tooltip=量子组装系统
+gregtech.machine.component_assembler.opv.name=传说部件组装机
+gregtech.machine.component_assembler.opv.tooltip=量子组装系统
+
+# Loom
+gregtech.machine.loom.lv.name=基础纺线器
+gregtech.machine.loom.lv.tooltip=棉纺机
+gregtech.machine.loom.mv.name=进阶纺线器
+gregtech.machine.loom.mv.tooltip=棉纺机
+gregtech.machine.loom.hv.name=进阶纺线器 II
+gregtech.machine.loom.hv.tooltip=棉纺机
+gregtech.machine.loom.ev.name=进阶纺线器 III
+gregtech.machine.loom.ev.tooltip=丝绸织机
+gregtech.machine.loom.iv.name=精英纺线器
+gregtech.machine.loom.iv.tooltip=丝绸织机
+gregtech.machine.loom.luv.name=精英纺线器 II
+gregtech.machine.loom.luv.tooltip=丝绸织机
+gregtech.machine.loom.zpm.name=精英纺线器 III
+gregtech.machine.loom.zpm.tooltip=合成纤维制造机
+gregtech.machine.loom.uv.name=终极纺线器
+gregtech.machine.loom.uv.tooltip=合成纤维制造机
+gregtech.machine.loom.uhv.name=史诗纺线器
+gregtech.machine.loom.uhv.tooltip=纳米纺织机
+gregtech.machine.loom.uev.name=史诗纺线器 II
+gregtech.machine.loom.uev.tooltip=纳米纺织机
+gregtech.machine.loom.uiv.name=史诗纺线器 III
+gregtech.machine.loom.uiv.tooltip=纳米纺织机
+gregtech.machine.loom.uxv.name=史诗纺线器 IV
+gregtech.machine.loom.uxv.tooltip=纳米纺织机
+gregtech.machine.loom.opv.name=传奇纺线器
+gregtech.machine.loom.opv.tooltip=纳米纺织机
+
+# Fisher
 gregtech.machine.fisher.lv.name=基础捕鱼机
 gregtech.machine.fisher.mv.name=进阶捕鱼机
 gregtech.machine.fisher.hv.name=进阶捕鱼机 II
@@ -4591,6 +4966,8 @@ gregtech.machine.fisher.speed=每%d刻获得一条鱼（或者其它什么东西
 gregtech.machine.fisher.requirement=需要在正下方倾倒边长为%,d格的静止水。
 
 # World Accelerator
+gregtech.machine.world_accelerator.ulv.name=简易世界加速器
+gregtech.machine.world_accelerator.ulv.tooltip=游戏刻加速方块
 gregtech.machine.world_accelerator.lv.name=基础世界加速器
 gregtech.machine.world_accelerator.lv.tooltip=游戏刻加速方块
 gregtech.machine.world_accelerator.mv.name=进阶世界加速器
@@ -4910,6 +5287,7 @@ behaviour.paintspray.red.tooltip=可以将方块染成红色
 behaviour.paintspray.black.tooltip=可以将方块染成黑色
 behaviour.paintspray.uses=剩余次数：%,d
 behaviour.paintspray.offhand=副手持握时所放置的方块将立即被染成对应颜色
+behaviour.paintspray.crouch=蹲下喷涂连接的管道
 behaviour.prospecting=适用于探矿
 
 # Multiblock machine controllers
@@ -4925,6 +5303,7 @@ gregtech.machine.pyrolyse_oven.name=热解炉
 gregtech.machine.pyrolyse_oven.tooltip.1=§a白铜§7线圈会使效率降低§f25%%§7，§a坎塔尔合金§7后的每个线圈都会增加§f50%%§7的速度。
 gregtech.machine.distillation_tower.name=蒸馏塔
 gregtech.machine.multi_furnace.name=工业熔炉
+gregtech.machine.multi_alloy_furnace.name=工业合金炉
 gregtech.machine.cracker.name=石油裂化机
 gregtech.machine.cracker.tooltip.1=使用§6白铜§7后的每个线圈等级都可以减少§f10%%§7的能源消耗。
 gregtech.machine.coke_oven.name=焦炉
@@ -4937,7 +5316,7 @@ gregtech.machine.large_chemical_reactor.name=大型化学反应釜
 gregtech.machine.large_combustion_engine.name=大型内燃引擎
 gregtech.machine.extreme_combustion_engine.name=极限内燃引擎
 gregtech.machine.large_combustion_engine.tooltip.boost_regular=提供§f20 L/s§7的氧气，并消耗§f双倍§7燃料以产生高达§f%s§7 EU/t的功率。
-gregtech.machine.large_combustion_engine.tooltip.boost_extreme=提供§f80L/s§7的液态氧，并消耗§f双倍§7燃料以产生高达§f%s§7EU/t的功率。
+gregtech.machine.large_combustion_engine.tooltip.boost_extreme=提供§f80L/s§7的液态氧，并消耗§f双倍§7燃料以产生高达§f%s§7 EU/t的功率。
 
 gregtech.machine.large_turbine.steam.name=大型蒸汽涡轮
 gregtech.machine.large_turbine.gas.name=大型燃气涡轮
@@ -4973,8 +5352,16 @@ gregtech.machine.miner.fluid_usage=每tick消耗§f%,d L§7的§f%s§7，超频�
 gregtech.machine.miner.multi.description=一台工作范围极广的多方块采矿机，能够提供巨量矿石。
 gregtech.machine.miner.multi.needsfluid=钻井液不足！
 
+gregtech.machine.miner.startx=sX：%d
+gregtech.machine.miner.starty=sY：%d
+gregtech.machine.miner.startz=sZ：%d
+gregtech.machine.miner.minex=mX：%d
+gregtech.machine.miner.miney=mY：%d
+gregtech.machine.miner.minez=mZ：%d
 gregtech.machine.miner.mining_at=当前采矿地址：
-gregtech.machine.miner.mining_pos=X：%s Y：%s Z：%s
+gregtech.machine.miner.mining_pos_x=X: %s
+gregtech.machine.miner.mining_pos_y=Y: %s
+gregtech.machine.miner.mining_pos_z=Z: %s
 gregtech.machine.miner.radius=半径：%d
 gregtech.machine.miner.working_area=工作范围：%dx%d格
 gregtech.machine.miner.working_area_chunks=工作范围：%dx%d区块
@@ -4990,7 +5377,7 @@ gregtech.machine.fluid_drilling_rig.shows_depletion=显示流体矿脉信息
 
 gregtech.machine.cleanroom.name=超净间
 gregtech.machine.cleanroom.tooltip.1=使其内部的机器能够处理需要超净环境的配方。
-gregtech.machine.cleanroom.tooltip.2=污染状态下耗能功率为§f30EU/t§7，洁净状态下则为§f4EU/t§7。
+gregtech.machine.cleanroom.tooltip.2=污染状态下功耗为§f30EU/t§7，洁净状态下则为§f4EU/t§7。
 gregtech.machine.cleanroom.tooltip.3=超频可提升每个周期的清洁度。
 gregtech.machine.cleanroom.tooltip.4=§b尺寸：§f最小5x5x5，最大15x15x15
 gregtech.machine.cleanroom.tooltip.hold_ctrl=按住CTRL以查看更多结构信息
@@ -5012,7 +5399,7 @@ gregtech.machine.charcoal_pile.tooltip.1=§c点火后§7将原木烧制成§a木
 gregtech.machine.charcoal_pile.tooltip.2=使用可点火的物品右击即可启动。
 gregtech.machine.charcoal_pile.tooltip.3=热解发生在下方至多§b9x4x9§7的空间内。
 gregtech.machine.charcoal_pile.tooltip.4=原木不可暴露在§e空气§7中！
-gregtech.multiblock.charcoal_pile.description=将下方最大9x4x9区域内的原木烧制成脆木炭块。\n\n木炭堆底部必须由砖块构成，壁面和顶面则可选用泥土、沙子等任何土地类方块。堆内必须填满，不可存在空气。\n\n木炭堆的尺寸越大，所需的处理时间就越长，但收效会更高。
+gregtech.multiblock.charcoal_pile.description=将下方最大9x4x9区域内的原木烧制成脆木炭块。/n/n木炭堆底部必须由砖块构成，壁面和顶面则可选用泥土、沙子等任何土地类方块。堆内必须填满，不可存在空气。/n/n木炭堆的尺寸越大，所需的处理时间就越长，但收效会更高。
 
 gregtech.machine.data_bank.name=数据库
 gregtech.machine.data_bank.tooltip.1=你的个人网络存储器
@@ -5101,6 +5488,7 @@ gregtech.machine.implosion_compressor.tooltip=唯一一台你想要爆一爆的�
 gregtech.machine.pyrolyse_oven.tooltip=电动焦炉
 gregtech.machine.distillation_tower.tooltip=流体精炼厂
 gregtech.machine.multi_furnace.tooltip=就像家里的烤箱一样
+gregtech.machine.multi_alloy_furnace.tooltip=就像家里的微波炉一样
 gregtech.machine.large_combustion_engine.tooltip=燃料点火室
 gregtech.machine.extreme_combustion_engine.tooltip=极限化学能释放者
 gregtech.machine.cracker.tooltip=有它，石油才有用
@@ -5447,6 +5835,7 @@ gregtech.machine.substation_hatch.output_64a.max.name=64安§c§lMAX§r变电动
 
 gregtech.machine.rotor_holder.tooltip1=为多方块结构固定转子，使其不能飞走
 gregtech.machine.rotor_holder.tooltip2=需要前方3*1*3的区域（中空）是否为空气
+gregtech.machine.rotor_holder.tooltip3=转子在工作时会对前方3*5*3的区域产生吸力，同时接触到转子的实体会受到伤害且转子也会受到损耗
 
 gregtech.machine.rotor_holder.hv.name=§6HV§r转子支架
 gregtech.machine.rotor_holder.ev.name=§5EV§r转子支架
@@ -5461,15 +5850,24 @@ gregtech.machine.rotor_holder.uxv.name=§eUXV§r转子支架
 gregtech.machine.rotor_holder.opv.name=§9OpV§r转子支架
 gregtech.machine.rotor_holder.max.name=§c§lMAX§r转子支架
 
+# 批处理系统相关说明
+gregtech.tooltip.batch_avaliable=-批处理支持：
+gregtech.tooltip.ctrl=按住CTRL以显示详细批处理工作逻辑
+
+gregtech.machine.batch_process.tooltips.1=本多方块可将耗时短于128tick的配方倍乘到不超过128tick最大数
+gregtech.machine.batch_process.tooltips.2=批处理在配方计算完超频，并行后单独计算，因此耗能不变且无视并行
+gregtech.machine.batch_process.tooltips.3=有关修改耗时的特殊配方逻辑均在批处理后计算，可能会导致配方实际不满128tick
+
 gregtech.machine.maintenance_hatch.name=维护仓
 gregtech.machine.maintenance_hatch.tooltip=用于维护多方块结构
 gregtech.machine.maintenance_hatch_configurable.name=可配置维护仓
-gregtech.machine.maintenance_hatch_configurable.tooltip=更精细的维护多方块结构\n起手无需维护！
+gregtech.machine.maintenance_hatch_configurable.tooltip=更精细的维护多方块结构/n起手无需维护！
 gregtech.machine.maintenance_hatch_full_auto.name=自动维护仓
 gregtech.machine.maintenance_hatch_full_auto.tooltip=可以自动维护多方块结构
 gregtech.machine.maintenance_hatch_cleanroom_auto.name=自动过滤维护仓
 gregtech.machine.maintenance_hatch_cleanroom_auto.tooltip.1=可以自动维护多方块结构，附带清洁功能！
 gregtech.machine.maintenance_hatch.cleanroom_auto.tooltip.2=清洁方式：
+gregtech.machine.maintenance_hatch_sterile_cleanroom_auto.name=自动无菌过滤维护仓
 gregtech.machine.maintenance_hatch_tool_slot.tooltip=所需工具处于物品栏时空手点击该槽位来维护
 gregtech.machine.maintenance_hatch_tape_slot.tooltip=放入胶带以防止发生故障
 
@@ -5526,7 +5924,7 @@ gregtech.machine.passthrough_hatch_fluid.name=流体通行仓
 gregtech.machine.passthrough_hatch_fluid.tooltip=将流体从一侧输送到另一侧
 gregtech.machine.passthrough_hatch_laser.name=激光通行仓
 gregtech.machine.passthrough_hatch_laser.tooltip=将激光从一侧输送到另一侧
-gregtech.machine.passthrough_hatch_computer.name=算力通行仓
+gregtech.machine.passthrough_hatch_computation.name=算力通行仓
 gregtech.machine.passthrough_hatch_computation.tooltip=将算力从一侧输送到另一侧
 
 
@@ -5747,7 +6145,7 @@ gregtech.machine.laser_hatch.target.tooltip1=远距离接收能量
 gregtech.machine.laser_hatch.tooltip2=§c激光传导线缆必须直线摆放！§7
 
 gregtech.machine.fluid_tank.max_multiblock=多方块结构最大尺寸：%,dx%,dx%,d
-gregtech.machine.fluid_tank.fluid=含有%s L%s
+gregtech.machine.fluid_tank.fluid=§9含有:§f%s L %s
 
 # ME Parts
 gregtech.machine.me_import_item_bus.name=ME输入总线
@@ -5786,6 +6184,7 @@ gregtech.universal.tooltip.voltage_out=§a输出电压：§f%,d EU/t（%s§f）
 gregtech.universal.tooltip.max_voltage_out=§a最大输出电压：§f%,d（%s§f）
 gregtech.universal.tooltip.voltage_in_out=§a输入/输出电压：§f%,d EU/t（%s§f）
 gregtech.universal.tooltip.max_voltage_in_out=§a最大输入/输出电压：§f%,d EU/t（%s§f）
+gregtech.universal.tooltip.generation_efficiency=§e发电效率：§f%.1f%%
 gregtech.universal.tooltip.amperage_in=§e输入电流：§f%,dA
 gregtech.universal.tooltip.amperage_in_till=§e输入电流上限：§f%,dA
 gregtech.universal.tooltip.amperage_out=§e输出电流：§f%,dA
@@ -5823,7 +6222,7 @@ gregtech.block.tooltip.no_mob_spawning=§b生物不会在这个方块上生成
 
 gregtech.recipe.total=总计：%,d EU
 gregtech.recipe.max_eu=最大EU：%,d EU
-gregtech.recipe.eu=耗能功率：%,d EU/t(%s§r)
+gregtech.recipe.eu=功耗：%,d EU/t（%s§r）
 gregtech.recipe.eu_inverted=产能功率：%,d EU/t
 gregtech.recipe.duration=耗时：%s 秒
 gregtech.recipe.amperage=电流：%,d
@@ -5875,7 +6274,7 @@ gregtech.tool_action.tape=§8使用胶带维护机器
 gregtech.fluid.generic=%s
 gregtech.fluid.liquid_generic=液态%s
 gregtech.fluid.gas_generic=气态%s
-gregtech.fluid.gas_vapor=%s蒸气
+gregtech.fluid.gas_vapor=%s气
 gregtech.fluid.plasma=%s等离子体
 gregtech.fluid.empty=空
 gregtech.fluid.amount=§9数量：%,d/%,d L
@@ -5890,9 +6289,9 @@ gregtech.gui.fluid_amount=流体总量：
 gregtech.gui.amount_raw=数量：
 gregtech.gui.toggle_view.disabled=切换视图（流体）
 gregtech.gui.toggle_view.enabled=切换视图（物品）
-gregtech.gui.overclock.enabled=已启用超频\n点击以禁用
-gregtech.gui.overclock.disabled=已禁用超频\n点击以启用
-gregtech.gui.overclock.description=超频按钮\n§7配方可以超频到设定的电压等级
+gregtech.gui.overclock.enabled=已启用超频/n点击以禁用
+gregtech.gui.overclock.disabled=已禁用超频/n点击以启用
+gregtech.gui.overclock.description=超频按钮/n§7配方可以超频到设定的电压等级
 gregtech.gui.overclock.off=X
 gregtech.gui.sort=分类
 gregtech.gui.fluid_auto_output.tooltip.enabled=流体自动输出已启用
@@ -5903,21 +6302,24 @@ gregtech.gui.item_auto_output.tooltip.enabled=物品自动输出已启用
 gregtech.gui.item_auto_output.tooltip.disabled=物品自动输出已禁用
 gregtech.gui.item_auto_collapse.tooltip.enabled=物品堆叠自动合并已启用
 gregtech.gui.item_auto_collapse.tooltip.disabled=物品堆叠自动合并已禁用
-gregtech.gui.charger_slot.tooltip=§f充电槽§r\n§7从%s电池中取电§7\n§7也可为%s工具或电池充电
-gregtech.gui.configurator_slot.tooltip=§f编程电路槽§r\n§a配置值：§f%d§7\n\n§7左击/右击/滚轮可循环浏览列表\n§7Shift+右键单击以清除
+gregtech.gui.charger_slot.tooltip=§f充电槽§r/n§7从%s电池中取电§7/n§7也可为%s工具或电池充电
+gregtech.gui.configurator_slot.tooltip=§f编程电路槽§r/n§a配置值：§f%d§7/n/n§7左击/右击/滚轮可循环浏览列表/n§7Shift+右键单击以清除
 gregtech.gui.configurator_slot.no_value=空
 gregtech.gui.configurator_slot.unavailable.tooltip=编程电路槽位无法使用
 gregtech.gui.fluid_lock.tooltip.enabled=流体锁定已启用
 gregtech.gui.fluid_lock.tooltip.disabled=流体锁定已禁用
+gregtech.gui.item_lock.tooltip.enabled=物品锁定已启用
+gregtech.gui.item_lock.tooltip.disabled=物品锁定已禁用
 gregtech.gui.fluid_voiding.tooltip.enabled=过量流体销毁已启用
 gregtech.gui.fluid_voiding.tooltip.disabled=过量流体销毁已禁用
 gregtech.gui.item_voiding.tooltip.enabled=过量物品销毁已启用
 gregtech.gui.item_voiding.tooltip.disabled=过量物品销毁已禁用
-gregtech.gui.multiblock_item_voiding=销毁模式\n§7销毁§6物品
-gregtech.gui.multiblock_fluid_voiding=销毁模式\n§7销毁§9流体
-gregtech.gui.multiblock_item_fluid_voiding=销毁模式\n§7销毁§6物品§7与§9流体
-gregtech.gui.multiblock_no_voiding=销毁模式\n§7不销毁
+gregtech.gui.multiblock_item_voiding=销毁模式/n§7销毁§6物品
+gregtech.gui.multiblock_fluid_voiding=销毁模式/n§7销毁§9流体
+gregtech.gui.multiblock_item_fluid_voiding=销毁模式/n§7销毁§6物品§7与§9流体
+gregtech.gui.multiblock_no_voiding=销毁模式/n§7不销毁
 gregtech.gui.multiblock_voiding_not_supported=这个多方块不支持销毁模式
+gregtech.gui.multiblock_batch_not_supported=这个多方块不支持批处理模式
 gregtech.gui.multiblock.recipe_producing=产出：
 gregtech.gui.me_network.online=网络：§a在线§r
 gregtech.gui.me_network.offline=网络：§4离线§r
@@ -5928,7 +6330,7 @@ gregtech.gui.config_slot.set_only=§7点击§b设置§7配置槽位。§r
 gregtech.gui.config_slot.scroll=§7使用滚轮§a切换§7配置数。§r
 gregtech.gui.config_slot.remove=§7右击§4清除§7配置槽位。§r
 gregtech.gui.config_slot.auto_pull_managed=§4禁用：§7由ME自动拉取管理
-gregtech.gui.me_bus.extra_slot=额外槽位\n§7在这里放置配方的额外物品，例如模具或透镜
+gregtech.gui.me_bus.extra_slot=额外槽位/n§7在这里放置配方的额外物品，例如模具或透镜
 gregtech.gui.me_bus.auto_pull_button=单击以切换ME自动拉取模式
 gregtech.gui.alarm.radius=半径：
 gregtech.gui.item_passthrough.enabled=物品通行已启用
@@ -6020,7 +6422,9 @@ gregtech.veins.ore.raw_oil_sphere=原油球
 gregtech.veins.ore.natural_gas_sphere=天然气球
 gregtech.veins.ore.red_granite_sphere=红花岗岩球
 gregtech.veins.ore.salts=盐矿脉
+gregtech.veins.ore.rock_salt=岩盐矿脉
 gregtech.veins.ore.sapphire=蓝宝石矿脉
+gregtech.veins.ore.trona=天然碱矿脉
 
 gregtech.veins.fluid.lava=熔岩矿藏
 gregtech.veins.fluid.natural_gas_nether=天然气矿藏
@@ -6078,10 +6482,14 @@ gregtech.multiblock.universal.problem.wire_cutter=§7有几根线烧焦了。(§
 gregtech.multiblock.universal.problem.crowbar=§7这东西不属于这儿。(§a撬棍§7)
 gregtech.multiblock.universal.muffler_obstructed=消声仓受阻！
 gregtech.multiblock.universal.muffler_obstructed_desc=消音仓口前方必须有一格空气。
-gregtech.multiblock.universal.distinct_enabled=仓口隔离：§a是§r\n每个物品总线/流体仓/总成将在配方识别中被视为完全独立。对于消耗材料相同，使用的非消耗材料（模头、透镜等）不同则产物也不同的配方以及在使用总成时来说作用显著。
-gregtech.multiblock.universal.distinct_disabled=仓口隔离：§c否§r\n每个物品总线/流体仓/总成将在配方识别中被视为组合的物品/流体输入。
+gregtech.multiblock.universal.distinct_enabled=仓口隔离：§a是§r/n每个物品总线/流体仓/总成将在配方识别中被视为完全独立。对于消耗材料相同，使用的非消耗材料（模头、透镜等）不同则产物也不同的配方以及在使用总成时来说作用显著。
+gregtech.multiblock.universal.distinct_disabled=仓口隔离：§c否§r/n每个物品总线/流体仓/总成将在配方识别中被视为组合的物品/流体输入。
+gregtech.multiblock.universal.batch_enabled=批处理：§a是§r/n等比增加机器配方输入和配方产出，使得等比增加的加工耗时尽可能的延长到128 tick，批处理并不会改动超频逻辑，对于无并行机器的运行效率完全没有影响。
+gregtech.multiblock.universal.batch_disabled=批处理：§c否§r/n正常的计算超频并行，无任何额外功能
+gregtech.multiblock.universal.structure_check=进行一次多方块结构检测
 gregtech.multiblock.universal.distinct_not_supported=这个多方块不支持总线隔离
 gregtech.multiblock.universal.no_flex_button=这个多方块没有这个按钮的附加功能
+gregtech.multiblock.universal.no_multi_recipemap=这个多方块不需要配方切换
 gregtech.multiblock.parallel=最大并行：%s
 gregtech.multiblock.multiple_recipemaps.header=机器模式：
 gregtech.multiblock.multiple_recipemaps.value=机器模式：%s
@@ -6115,7 +6523,7 @@ gregtech.multiblock.pattern.replaceable_air=可为空气
 gregtech.multiblock.blast_furnace.max_temperature=最大温度：%s
 gregtech.multiblock.multi_furnace.heating_coil_discount=加热线圈增幅：%s
 gregtech.multiblock.multi_furnace.heating_coil_discount_hover=线圈等级会影响能耗修正
-gregtech.multiblock.multi_furnace.parallel_hover=线圈等级会影响工业熔炉的并行数量
+gregtech.multiblock.multi_furnace.parallel_hover=线圈等级会影响设备的并行数量
 gregtech.multiblock.distillation_tower.distilling_fluid=正在蒸馏%s
 
 gregtech.multiblock.large_combustion_engine.fuel_none=§c无燃料！
@@ -6148,14 +6556,16 @@ gregtech.multiblock.turbine.obstructed=涡轮表面受阻！
 gregtech.multiblock.turbine.obstructed.desc=涡轮前方3x3必须是空气。
 gregtech.multiblock.turbine.efficiency_tooltip=转子支架等级超过%s§7时，每级增加§610%%§7的效率。
 
+gregtech.multiblock.structure_tier=结构等级:
+
 gregtech.multiblock.large_boiler.efficiency=效率：%s
 gregtech.multiblock.large_boiler.steam_output=蒸汽输出：%s
 gregtech.multiblock.large_boiler.throttle_button.tooltip=配置锅炉节流
 gregtech.multiblock.large_boiler.throttle=节流：%s
 gregtech.multiblock.large_boiler.throttle.title=锅炉节流
 gregtech.multiblock.large_boiler.throttle.tooltip=锅炉可以节流，以减少燃料消耗与蒸汽产出，并且不损失效率，不影响加热时间。
-gregtech.multiblock.large_boiler.throttle_increment=节流阀§a+5%%§r\n§7减少燃料消耗与蒸汽产出，并且不损失效率，不影响加热时间。
-gregtech.multiblock.large_boiler.throttle_decrement=节流阀§c-5%%§r\n§7减少燃料消耗与蒸汽产出，并且不损失效率，不影响加热时间。
+gregtech.multiblock.large_boiler.throttle_increment=节流阀§a+5%%§r/n§7减少燃料消耗与蒸汽产出，并且不损失效率，不影响加热时间。
+gregtech.multiblock.large_boiler.throttle_decrement=节流阀§c-5%%§r/n§7减少燃料消耗与蒸汽产出，并且不损失效率，不影响加热时间。
 gregtech.multiblock.large_boiler.rate_tooltip=§7每块§1煤炭§7可以生产§f%dL§7的蒸汽
 gregtech.multiblock.large_boiler.heat_time_tooltip=§7需要§f%d秒§7预热
 gregtech.multiblock.large_boiler.explosion_tooltip=无水时提供燃料将爆炸
@@ -6170,10 +6580,10 @@ gregtech.machine.steam_miner.vent=排气口受阻！
 gregtech.machine.steam_miner.steam=需要蒸汽！
 gregtech.machine.miner.errorradius=§c工作中不能调整半径！
 
-gregtech.multiblock.miner.neither_mode=区块对齐模式：§c禁用§r\n精准采集模式：§c禁用§r\n§7机器必须在闲置状态下切换。
-gregtech.multiblock.miner.chunk_mode=区块对齐模式：§a启用§r\n精准采集模式：§c禁用§r\n§7机器必须在闲置状态下切换。
-gregtech.multiblock.miner.silk_touch_mode=区块对齐模式：§c禁用§r\n精准采集模式：§a启用§r\n§7机器必须在闲置状态下切换。
-gregtech.multiblock.miner.both_modes=区块对齐模式：§a启用§r\n精准采集模式：§a启用§r\n§7机器必须在闲置状态下切换。
+gregtech.multiblock.miner.neither_mode=区块对齐模式：§c禁用§r/n精准采集模式：§c禁用§r/n§7机器必须在闲置状态下切换。
+gregtech.multiblock.miner.chunk_mode=区块对齐模式：§a启用§r/n精准采集模式：§c禁用§r/n§7机器必须在闲置状态下切换。
+gregtech.multiblock.miner.silk_touch_mode=区块对齐模式：§c禁用§r/n精准采集模式：§a启用§r/n§7机器必须在闲置状态下切换。
+gregtech.multiblock.miner.both_modes=区块对齐模式：§a启用§r/n精准采集模式：§a启用§r/n§7机器必须在闲置状态下切换。
 
 gregtech.multiblock.fluid_rig.drilled_fluid=流体：%s
 gregtech.multiblock.fluid_rig.no_fluid_in_area=区域内没有。
@@ -6486,7 +6896,7 @@ terminal.multiblock_ar.builder.auto=自动搭建
 terminal.multiblock_ar.builder.place=放置方块
 terminal.multiblock_ar.builder.debug=调试
 
-terminal.world_prospector.description="我要是有双镭射眼就好了。"\n"不好意思，先生，我们这儿不是卖超能力的。你得相信科学。"
+terminal.world_prospector.description="我要是有双镭射眼就好了。"/n"不好意思，先生，我们这儿不是卖超能力的。你得相信科学。"
 terminal.world_prospector.tier.0=半径15米（1个槽位）
 terminal.world_prospector.tier.1=半径30米（2个槽位）
 terminal.world_prospector.tier.2=半径60米（4个槽位）
@@ -6789,3 +7199,6 @@ gregtech.scanner.forestry.pollen=§o花粉（已扫描）
 gregtech.mutation.block_of=%s块
 
 record.sus=Leonz - Among Us Drip
+
+gtqt.tooltip.quit_message=你确定要退出游戏吗？
+gtqt.tooltip.modpack_name=格雷科技：量子跃迁

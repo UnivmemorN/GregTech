@@ -1,31 +1,26 @@
 package gregtech.common.metatileentities.storage;
 
 import gregtech.api.capability.GregtechTileCapabilities;
-import gregtech.api.capability.IActiveOutputSide;
 import gregtech.api.capability.impl.ItemHandlerList;
 import gregtech.api.capability.impl.ItemHandlerProxy;
 import gregtech.api.cover.CoverRayTracer;
-import gregtech.api.gui.GuiTextures;
-import gregtech.api.gui.ModularUI;
-import gregtech.api.gui.ModularUI.Builder;
-import gregtech.api.gui.widgets.AdvancedTextWidget;
-import gregtech.api.gui.widgets.SlotWidget;
-import gregtech.api.gui.widgets.ToggleButtonWidget;
 import gregtech.api.items.itemhandlers.GTItemStackHandler;
 import gregtech.api.metatileentity.IFastRenderMetaTileEntity;
 import gregtech.api.metatileentity.ITieredMetaTileEntity;
 import gregtech.api.metatileentity.MetaTileEntity;
+import gregtech.api.metatileentity.MetaTileEntityUIFactory;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
-import gregtech.api.util.GTLog;
 import gregtech.api.util.GTTransferUtils;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.TextFormattingUtil;
 import gregtech.client.renderer.texture.Textures;
 import gregtech.client.renderer.texture.custom.QuantumStorageRenderer;
+import gregtech.common.mui.widget.GTItemSlot;
 
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
@@ -33,8 +28,6 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.AxisAlignedBB;
-import net.minecraft.util.text.ITextComponent;
-import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextComponentTranslation;
 import net.minecraft.world.World;
 import net.minecraftforge.common.capabilities.Capability;
@@ -44,12 +37,20 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import net.minecraftforge.items.CapabilityItemHandler;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
+import net.minecraftforge.items.wrapper.PlayerMainInvWrapper;
 
 import codechicken.lib.raytracer.CuboidRayTraceResult;
 import codechicken.lib.render.CCRenderState;
 import codechicken.lib.render.pipeline.ColourMultiplier;
 import codechicken.lib.render.pipeline.IVertexOperation;
 import codechicken.lib.vec.Matrix4;
+import com.cleanroommc.modularui.api.drawable.IDrawable;
+import com.cleanroommc.modularui.network.NetworkUtils;
+import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.value.sync.PanelSyncManager;
+import com.cleanroommc.modularui.value.sync.SyncHandler;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
+import lombok.Getter;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
@@ -59,33 +60,42 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import static gregtech.api.capability.GregtechDataCodes.*;
+import static gregtech.api.capability.GregtechDataCodes.UPDATE_ITEM;
+import static gregtech.api.capability.GregtechDataCodes.UPDATE_ITEM_COUNT;
+import static net.minecraftforge.items.ItemHandlerHelper.giveItemToPlayer;
 
 public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IItemHandler>
-                                        implements ITieredMetaTileEntity, IActiveOutputSide, IFastRenderMetaTileEntity {
+        implements ITieredMetaTileEntity, IFastRenderMetaTileEntity {
 
-    private final int tier;
-    protected final long maxStoredItems;
-    /** The ItemStack that the Quantum Chest is storing */
-    protected ItemStack virtualItemStack = ItemStack.EMPTY;
-    protected long itemsStoredInside = 0L;
-    private boolean autoOutputItems;
-    private EnumFacing outputFacing;
-    private boolean allowInputFromOutputSide = false;
     private static final String NBT_ITEMSTACK = "ItemStack";
     private static final String NBT_PARTIALSTACK = "PartialStack";
     private static final String NBT_ITEMCOUNT = "ItemAmount";
-    private static final String IS_VOIDING = "IsVoiding";
+    @Getter
+    protected final long maxStoredItems;
+    private final int tier;
+    /** The ItemStack that the Quantum Chest is storing */
+    protected ItemStack virtualItemStack = ItemStack.EMPTY;
+    protected long itemsStoredInside = 0L;
+    @Getter
     protected IItemHandler outputItemInventory;
-    private ItemHandlerList combinedInventory;
     protected ItemStack previousStack;
+    protected ItemStack lockedStack = ItemStack.EMPTY;
+    @Getter
     protected long previousStackSize;
     protected boolean voiding;
+    private ItemHandlerList combinedInventory;
+    @Getter
+    private int coolDown = 0;
 
     public MetaTileEntityQuantumChest(ResourceLocation metaTileEntityId, int tier, long maxStoredItems) {
         super(metaTileEntityId);
         this.tier = tier;
         this.maxStoredItems = maxStoredItems;
+    }
+
+    protected static boolean areItemStackIdentical(ItemStack first, ItemStack second) {
+        return ItemStack.areItemsEqual(first, second) &&
+                ItemStack.areItemStackTagsEqual(first, second);
     }
 
     @Override
@@ -105,6 +115,7 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
                         new ColourMultiplier(GTUtility.convertRGBtoOpaqueRGBA_CL(getPaintingColorForRendering()))),
                 this);
         Textures.QUANTUM_CHEST_OVERLAY.renderSided(EnumFacing.UP, renderState, translation, pipeline);
+        var outputFacing = getOutputFacing();
         if (outputFacing != null) {
             Textures.PIPE_OUT_OVERLAY.renderSided(outputFacing, renderState, translation, pipeline);
             if (isAutoOutputItems()) {
@@ -125,12 +136,19 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
         return Pair.of(Textures.VOLTAGE_CASINGS[tier].getParticleSprite(), getPaintingColorForRendering());
     }
 
+    public void refreshCoolDown() {
+        this.coolDown = 5;
+    }
+
     @Override
     public void update() {
         super.update();
         EnumFacing currentOutputFacing = getOutputFacing();
         if (!getWorld().isRemote) {
-            if (itemsStoredInside < maxStoredItems) {
+            if (this.coolDown > 0) {
+                this.coolDown--;
+            }
+            if (shouldTransferImport()) {
                 ItemStack inputStack = importItems.getStackInSlot(0);
                 ItemStack outputStack = exportItems.getStackInSlot(0);
                 if (!inputStack.isEmpty() &&
@@ -140,7 +158,7 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
                     markDirty();
                 }
             }
-            if (itemsStoredInside > 0 && !virtualItemStack.isEmpty()) {
+            if (shouldTransferExport()) {
                 ItemStack outputStack = exportItems.getStackInSlot(0);
                 int maxStackSize = virtualItemStack.getMaxStackSize();
                 if (outputStack.isEmpty() || (areItemStackIdentical(virtualItemStack, outputStack) &&
@@ -155,14 +173,14 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
                 pushItemsIntoNearbyHandlers(currentOutputFacing);
             }
 
-            if (this.voiding && !importItems.getStackInSlot(0).isEmpty()) {
+            if (isVoiding() && !importItems.getStackInSlot(0).isEmpty()) {
                 importItems.setStackInSlot(0, ItemStack.EMPTY);
             }
 
             if (previousStack == null || !areItemStackIdentical(previousStack, virtualItemStack)) {
                 writeCustomData(UPDATE_ITEM, buf -> {
                     virtualItemStack.setCount(1);
-                    buf.writeItemStack(virtualItemStack);
+                    NetworkUtils.writeItemStack(buf, this.virtualItemStack);
                 });
                 previousStack = virtualItemStack;
             }
@@ -173,44 +191,65 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
         }
     }
 
-    protected static boolean areItemStackIdentical(ItemStack first, ItemStack second) {
-        return ItemStack.areItemsEqual(first, second) &&
-                ItemStack.areItemStackTagsEqual(first, second);
-    }
-
-    protected void addDisplayInformation(List<ITextComponent> textList) {
-        textList.add(new TextComponentTranslation("gregtech.machine.quantum_chest.items_stored"));
-        textList.add(new TextComponentString(String.format("%,d", itemsStoredInside)));
-        ItemStack export = exportItems.getStackInSlot(0);
-        if (!export.isEmpty()) {
-            textList.add(
-                    new TextComponentString(TextFormattingUtil.formatStringWithNewlines(export.getDisplayName(), 14)));
-        }
-    }
-
     @Override
-    public void addInformation(ItemStack stack, @Nullable World player, List<String> tooltip, boolean advanced) {
+    public void addInformation(ItemStack stack, @Nullable World player, @NotNull List<String> tooltip,
+                               boolean advanced) {
         super.addInformation(stack, player, tooltip, advanced);
         tooltip.add(I18n.format("gregtech.universal.tooltip.item_storage_total", maxStoredItems));
 
-        NBTTagCompound compound = stack.getTagCompound();
-        if (compound != null) {
-            String translationKey = null;
-            long count = 0;
-            int exportCount = 0;
-            if (compound.hasKey(NBT_ITEMSTACK)) {
-                count = compound.getLong(NBT_ITEMCOUNT);
-            }
-            if (compound.hasKey(NBT_PARTIALSTACK)) {
-                ItemStack tempStack = new ItemStack(compound.getCompoundTag(NBT_PARTIALSTACK));
-                translationKey = tempStack.getDisplayName();
-                exportCount = tempStack.getCount();
-            }
-            if (translationKey != null) {
-                tooltip.add(I18n.format("gregtech.universal.tooltip.item_stored",
-                        I18n.format(translationKey), count, exportCount));
-            }
+        long count = getStoredItemCountFromNBT(stack);
+        int exportCount = getExportItemCountFromNBT(stack);
+        String translationKey = getExportItemNameFromNBT(stack);
+
+        if (translationKey != null) {
+            tooltip.add(I18n.format("gregtech.universal.tooltip.item_stored",
+                    I18n.format(translationKey), count, exportCount));
         }
+    }
+
+    /**
+     * 从物品栈的NBT数据中获取存储的物品数量
+     *
+     * @param stack 包含量子箱数据的物品栈
+     * @return 存储的物品总数，如果无数据则返回0
+     */
+    public long getStoredItemCountFromNBT(ItemStack stack) {
+        NBTTagCompound compound = stack.getTagCompound();
+        if (compound != null && compound.hasKey(NBT_ITEMSTACK)) {
+            return compound.getLong(NBT_ITEMCOUNT);
+        }
+        return 0L;
+    }
+
+    /**
+     * 从物品栈的NBT数据中获取导出槽位的物品数量
+     *
+     * @param stack 包含量子箱数据的物品栈
+     * @return 导出槽位中的物品数量，如果无数据则返回0
+     */
+    public int getExportItemCountFromNBT(ItemStack stack) {
+        NBTTagCompound compound = stack.getTagCompound();
+        if (compound != null && compound.hasKey(NBT_PARTIALSTACK)) {
+            ItemStack tempStack = new ItemStack(compound.getCompoundTag(NBT_PARTIALSTACK));
+            return tempStack.getCount();
+        }
+        return 0;
+    }
+
+    /**
+     * 从物品栈的NBT数据中获取导出槽位物品的显示名称
+     *
+     * @param stack 包含量子箱数据的物品栈
+     * @return 导出物品的显示名称，如果无数据则返回null
+     */
+    @Nullable
+    public String getExportItemNameFromNBT(ItemStack stack) {
+        NBTTagCompound compound = stack.getTagCompound();
+        if (compound != null && compound.hasKey(NBT_PARTIALSTACK)) {
+            ItemStack tempStack = new ItemStack(compound.getCompoundTag(NBT_PARTIALSTACK));
+            return tempStack.getDisplayName();
+        }
+        return null;
     }
 
     @Override
@@ -229,6 +268,14 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
         temp.add(this.itemInventory);
         this.combinedInventory = new ItemHandlerList(temp);
         this.outputItemInventory = new ItemHandlerProxy(new GTItemStackHandler(this, 0), combinedInventory);
+    }
+
+    protected boolean shouldTransferImport() {
+        return this.importItems.getSlots() > 0 && maxStoredItems > 0 && itemsStoredInside < maxStoredItems;
+    }
+
+    protected boolean shouldTransferExport() {
+        return this.exportItems.getSlots() > 0 && itemsStoredInside > 0 && !virtualItemStack.isEmpty();
     }
 
     @Override
@@ -253,7 +300,7 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
                 if (compound == null) return true;
                 return outStackMatch && !(compound.hasKey(NBT_ITEMSTACK, NBT.TAG_COMPOUND) ||
                         compound.hasKey("Fluid", NBT.TAG_COMPOUND)); // prevents inserting items with NBT to the Quantum
-                                                                     // Chest
+                // Chest
             }
         };
     }
@@ -266,32 +313,25 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
     @Override
     public NBTTagCompound writeToNBT(NBTTagCompound data) {
         NBTTagCompound tagCompound = super.writeToNBT(data);
-        data.setInteger("OutputFacing", getOutputFacing().getIndex());
-        data.setBoolean("AutoOutputItems", autoOutputItems);
-        data.setBoolean("AllowInputFromOutputSide", allowInputFromOutputSide);
         if (!virtualItemStack.isEmpty() && itemsStoredInside > 0L) {
             tagCompound.setTag(NBT_ITEMSTACK, virtualItemStack.writeToNBT(new NBTTagCompound()));
             tagCompound.setLong(NBT_ITEMCOUNT, itemsStoredInside);
         }
-        data.setBoolean(IS_VOIDING, voiding);
+        if (locked && !lockedStack.isEmpty())
+            data.setTag("LockedStack", lockedStack.serializeNBT());
         return tagCompound;
     }
 
     @Override
     public void readFromNBT(NBTTagCompound data) {
         super.readFromNBT(data);
-        this.outputFacing = EnumFacing.VALUES[data.getInteger("OutputFacing")];
-        this.autoOutputItems = data.getBoolean("AutoOutputItems");
-        this.allowInputFromOutputSide = data.getBoolean("AllowInputFromOutputSide");
         if (data.hasKey("ItemStack", NBT.TAG_COMPOUND)) {
             this.virtualItemStack = new ItemStack(data.getCompoundTag("ItemStack"));
             if (!virtualItemStack.isEmpty()) {
                 this.itemsStoredInside = data.getLong(NBT_ITEMCOUNT);
             }
         }
-        if (data.hasKey(IS_VOIDING)) {
-            this.voiding = data.getBoolean(IS_VOIDING);
-        }
+        if (locked) this.lockedStack = new ItemStack(data.getCompoundTag("LockedStack"));
     }
 
     @Override
@@ -324,7 +364,7 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
             itemStack.setTag(NBT_PARTIALSTACK, partialStack.writeToNBT(new NBTTagCompound()));
         }
 
-        if (this.voiding) {
+        if (isVoiding()) {
             itemStack.setBoolean(IS_VOIDING, true);
         }
 
@@ -334,41 +374,18 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
     }
 
     @Override
-    protected ModularUI createUI(EntityPlayer entityPlayer) {
-        Builder builder = ModularUI.defaultBuilder();
-        builder.image(7, 16, 81, 46, GuiTextures.DISPLAY);
-        builder.widget(new AdvancedTextWidget(11, 20, this::addDisplayInformation, 0xFFFFFF));
-        builder.label(6, 6, getMetaFullName())
-                .widget(new SlotWidget(importItems, 0, 90, 17, true, true)
-                        .setBackgroundTexture(GuiTextures.SLOT, GuiTextures.IN_SLOT_OVERLAY))
-                .widget(new SlotWidget(exportItems, 0, 90, 44, true, false)
-                        .setBackgroundTexture(GuiTextures.SLOT, GuiTextures.OUT_SLOT_OVERLAY))
-                .widget(new ToggleButtonWidget(7, 64, 18, 18,
-                        GuiTextures.BUTTON_ITEM_OUTPUT, this::isAutoOutputItems, this::setAutoOutputItems)
-                                .shouldUseBaseBackground()
-                                .setTooltipText("gregtech.gui.item_auto_output.tooltip"))
-                .widget(new ToggleButtonWidget(25, 64, 18, 18,
-                        GuiTextures.BUTTON_ITEM_VOID, this::isVoiding, this::setVoiding)
-                                .setTooltipText("gregtech.gui.item_voiding.tooltip")
-                                .shouldUseBaseBackground())
-                .bindPlayerInventory(entityPlayer.inventory);
-
-        builder.widget(createConnectedGui(64));
-
-        return builder.build(getHolder(), entityPlayer);
-    }
-
-    public EnumFacing getOutputFacing() {
-        return outputFacing == null ? frontFacing.getOpposite() : outputFacing;
-    }
-
-    public void setOutputFacing(EnumFacing outputFacing) {
-        this.outputFacing = outputFacing;
-        if (!getWorld().isRemote) {
-            notifyBlockUpdate();
-            writeCustomData(UPDATE_OUTPUT_FACING, buf -> buf.writeByte(outputFacing.getIndex()));
-            markDirty();
-        }
+    protected void createWidgets(ModularPanel mainPanel, PanelSyncManager syncManager) {
+        mainPanel.child(createQuantumDisplay("gregtech.machine.quantum_chest.items_stored",
+                        () -> virtualItemStack.getDisplayName(),
+                        textWidget -> !virtualItemStack.isEmpty(),
+                        () -> TextFormattingUtil.formatNumbers(itemsStoredInside)))
+                .child(new GTItemSlot()
+                        .showTooltip(true)
+                        .showAmount(false)
+                        .background(IDrawable.NONE)
+                        .slot(new ModularSlot(itemInventory, 0)
+                                .accessibility(false, false))
+                        .pos(148, 41));
     }
 
     @Override
@@ -389,27 +406,18 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
     @Override
     public void writeInitialSyncData(@NotNull PacketBuffer buf) {
         super.writeInitialSyncData(buf);
-        buf.writeByte(getOutputFacing().getIndex());
-        buf.writeBoolean(autoOutputItems);
         this.virtualItemStack.setCount(1);
-        buf.writeItemStack(virtualItemStack);
+        NetworkUtils.writeItemStack(buf, virtualItemStack);
+        NetworkUtils.writeItemStack(buf, lockedStack);
         buf.writeLong(itemsStoredInside);
-        buf.writeBoolean(voiding);
     }
 
     @Override
     public void receiveInitialSyncData(@NotNull PacketBuffer buf) {
         super.receiveInitialSyncData(buf);
-        this.outputFacing = EnumFacing.VALUES[buf.readByte()];
-        this.autoOutputItems = buf.readBoolean();
-        try {
-            this.virtualItemStack = buf.readItemStack();
-        } catch (IOException ignored) {
-            GTLog.logger.warn("Failed to load item from NBT in a quantum chest at " + this.getPos() +
-                    " on initial server/client sync");
-        }
+        this.virtualItemStack = NetworkUtils.readItemStack(buf);
+        this.lockedStack = NetworkUtils.readItemStack(buf);
         this.itemsStoredInside = buf.readLong();
-        this.voiding = buf.readBoolean();
     }
 
     @Override
@@ -422,42 +430,10 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
     @Override
     public void receiveCustomData(int dataId, @NotNull PacketBuffer buf) {
         super.receiveCustomData(dataId, buf);
-        if (dataId == UPDATE_OUTPUT_FACING) {
-            this.outputFacing = EnumFacing.VALUES[buf.readByte()];
-            scheduleRenderUpdate();
-        } else if (dataId == UPDATE_AUTO_OUTPUT_ITEMS) {
-            this.autoOutputItems = buf.readBoolean();
-            scheduleRenderUpdate();
-        } else if (dataId == UPDATE_ITEM) {
-            try {
-                this.virtualItemStack = buf.readItemStack();
-            } catch (IOException e) {
-                GTLog.logger.error("Failed to read item stack in a quantum chest!");
-            }
+        if (dataId == UPDATE_ITEM) {
+            this.virtualItemStack = NetworkUtils.readItemStack(buf);
         } else if (dataId == UPDATE_ITEM_COUNT) {
             this.itemsStoredInside = buf.readLong();
-        } else if (dataId == UPDATE_IS_VOIDING) {
-            setVoiding(buf.readBoolean());
-        }
-    }
-
-    public void setAutoOutputItems(boolean autoOutputItems) {
-        this.autoOutputItems = autoOutputItems;
-        if (!getWorld().isRemote) {
-            writeCustomData(UPDATE_AUTO_OUTPUT_ITEMS, buf -> buf.writeBoolean(autoOutputItems));
-            markDirty();
-        }
-    }
-
-    protected boolean isVoiding() {
-        return this.voiding;
-    }
-
-    protected void setVoiding(boolean isVoiding) {
-        this.voiding = isVoiding;
-        if (!getWorld().isRemote) {
-            writeCustomData(UPDATE_IS_VOIDING, buf -> buf.writeBoolean(this.voiding));
-            markDirty();
         }
     }
 
@@ -488,10 +464,6 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
         return this.combinedInventory;
     }
 
-    public IItemHandler getOutputItemInventory() {
-        return this.outputItemInventory;
-    }
-
     @Override
     public void setFrontFacing(EnumFacing frontFacing) {
         super.setFrontFacing(frontFacing);
@@ -501,23 +473,17 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
         }
     }
 
-    public boolean isAutoOutputItems() {
-        return autoOutputItems;
+    @Override
+    protected void setLocked(boolean locked) {
+        super.setLocked(locked);
+        if (locked && !this.virtualItemStack.isEmpty() && this.lockedStack.isEmpty())
+            this.lockedStack = this.virtualItemStack.copy();
+        else if (!locked) this.lockedStack = ItemStack.EMPTY;
     }
 
-    @Override
-    public boolean isAutoOutputFluids() {
-        return false;
-    }
-
-    @Override
-    public boolean isAllowInputFromOutputSideItems() {
-        return allowInputFromOutputSide;
-    }
-
-    @Override
-    public boolean isAllowInputFromOutputSideFluids() {
-        return false;
+    protected void setLocked(ItemStack stack) {
+        this.lockedStack = stack;
+        super.setLocked(!stack.isEmpty());
     }
 
     @Override
@@ -547,13 +513,6 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
         return super.onScrewdriverClick(playerIn, hand, facing, hitResult);
     }
 
-    public void setAllowInputFromOutputSide(boolean allowInputFromOutputSide) {
-        this.allowInputFromOutputSide = allowInputFromOutputSide;
-        if (!getWorld().isRemote) {
-            markDirty();
-        }
-    }
-
     @Override
     public Type getType() {
         return Type.ITEM;
@@ -569,7 +528,83 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
         return new AxisAlignedBB(getPos());
     }
 
-    private class QuantumChestItemHandler implements IItemHandler {
+    @Override
+    public boolean onRightClick(EntityPlayer playerIn, EnumHand hand, EnumFacing facing,
+                                CuboidRayTraceResult hitResult) {
+        if (facing == this.getFrontFacing()) {
+            if (playerIn.isSneaking() && openGUIOnRightClick()) {
+                if (getWorld() != null && !getWorld().isRemote) {
+                    MetaTileEntityUIFactory.INSTANCE.openUI(getHolder(), (EntityPlayerMP) playerIn);
+                }
+                return true;
+            }
+
+            IItemHandler qChestInv = this.getCombinedInventory();
+            //如果没有连续点击：放入手持物品
+            //如果连续点击：放入所有与抽屉内容物相同的物品
+            if (getCoolDown() > 0) {
+                refreshCoolDown();
+
+                ItemStack candidate = qChestInv.extractItem(0, 1, true);
+                if (candidate.isEmpty()) return true;
+
+                //全部转移就是转移玩家背包
+                var playerInv = new PlayerMainInvWrapper(playerIn.inventory);
+                GTTransferUtils.moveInventoryItems(playerInv, qChestInv);
+
+                markDirty();
+            } else {
+                refreshCoolDown();
+
+                ItemStack sourceStack = playerIn.getHeldItem(hand);
+
+                ItemStack candidate = qChestInv.insertItem(1, sourceStack, true);
+                if (sourceStack.getCount() == candidate.getCount()) return true;
+
+                ItemStack remining = qChestInv.insertItem(1, sourceStack, false);
+                sourceStack.setCount(remining.getCount());
+
+                markDirty();
+            }
+            return true;
+        }
+
+        return super.onRightClick(playerIn, hand, facing, hitResult);
+    }
+
+    @Override
+    public void onLeftClick(EntityPlayer player, EnumFacing facing, CuboidRayTraceResult hitResult) {
+
+        if (facing == this.getFrontFacing()) {
+            ItemStack candidate = getOutputItemInventory().extractItem(0, 1, true);
+            //没有按住shift:取出超级箱的一个物品
+            //按住shift:取出超级箱一组(最大)物品
+            refreshCoolDown();
+            ItemStack stack = getOutputItemInventory().extractItem(0,
+                    player.isSneaking() ? candidate.getMaxStackSize() : 1, false);
+            giveItemToPlayer(player, stack, player.inventory.currentItem);
+            markDirty();
+        }
+
+        super.onLeftClick(player, facing, hitResult);
+    }
+
+    @Override
+    public boolean needsSneakToRotate() {
+        return true;
+    }
+
+    @Override
+    public boolean isOpaqueCube() {
+        return false;
+    }
+
+    @Override
+    public int getLightOpacity() {
+        return 0;
+    }
+
+    protected class QuantumChestItemHandler extends SyncHandler implements IItemHandler {
 
         @Override
         public int getSlots() {
@@ -586,9 +621,7 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
                 return ItemStack.EMPTY;
             }
 
-            ItemStack resultStack = itemStack.copy();
-            resultStack.setCount((int) itemsStored);
-            return resultStack;
+            return GTUtility.copy((int) itemsStored, itemStack);
         }
 
         @Override
@@ -612,6 +645,7 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
                 if (itemsStoredInside == 0L) {
                     MetaTileEntityQuantumChest.this.virtualItemStack = ItemStack.EMPTY;
                 }
+                updateClient();
             }
             return extractedStack;
         }
@@ -622,6 +656,10 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
             if (insertedStack.isEmpty()) {
                 return ItemStack.EMPTY;
             }
+
+            // check locked and if locked stack matches
+            if (locked && !areItemStackIdentical(lockedStack, insertedStack))
+                return insertedStack;
 
             // If there is a virtualized stack and the stack to insert does not match it, do not insert anything
             if (itemsStoredInside > 0L &&
@@ -661,6 +699,7 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
                     } else {
                         MetaTileEntityQuantumChest.this.itemsStoredInside += actualVirtualizedAmount;
                     }
+                    updateClient();
                 }
             }
 
@@ -670,20 +709,25 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
                 return remainingStack;
             }
         }
-    }
 
-    @Override
-    public boolean needsSneakToRotate() {
-        return true;
-    }
+        protected void updateClient() {
+            if (isValid() && !getSyncManager().isClient()) {
+                syncToClient(1, buffer -> {
+                    buffer.writeInt((int) itemsStoredInside);
+                    buffer.writeItemStack(virtualItemStack);
+                });
+            }
+        }
 
-    @Override
-    public boolean isOpaqueCube() {
-        return false;
-    }
+        @Override
+        public void readOnClient(int id, PacketBuffer buf) throws IOException {
+            if (id == 1) {
+                itemsStoredInside = buf.readInt();
+                virtualItemStack = buf.readItemStack();
+            }
+        }
 
-    @Override
-    public int getLightOpacity() {
-        return 0;
+        @Override
+        public void readOnServer(int id, PacketBuffer buf) throws IOException {}
     }
 }

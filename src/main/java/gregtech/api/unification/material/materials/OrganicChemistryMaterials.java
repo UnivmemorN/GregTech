@@ -116,7 +116,7 @@ public class OrganicChemistryMaterials {
                 .color(0xC8C8C8)
                 .flags(GENERATE_FOIL)
                 .components(Carbon, 2, Hydrogen, 4)
-                .fluidPipeProperties(370, 60, true)
+                .fluidPipeProperties(450, 80, true)
                 .build();
 
         Epoxy = new Material.Builder(1013, gregtechId("epoxy"))
@@ -141,7 +141,7 @@ public class OrganicChemistryMaterials {
                 .polymer(1)
                 .liquid(new FluidBuilder().temperature(600))
                 .color(0x646464)
-                .flags(STD_METAL, GENERATE_FRAME, GENERATE_FOIL)
+                .flags(STD_METAL, GENERATE_FRAME, GENERATE_FOIL,GENERATE_RING)
                 .components(Carbon, 2, Fluorine, 4)
                 .fluidPipeProperties(600, 100, true, true, false, false)
                 .build();
@@ -153,7 +153,14 @@ public class OrganicChemistryMaterials {
                 .build();
 
         Methane = new Material.Builder(1018, gregtechId("methane"))
-                .gas(new FluidBuilder().translation("gregtech.fluid.gas_generic"))
+                .gas(new FluidBuilder()
+                        .translation("gregtech.fluid.gas_generic"))
+                .liquid(new FluidBuilder()
+                        .block()
+                        .temperature(111)
+                        .color(0x88AAFF)
+                        .name("liquid_methane")
+                        .translation("gregtech.fluid.liquid_generic"))
                 .color(0xFF0078)
                 .components(Carbon, 1, Hydrogen, 4)
                 .build();
@@ -488,6 +495,7 @@ public class OrganicChemistryMaterials {
                 .color(0x000000).iconSet(SHINY)
                 .flags(GENERATE_GEAR, GENERATE_RING, GENERATE_FOIL, GENERATE_BOLT_SCREW)
                 .components(Carbon, 5, Hydrogen, 8)
+                .fluidPipeProperties(370, 60, true)
                 .build();
 
         Cyclohexane = new Material.Builder(1069, gregtechId("cyclohexane"))

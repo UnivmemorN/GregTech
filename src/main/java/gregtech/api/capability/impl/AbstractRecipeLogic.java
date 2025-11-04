@@ -16,6 +16,10 @@ import gregtech.api.metatileentity.multiblock.ParallelLogicType;
 import gregtech.api.recipes.Recipe;
 import gregtech.api.recipes.RecipeBuilder;
 import gregtech.api.recipes.RecipeMap;
+import gregtech.api.recipes.chance.boost.ChanceBoostFunction;
+import gregtech.api.recipes.chance.output.ChancedOutput;
+import gregtech.api.recipes.chance.output.ChancedOutputList;
+import gregtech.api.recipes.chance.output.ChancedOutputLogic;
 import gregtech.api.recipes.logic.IParallelableRecipeLogic;
 import gregtech.api.recipes.logic.OCParams;
 import gregtech.api.recipes.logic.OCResult;
@@ -26,6 +30,10 @@ import gregtech.api.util.GTLog;
 import gregtech.api.util.GTTransferUtils;
 import gregtech.api.util.GTUtility;
 import gregtech.common.ConfigHolder;
+
+import lombok.Getter;
+
+import lombok.Setter;
 
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -38,36 +46,46 @@ import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.IFluidTank;
 import net.minecraftforge.items.IItemHandlerModifiable;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.MustBeInvokedByOverriders;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import stanhebben.zenscript.annotations.ZenGetter;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.function.Function;
 
 import static gregtech.api.GTValues.ULV;
 import static gregtech.api.recipes.logic.OverclockingLogic.*;
 
-public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable, IParallelableRecipeLogic {
+public abstract class AbstractRecipeLogic extends MTETrait
+        implements IWorkable, IParallelableRecipeLogic, AccessorAbstractRecipeLogic {
 
     private static final String ALLOW_OVERCLOCKING = "AllowOverclocking";
     private static final String OVERCLOCK_VOLTAGE = "OverclockVoltage";
 
-    private final RecipeMap<?> recipeMap;
+    public RecipeMap<?> recipeMap;
     private final OCParams ocParams = new OCParams();
     private final OCResult ocResult = new OCResult();
     protected Recipe previousRecipe;
+    protected Recipe showRecipes;
     protected LinkedList<Recipe> latestRecipes = new LinkedList<>();
     protected int parallelRecipesPerformed;
+    @Getter
+    @Setter
     protected boolean canRecipeProgress = true;
-    protected int progressTime;
+    public int progressTime;
     protected int maxProgressTime;
+    @Setter
     protected long recipeEUt;
     @NotNull
+    @Setter
     protected List<FluidStack> fluidOutputs = Collections.emptyList();
     @NotNull
+    @Setter
     protected List<ItemStack> itemOutputs = Collections.emptyList();
     protected boolean isActive;
     protected boolean workingEnabled = true;
@@ -77,13 +95,39 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
     protected boolean invalidInputsForRecipes;
     protected boolean hasPerfectOC;
     private double euDiscount = -1;
+    private double euEfficiency = 1;
     private double speedBonus = -1;
     private boolean allowOverclocking = true;
+    @Setter @Getter
     private long overclockVoltage;
+
+    private boolean enableBatch = false;
     /**
      * DO NOT use the parallelLimit field directly, EVER use {@link AbstractRecipeLogic#setParallelLimit(int)} instead
      */
     private int parallelLimit = 1;
+    /**
+     * List of non-chanced item outputs.The actual non-chanced item outputs are taken from the item outputs saved list,
+     * taking the first n elements.
+     */
+    @Setter
+    private int nonChancedItemAmt = 0;
+    /**
+     * Map of chanced item outputs to their boosted chance, for this recipe.
+     */
+    @Setter
+    private List<Pair<ItemStack, Integer>> chancedItemOutputs = null;
+    /**
+     * Number of non-chanced fluid outputs. The actual non-chanced fluid outputs are taken from the fluid outputs saved
+     * list, taking the first n elements.
+     */
+    @Setter
+    private int nonChancedFluidAmt = 0;
+    /**
+     * Map of chanced item outputs to their boosted chance, for this recipe.
+     */
+    @Setter
+    private List<Pair<FluidStack, Integer>> chancedFluidOutputs = null;
 
     public AbstractRecipeLogic(MetaTileEntity tileEntity, RecipeMap<?> recipeMap) {
         super(tileEntity);
@@ -163,6 +207,7 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
      * @return true if the energy can/was drained, otherwise false
      */
     protected boolean drawEnergy(long recipeEUt, boolean simulate) {
+        recipeEUt = appendEfficiency(recipeEUt);
         // this should be the ONLY time eut is negative!
         if (consumesEnergy()) recipeEUt = -recipeEUt;
         long resultEnergy = getEnergyStored() + recipeEUt;
@@ -286,6 +331,10 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
         return previousRecipe;
     }
 
+    public Recipe getShowRecipes() {
+        return showRecipes;
+    }
+
     /**
      * @return true if recipes should be searched for
      */
@@ -357,6 +406,10 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
         this.isOutputsFull = true;
     }
 
+    public int getParallelRecipesPerformed() {
+        return parallelRecipesPerformed;
+    }
+
     /**
      * Set the amount of parallel recipes currently being performed
      *
@@ -367,10 +420,6 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
         this.parallelRecipesPerformed = amount;
     }
 
-
-    public int getParallelRecipesPerformed() {
-        return parallelRecipesPerformed;
-    }
     /**
      * Update the current running recipe's progress
      * <p>
@@ -422,6 +471,8 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
      */
     public void forceRecipeRecheck() {
         this.previousRecipe = null;
+        this.latestRecipes.clear();
+
         trySearchNewRecipe();
     }
 
@@ -469,6 +520,7 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
             prepareRecipe(currentRecipe);
         }
     }
+
 
     protected void addToPreviousRecipes(Recipe recipe) {
         // 移除已存在的旧记录
@@ -549,7 +601,7 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
                 metaTileEntity.getFluidOutputLimit());
 
         // apply EU/speed discount (if any) before parallel
-        if (euDiscount > 0 || speedBonus > 0) { // if-statement to avoid unnecessarily creating RecipeBuilder object
+          if (euDiscount > 0 || speedBonus > 0) { // if-statement to avoid unnecessarily creating RecipeBuilder object
             RecipeBuilder<?> builder = new RecipeBuilder<>(recipe, recipeMap);
             if (euDiscount > 0) {
                 long newEUt = Math.round(recipe.getEUt() * euDiscount);
@@ -645,6 +697,31 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
     }
 
     /**
+     * 设置能源效率值
+     * @param efficiency 能源效率值，用于调整能耗计算
+     */
+    public void setEnergyEfficiency(double efficiency) {
+        euEfficiency = efficiency;
+    }
+
+    /**
+     * 获取当前设置的能源效率值
+     * @return 当前能源效率值
+     */
+    public double getEnergyEfficiency() {
+        return euEfficiency;
+    }
+
+    /**
+     * 根据能源效率值调整配方的EU能耗
+     * @param recipeEUt 原始配方EU能耗值
+     * @return 应用能源效率调整后的EU能耗值
+     */
+    public long appendEfficiency(long recipeEUt) {
+        return (long) (recipeEUt * getEnergyEfficiency());
+    }
+
+    /**
      * @return the speed bonus, or -1 if no bonus.
      */
     public double getSpeedBonus() {
@@ -737,9 +814,24 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
                                                                  @NotNull IMultipleTankHandler importFluids) {
         calculateOverclock(recipe);
 
+        // Complete time reduction calculation here
         modifyOverclockPost(ocResult, recipe.propertyStorage());
 
-        if (ocResult.parallel() > 1) {
+        // Batch processing algorithm
+        boolean batchSuccess = false;
+        if (enableBatch) {
+            // Batch processing and TOC are mutually exclusive due to functional overlap
+            Recipe batchedRecipe = batchProcessing(ocResult, recipe, importInventory, importFluids);
+            if (batchedRecipe != recipe) {
+                // Batch processing was successful and changed the recipe
+                recipe = batchedRecipe;
+                batchSuccess = true;
+            }
+        }
+
+        // TOC algorithm
+        // Only perform TOC algorithm when batch processing is not enabled, or when batch processing is enabled but failed
+        if (ocResult.parallel() > 1 && !(enableBatch && batchSuccess)) {
             recipe = subTickOC(ocResult, recipe, importInventory, importFluids);
             if (recipe == null) {
                 invalidateInputs();
@@ -793,7 +885,67 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
         }
         return true;
     }
+    /**
+     * Batch process a recipe to increase output while keeping duration within 128 ticks.
+     *
+     * @param ocResult        the result of the overclock
+     * @param recipe          the recipe to batch process
+     * @param importInventory the input item inventory
+     * @param importFluids    the input fluid inventory
+     * @return the batch processed recipe if successful, otherwise the original recipe
+     */
+    protected @NotNull Recipe batchProcessing(@NotNull OCResult ocResult, @NotNull Recipe recipe,
+                                              @NotNull IItemHandlerModifiable importInventory,
+                                              @NotNull IMultipleTankHandler importFluids) {
+        RecipeMap<?> map = getRecipeMap();
+        if (map == null) {
+            return recipe;
+        }
 
+        // Only process recipes with duration <= 64 ticks for batching
+        if (ocResult.duration() > 64) {
+            return recipe;
+        }
+
+        int baseDuration = ocResult.duration();
+
+        // Calculate maximum possible batch multiplier (not exceeding 128 ticks)
+        int maxMultiplier = (int) Math.floor(128.0 / baseDuration);
+        int minMultiplier = 1;
+        int bestMultiplier = 1; // Default to original multiplier
+
+        // Find the maximum feasible batch multiplier using binary search
+        while (minMultiplier <= maxMultiplier) {
+            int midMultiplier = minMultiplier + (maxMultiplier - minMultiplier) / 2;
+            RecipeBuilder<?> batchBuilder = new RecipeBuilder<>(recipe, map)
+                    .batch(recipe, midMultiplier, baseDuration);
+            Recipe batchedRecipe = batchBuilder.build().getResult();
+
+            if (batchedRecipe != null && batchedRecipe.matches(false, importInventory, importFluids)) {
+                // Current multiplier is feasible, try larger multiplier
+                bestMultiplier = midMultiplier;
+                minMultiplier = midMultiplier + 1;
+            } else {
+                // Current multiplier is not feasible, try smaller multiplier
+                maxMultiplier = midMultiplier - 1;
+            }
+        }
+
+        // If a feasible batch multiplier is found (greater than 1), apply batch processing
+        if (bestMultiplier > 1) {
+            RecipeBuilder<?> batchBuilder = new RecipeBuilder<>(recipe, map)
+                    .batch(recipe, bestMultiplier, baseDuration);
+            Recipe resultRecipe = batchBuilder.build().getResult();
+
+            if (resultRecipe != null) {
+                // Modify OC result duration
+                ocResult.setDuration(ocResult.duration() * bestMultiplier);
+                return resultRecipe;
+            }
+        }
+
+        return recipe;
+    }
     /**
      * Overclock a recipe beyond a duration of 1 tick using parallelization.
      *
@@ -854,7 +1006,10 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
         if (eut >= 0) {
             // Power Consumption case
             // ensure it can run for at least 8 ticks. Arbitrary value, but should prevent instant failures
-            return getEnergyStored() >= (eut << 3);
+            //return getEnergyStored() >= (eut << 3);
+
+            //why 8tick
+            return getEnergyStored() >= eut;
         } else {
             // Power Generation case
             // Return true if we can fit at least 1A of energy into the energy output
@@ -994,6 +1149,7 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
         this.progressTime = 1;
         setMaxProgress(ocResult.duration());
         this.recipeEUt = ocResult.eut();
+        this.showRecipes = recipe;
 
         int recipeTier = GTUtility.getTierByVoltage(recipe.getEUt());
         int machineTier = getOverclockForTier(getMaximumOverclockVoltage());
@@ -1011,6 +1167,16 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
         } else {
             this.setActive(true);
         }
+
+        // At this point, recipe outputs are already trimmed (in prepareRecipe), so we can use the actual values
+        nonChancedItemAmt = recipe.getOutputs().size();
+        nonChancedFluidAmt = recipe.getFluidOutputs().size();
+
+        chancedItemOutputs = fillChancedOutputsMap(recipe.getChancedOutputs(), getRecipeMap().getChanceFunction(),
+                recipeTier, machineTier);
+        chancedFluidOutputs = fillChancedOutputsMap(recipe.getChancedFluidOutputs(),
+                getRecipeMap().getChanceFunction(),
+                recipeTier, machineTier);
     }
 
     /**
@@ -1027,6 +1193,11 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
         this.wasActiveAndNeedsUpdate = true;
         this.parallelRecipesPerformed = 0;
         this.ocResult.reset();
+
+        nonChancedItemAmt = 0;
+        chancedItemOutputs = null;
+        nonChancedFluidAmt = 0;
+        chancedFluidOutputs = null;
     }
 
     /**
@@ -1056,6 +1227,8 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
 
     /**
      * sets the amount of ticks of running time to finish the recipe
+     * 所有附属设备禁止使用setMaxProgress修改配方时间（有批处理功能的情况下）！！！
+     * 请使用modifyOverclockPost方法代替！！！
      *
      * @param maxProgress the amount of ticks to set
      */
@@ -1107,6 +1280,20 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
         }
     }
 
+    public boolean isBatchEnable() {
+        return enableBatch;
+    }
+
+    public void setBatchEnable(boolean enable) {
+        enableBatch = enable;
+        metaTileEntity.markDirty();
+        invalidate();
+        World world = metaTileEntity.getWorld();
+        if (world != null && !world.isRemote) {
+            writeCustomData(GregtechDataCodes.WORKING_BATCH, buf -> buf.writeBoolean(enableBatch));
+        }
+    }
+
     @Override
     public boolean isActive() {
         return isActive;
@@ -1117,7 +1304,7 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
      *
      * @param active true to set active, false to set inactive
      */
-    protected void setActive(boolean active) {
+    public void setActive(boolean active) {
         if (this.isActive != active) {
             this.isActive = active;
             metaTileEntity.markDirty();
@@ -1226,25 +1413,39 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
         } else if (dataId == GregtechDataCodes.WORKING_ENABLED) {
             this.workingEnabled = buf.readBoolean();
             getMetaTileEntity().scheduleRenderUpdate();
+        } else if (dataId == GregtechDataCodes.WORKING_BATCH) {
+            this.enableBatch = buf.readBoolean();
+            getMetaTileEntity().scheduleRenderUpdate();
         }
     }
+
+    /*
+      From <a href=
+      "https://github.com/Nomi-CEu/Nomi-Labs/blob/main/src/main/java/com/nomiceu/nomilabs/mixin/gregtech/AbstractRecipeLogicMixin.java">NomiLabs</a>.
+     */
+    //
 
     @Override
     public void writeInitialSyncData(@NotNull PacketBuffer buf) {
         buf.writeBoolean(this.isActive);
         buf.writeBoolean(this.workingEnabled);
+        buf.writeBoolean(this.enableBatch);
     }
 
     @Override
     public void receiveInitialSyncData(@NotNull PacketBuffer buf) {
         this.isActive = buf.readBoolean();
         this.workingEnabled = buf.readBoolean();
+        this.enableBatch = buf.readBoolean();
     }
 
     @NotNull
     @Override
     public NBTTagCompound serializeNBT() {
         NBTTagCompound compound = new NBTTagCompound();
+        //compound.setInteger("parallelRecipesPerformed",this.parallelRecipesPerformed);
+        //compound.setInteger("parallelLimit",this.parallelLimit);
+        compound.setBoolean("Batch", enableBatch);
         compound.setBoolean("WorkEnabled", workingEnabled);
         compound.setBoolean("CanRecipeProgress", canRecipeProgress);
         compound.setBoolean(ALLOW_OVERCLOCKING, allowOverclocking);
@@ -1264,11 +1465,22 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
             compound.setTag("ItemOutputs", itemOutputsList);
             compound.setTag("FluidOutputs", fluidOutputsList);
         }
+        if (progressTime <= 0) return compound;
+        compound.setInteger("nonChancedItemAmt", nonChancedItemAmt);
+        compound.setInteger("nonChancedFluidAmt", nonChancedFluidAmt);
+
+        addChancedToTag(compound, "chancedItemOutputs", chancedItemOutputs,
+                (entry) -> entry.getKey().writeToNBT(new NBTTagCompound()), Pair::getValue);
+        addChancedToTag(compound, "chancedFluidOutputs", chancedFluidOutputs,
+                (entry) -> entry.getKey().writeToNBT(new NBTTagCompound()), Pair::getValue);
         return compound;
     }
 
     @Override
     public void deserializeNBT(@NotNull NBTTagCompound compound) {
+        //this.parallelRecipesPerformed = compound.getInteger("parallelRecipesPerformed");
+        //this.parallelLimit = compound.getInteger("parallelLimit");
+        this.enableBatch = compound.getBoolean("Batch");
         this.workingEnabled = compound.getBoolean("WorkEnabled");
         this.canRecipeProgress = compound.getBoolean("CanRecipeProgress");
         this.progressTime = compound.getInteger("Progress");
@@ -1290,5 +1502,91 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable,
                 this.fluidOutputs.add(FluidStack.loadFluidStackFromNBT(fluidOutputsList.getCompoundTagAt(i)));
             }
         }
+
+        if (progressTime <= 0) return;
+
+        nonChancedItemAmt = compound.getInteger("nonChancedItemAmt");
+        nonChancedFluidAmt = compound.getInteger("nonChancedFluidAmt");
+
+        NBTTagList items = compound.getTagList("chancedItemOutputs", Constants.NBT.TAG_COMPOUND);
+        chancedItemOutputs = new ArrayList<>();
+        for (var item : items) {
+            var tag = (NBTTagCompound) item;
+            chancedItemOutputs.add(Pair.of(new ItemStack(tag), tag.getInteger("chance")));
+        }
+
+        NBTTagList fluids = compound.getTagList("chancedFluidOutputs", Constants.NBT.TAG_COMPOUND);
+        chancedFluidOutputs = new ArrayList<>();
+        for (var fluid : fluids) {
+            var tag = (NBTTagCompound) fluid;
+            chancedFluidOutputs
+                    .add(Pair.of(FluidStack.loadFluidStackFromNBT(tag), tag.getInteger("chance")));
+        }
     }
+
+    @Override
+    public boolean isValidForOutputTOP() {
+        return getEUt() >= 0 && getRecipeMap() != null;
+    }
+
+    @Override
+    public long getEUt() {
+        return recipeEUt;
+    }
+
+    @Override
+    public int getNonChancedItemAmt() {
+        return nonChancedItemAmt;
+    }
+
+    @Override
+    public List<Pair<ItemStack, Integer>> getChancedItemOutputs() {
+        if (chancedItemOutputs == null) {
+            return new ArrayList<>();
+        }
+        return chancedItemOutputs;
+    }
+
+    @Override
+    public int getNonChancedFluidAmt() {
+        return nonChancedFluidAmt;
+    }
+
+    @Override
+    public List<Pair<FluidStack, Integer>> getChancedFluidOutputs() {
+        if (chancedFluidOutputs == null) {
+            return new ArrayList<>();
+        }
+        return chancedFluidOutputs;
+    }
+
+    private <T> List<Pair<T, Integer>> fillChancedOutputsMap(ChancedOutputList<T, ? extends ChancedOutput<T>> list,
+                                                             ChanceBoostFunction function, int recipeTier,
+                                                             int machineTier) {
+        List<Pair<T, Integer>> result = new ArrayList<>();
+        if (list.getChancedEntries().isEmpty()) return result;
+
+        for (var entry : list.getChancedEntries()) {
+            result.add(Pair.of(entry.getIngredient(), Math.min(ChancedOutputLogic.getMaxChancedValue(),
+                    ChancedOutputLogic.getChance(entry, function, recipeTier, machineTier))));
+        }
+        return result;
+    }
+
+    private <T> void addChancedToTag(NBTTagCompound nbt, String key, List<T> list,
+                                     Function<T, NBTTagCompound> createTag, Function<T, Integer> getChance) {
+        if (list == null) return;
+
+        var entries = new NBTTagList();
+        for (var entry : list) {
+            NBTTagCompound tag = createTag.apply(entry);
+            tag.setInteger("chance", getChance.apply(entry));
+            entries.appendTag(tag);
+        }
+        nbt.setTag(key, entries);
+    }
+
+    public void setRecipeMap(RecipeMap<?> recipeMap) {this.recipeMap = recipeMap;}
+
+    public void setProgressTime(int progressTime) {this.progressTime = progressTime;}
 }

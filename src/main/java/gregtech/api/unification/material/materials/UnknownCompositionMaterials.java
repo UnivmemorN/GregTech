@@ -437,7 +437,7 @@ public class UnknownCompositionMaterials {
                 .build();
 
         Glowstone = new Material.Builder(1601, gregtechId("glowstone"))
-                .dust(1)
+                .dust(1).ore(true).gem()
                 .liquid(new FluidBuilder().temperature(500))
                 .color(0xFFFF00).iconSet(SHINY)
                 .flags(NO_SMASHING, GENERATE_PLATE, EXCLUDE_PLATE_COMPRESSOR_RECIPE,
@@ -446,9 +446,11 @@ public class UnknownCompositionMaterials {
 
         NetherStar = new Material.Builder(1602, gregtechId("nether_star"))
                 .gem(4)
+                .fluid()
                 .iconSet(NETHERSTAR)
                 .flags(NO_SMASHING, NO_SMELTING, GENERATE_LENS)
                 .build();
+        NetherStar.setFormula("PtDc?KQ", true);
 
         Endstone = new Material.Builder(1603, gregtechId("endstone"))
                 .dust(1)
@@ -662,6 +664,10 @@ public class UnknownCompositionMaterials {
         Sewage = new Material.Builder(1656, gregtechId("sewage"))
                 .fluid()
                 .color(0x7D7D7D)
+                .build();
+
+        MolybdeniteLubricant = new Material.Builder(1657, gregtechId("molybdenite_lubricant"))
+                .color(0xB7A5F9).liquid(new FluidBuilder().customStill())
                 .build();
     }
 }

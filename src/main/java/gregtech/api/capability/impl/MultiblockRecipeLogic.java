@@ -17,6 +17,7 @@ import gregtech.api.recipes.properties.RecipePropertyStorage;
 import gregtech.api.util.GTUtility;
 import gregtech.common.ConfigHolder;
 
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.Tuple;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
@@ -93,6 +94,7 @@ public class MultiblockRecipeLogic extends AbstractRecipeLogic {
         List<IItemHandlerModifiable> inputItems = new ArrayList<>(
                 controller.getAbilities(MultiblockAbility.IMPORT_ITEMS));
         inputItems.addAll(controller.getAbilities(MultiblockAbility.DUAL_IMPORT));
+        inputItems.addAll(controller.getAbilities(MultiblockAbility.COMPLEX_DUAL));
         return inputItems;
     }
 

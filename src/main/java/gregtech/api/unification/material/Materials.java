@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static gregtech.api.unification.material.info.MaterialFlags.*;
+import static gregtech.api.util.Mods.Names.GTQT_CORE;
+import static net.minecraftforge.fml.common.Loader.isModLoaded;
 
 /**
  * Material Registration.
@@ -91,7 +93,7 @@ public class Materials {
         };
 
         // Register soft tools
-        SoftToolAddition.register();
+        if(!isModLoaded(GTQT_CORE))SoftToolAddition.register();
 
         OrePrefix.init();
     }
@@ -460,6 +462,8 @@ public class Materials {
     public static Material HafniumTetrachloride;
     public static Material Zircaloy4;
     public static Material Inconel718;
+    public static Material HighGradeSolderingAlloy;
+    public static Material AntimonyTelluride;
 
     /**
      * Organic chemistry
@@ -681,6 +685,7 @@ public class Materials {
     public static Material DecalcifiedBauxiteSludge;
     public static Material BauxiteSlag;
     public static Material Sewage;
+    public static Material MolybdeniteLubricant;
 
     /**
      * Second Degree Compounds
@@ -738,6 +743,7 @@ public class Materials {
     public static Material SaltWater;
     public static Material Clay;
     public static Material Redstone;
+    public static Material ChromiumDopedMolybdenite;
 
     /**
      * Third Degree Materials
@@ -757,6 +763,8 @@ public class Materials {
     public static Material Brick;
     public static Material Fireclay;
     public static Material Diorite;
+    public static Material WaterCoolant;
+    public static Material HotWaterCoolant;
 
     /**
      * Fourth Degree Materials

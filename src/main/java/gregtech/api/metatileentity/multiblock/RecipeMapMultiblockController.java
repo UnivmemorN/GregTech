@@ -1,6 +1,7 @@
 package gregtech.api.metatileentity.multiblock;
 
 import gregtech.api.GTValues;
+import gregtech.api.capability.IBatch;
 import gregtech.api.capability.IControllable;
 import gregtech.api.capability.IDistinctBusController;
 import gregtech.api.capability.IEnergyContainer;
@@ -12,14 +13,18 @@ import gregtech.api.capability.impl.MultiblockRecipeLogic;
 import gregtech.api.items.itemhandlers.GTItemStackHandler;
 import gregtech.api.metatileentity.IDataInfoProvider;
 import gregtech.api.metatileentity.interfaces.IRefreshBeforeConsumption;
+import gregtech.api.metatileentity.multiblock.ui.MultiblockUIBuilder;
 import gregtech.api.pattern.PatternMatchContext;
 import gregtech.api.pattern.TraceabilityPredicate;
 import gregtech.api.recipes.Recipe;
 import gregtech.api.recipes.RecipeMap;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.TextFormattingUtil;
+import gregtech.client.utils.TooltipHelper;
 import gregtech.common.ConfigHolder;
-import gregtech.api.metatileentity.multiblock.ui.MultiblockUIBuilder;
+
+import net.minecraft.client.resources.I18n;
+import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.ResourceLocation;
@@ -28,6 +33,7 @@ import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.Style;
 import net.minecraft.util.text.TextComponentTranslation;
 import net.minecraft.util.text.TextFormatting;
+import net.minecraft.world.World;
 import net.minecraftforge.fluids.IFluidTank;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
@@ -44,8 +50,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 public abstract class RecipeMapMultiblockController extends MultiblockWithDisplayBase implements IDataInfoProvider,
-                                                                                                 ICleanroomReceiver, IDistinctBusController,
-                                                                                                 IControllable {
+                                                                                                 ICleanroomReceiver,
+                                                                                                 IDistinctBusController,
+                                                                                                 IControllable, IBatch {
+
     public final RecipeMap<?> recipeMap;
     protected MultiblockRecipeLogic recipeMapWorkable;
     protected IItemHandlerModifiable inputInventory;
@@ -67,11 +75,54 @@ public abstract class RecipeMapMultiblockController extends MultiblockWithDispla
         this.refreshBeforeConsumptions = new ArrayList<>();
         resetTileAbilities();
     }
+
+    @Override
+    public void doStructureCheck() {
+        // 如果是首次tick，直接进行检测
+        if (isFirstTick()) {
+            checkStructurePattern();
+            return;
+        }
+
+        long timer = getOffsetTimer();
+
+        // 根据多方块是否工作采用不同的检测策略
+        if (recipeMapWorkable.isActive()) {
+            // 工作状态：
+            if (ConfigHolder.machines.delayStructureCheckSwitch && shouldDelayCheck()) {
+                // 延迟检测模式：使用配置的检测间隔
+                if (timer % ConfigHolder.machines.delayStructureCheckTick == 0) {
+                    checkStructurePattern();
+                }
+            } else if (timer % 20 == 0) {
+                // 正常检测模式：每20tick检测一次
+                checkStructurePattern();
+            }
+        } else {
+            // 待机状态
+            if (ConfigHolder.machines.delayStructureCheckStandbySwitch && shouldDelayCheck()) {
+                // 启用待机延迟检测时，使用待机检测间隔
+                if (timer % ConfigHolder.machines.delayStructureCheckStandby == 0) {
+                    checkStructurePattern();
+                }
+            } else if (ConfigHolder.machines.delayStructureCheckSwitch && shouldDelayCheck()) {
+                // 未启用待机延迟检测但启用主延迟检测时，使用工作延迟检测间隔
+                if (timer % ConfigHolder.machines.delayStructureCheckTick == 0) {
+                    checkStructurePattern();
+                }
+            } else if (timer % 20 == 0) {
+                // 未启用任何延迟检测时，使用默认的20tick检测间隔
+                checkStructurePattern();
+            }
+        }
+    }
+
     public void refreshAllBeforeConsumption() {
         for (IRefreshBeforeConsumption refresh : refreshBeforeConsumptions) {
             refresh.refreshBeforeConsumption();
         }
     }
+
     public IEnergyContainer getEnergyContainer() {
         return energyContainer;
     }
@@ -131,18 +182,23 @@ public abstract class RecipeMapMultiblockController extends MultiblockWithDispla
     protected void initializeAbilities() {
         List<IItemHandler> inputItems = new ArrayList<>(this.getAbilities(MultiblockAbility.IMPORT_ITEMS));
         inputItems.addAll(getAbilities(MultiblockAbility.DUAL_IMPORT));
+        inputItems.addAll(getAbilities(MultiblockAbility.COMPLEX_DUAL));
         this.inputInventory = new ItemHandlerList(inputItems);
 
         List<IMultipleTankHandler> inputFluids = new ArrayList<>(getAbilities(MultiblockAbility.DUAL_IMPORT));
         inputFluids.add(new FluidTankList(true, getAbilities(MultiblockAbility.IMPORT_FLUIDS)));
+        inputFluids.addAll(getAbilities(MultiblockAbility.COMPLEX_DUAL));
         this.inputFluidInventory = GTQTUtility.mergeTankHandlers(inputFluids, true);
 
         List<IItemHandler> outputItems = new ArrayList<>(this.getAbilities(MultiblockAbility.EXPORT_ITEMS));
         outputItems.addAll(getAbilities(MultiblockAbility.DUAL_EXPORT));
+        outputItems.addAll(getAbilities(MultiblockAbility.COMPLEX_DUAL));
         this.outputInventory = new ItemHandlerList(outputItems);
+
         List<IMultipleTankHandler> outputFluids = new ArrayList<>(getAbilities(MultiblockAbility.DUAL_EXPORT));
         outputFluids.add(new FluidTankList(false, getAbilities(MultiblockAbility.EXPORT_FLUIDS)));
-        this.outputFluidInventory = GTQTUtility.mergeTankHandlers(outputFluids, false);;
+        outputFluids.addAll(getAbilities(MultiblockAbility.COMPLEX_DUAL));
+        this.outputFluidInventory = GTQTUtility.mergeTankHandlers(outputFluids, false);
 
         List<IEnergyContainer> inputEnergy = new ArrayList<>(getAbilities(MultiblockAbility.INPUT_ENERGY));
         inputEnergy.addAll(getAbilities(MultiblockAbility.SUBSTATION_INPUT_ENERGY));
@@ -226,6 +282,18 @@ public abstract class RecipeMapMultiblockController extends MultiblockWithDispla
                     .setMaxGlobalLimited(2)
                     .setPreviewCount(1));
         }
+        if (checkItemIn || checkFluidIn) {
+            if (recipeMap.getMaxInputs() > 0 || recipeMap.getMaxFluidInputs() > 0) {
+                predicate = predicate.or(abilities(MultiblockAbility.DUAL_IMPORT).setPreviewCount(1));
+            }
+        }
+        if (checkItemOut || checkFluidOut) {
+            if (recipeMap.getMaxOutputs() > 0 || recipeMap.getMaxFluidOutputs() > 0) {
+                predicate = predicate.or(abilities(MultiblockAbility.DUAL_EXPORT).setPreviewCount(1));
+            }
+        }
+
+        predicate = predicate.or(abilities(MultiblockAbility.COMPLEX_DUAL).setPreviewCount(1));
 
         if (checkItemIn) {
             if (recipeMap.getMaxInputs() > 0) {
@@ -245,16 +313,6 @@ public abstract class RecipeMapMultiblockController extends MultiblockWithDispla
         if (checkFluidOut) {
             if (recipeMap.getMaxFluidOutputs() > 0) {
                 predicate = predicate.or(abilities(MultiblockAbility.EXPORT_FLUIDS).setPreviewCount(1));
-            }
-        }
-        if (checkItemIn || checkFluidIn) {
-            if (recipeMap.getMaxInputs() > 0 || recipeMap.getMaxFluidInputs() > 0) {
-                predicate = predicate.or(abilities(MultiblockAbility.DUAL_IMPORT).setPreviewCount(1));
-            }
-        }
-        if (checkItemOut || checkFluidOut) {
-            if (recipeMap.getMaxOutputs() > 0 || recipeMap.getMaxFluidOutputs() > 0) {
-                predicate = predicate.or(abilities(MultiblockAbility.DUAL_EXPORT).setPreviewCount(1));
             }
         }
         return predicate;
@@ -386,6 +444,24 @@ public abstract class RecipeMapMultiblockController extends MultiblockWithDispla
     }
 
     @Override
+    public void addInformation(ItemStack stack,
+                               World player,
+                               List<String> tooltip,
+                               boolean advanced) {
+        super.addInformation(stack, player, tooltip, advanced);
+        if (isBatchAllowed()) {
+            tooltip.add(TextFormatting.GREEN + I18n.format("gregtech.tooltip.batch_avaliable"));
+            if (TooltipHelper.isCtrlDown()) {
+                tooltip.add(TextFormatting.GRAY + I18n.format("gregtech.machine.batch_process.tooltips.1"));
+                tooltip.add(TextFormatting.GRAY + I18n.format("gregtech.machine.batch_process.tooltips.2"));
+                tooltip.add(TextFormatting.GRAY + I18n.format("gregtech.machine.batch_process.tooltips.3"));
+            } else {
+                tooltip.add(I18n.format("gregtech.tooltip.ctrl"));
+            }
+        }
+    }
+
+    @Override
     public void unsetCleanroom() {
         this.cleanroom = null;
     }
@@ -398,5 +474,25 @@ public abstract class RecipeMapMultiblockController extends MultiblockWithDispla
     @Override
     public void setWorkingEnabled(boolean isWorkingAllowed) {
         recipeMapWorkable.setWorkingEnabled(isWorkingAllowed);
+    }
+
+    @Override
+    public boolean isBatchAllowed() {
+        return false;
+    }
+
+    @Override
+    public boolean isBatchEnable() {
+        return recipeMapWorkable.isBatchEnable();
+    }
+
+    @Override
+    public void setBatchEnable(boolean enable) {
+        recipeMapWorkable.setBatchEnable(enable);
+    }
+
+    @Override
+    public boolean hasSideUI() {
+        return true;
     }
 }

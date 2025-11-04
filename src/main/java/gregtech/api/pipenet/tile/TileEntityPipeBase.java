@@ -81,7 +81,7 @@ public abstract class TileEntityPipeBase<PipeType extends Enum<PipeType> & IPipe
 
     public void setFrameMaterial(@Nullable Material frameMaterial) {
         this.frameMaterial = frameMaterial;
-        if (world != null && world.isRemote) {
+        if (world != null && !world.isRemote) {
             writeCustomData(UPDATE_FRAME_MATERIAL, buf -> {
                 buf.writeVarInt(frameMaterial == null ? -1 : frameMaterial.getRegistry().getNetworkId());
                 buf.writeVarInt(frameMaterial == null ? -1 : frameMaterial.getId());
@@ -216,20 +216,17 @@ public abstract class TileEntityPipeBase<PipeType extends Enum<PipeType> & IPipe
             }
             TileEntity tile = getNeighbor(side);
             // block connections if Pipe Types do not match
-            if (connected &&
-                    tile instanceof IPipeTile pipeTile &&
+            if (connected && tile instanceof IPipeTile<?, ?>pipeTile &&
                     pipeTile.getPipeType().getClass() != this.getPipeType().getClass()) {
                 return;
             }
             connections = withSideConnection(connections, side, connected);
 
             updateNetworkConnection(side, connected);
-            writeCustomData(UPDATE_CONNECTIONS, buffer -> {
-                buffer.writeVarInt(connections);
-            });
+            writeCustomData(UPDATE_CONNECTIONS, buffer -> buffer.writeVarInt(connections));
             markDirty();
 
-            if (!fromNeighbor && tile instanceof IPipeTile pipeTile) {
+            if (!fromNeighbor && tile instanceof IPipeTile<?, ?>pipeTile) {
                 syncPipeConnections(side, pipeTile);
             }
         }
@@ -278,6 +275,7 @@ public abstract class TileEntityPipeBase<PipeType extends Enum<PipeType> & IPipe
 
     @Override
     public boolean isFaceBlocked(EnumFacing side) {
+        if (side == null) return true; // says hey, you can't insert from nowhere
         return isFaceBlocked(blockedConnections, side);
     }
 

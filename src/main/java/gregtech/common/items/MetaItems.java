@@ -104,6 +104,7 @@ public final class MetaItems {
 
     public static MetaItem<?>.MetaValueItem SPRAY_SOLVENT;
     public static MetaItem<?>.MetaValueItem SPRAY_EMPTY;
+    public static MetaItem<?>.MetaValueItem SPRAY_CREATIVE;
 
     public static MetaItem<?>.MetaValueItem FLUID_CELL;
     public static MetaItem<?>.MetaValueItem FLUID_CELL_UNIVERSAL;
@@ -159,6 +160,11 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem ENERGY_LAPOTRONIC_ORB_CLUSTER;
     public static MetaItem<?>.MetaValueItem ZERO_POINT_MODULE;
     public static MetaItem<?>.MetaValueItem ULTIMATE_BATTERY;
+    public static MetaItem<?>.MetaValueItem QUANTUM_CORE;
+    public static MetaItem<?>.MetaValueItem SINGULARITY_CELL;
+    public static MetaItem<?>.MetaValueItem CHRONO_MATRIX;
+    public static MetaItem<?>.MetaValueItem TACHYON_REACTOR;
+    public static MetaItem<?>.MetaValueItem COSMIC_STRING;
 
     public static MetaItem<?>.MetaValueItem ELECTRIC_MOTOR_LV;
     public static MetaItem<?>.MetaValueItem ELECTRIC_MOTOR_MV;
@@ -173,6 +179,7 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem ELECTRIC_MOTOR_UIV;
     public static MetaItem<?>.MetaValueItem ELECTRIC_MOTOR_UXV;
     public static MetaItem<?>.MetaValueItem ELECTRIC_MOTOR_OpV;
+    public static MetaItem<?>.MetaValueItem ELECTRIC_MOTOR_MAX;
 
     public static MetaItem<?>.MetaValueItem ELECTRIC_PUMP_LV;
     public static MetaItem<?>.MetaValueItem ELECTRIC_PUMP_MV;
@@ -187,15 +194,22 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem ELECTRIC_PUMP_UIV;
     public static MetaItem<?>.MetaValueItem ELECTRIC_PUMP_UXV;
     public static MetaItem<?>.MetaValueItem ELECTRIC_PUMP_OpV;
+    public static MetaItem<?>.MetaValueItem ELECTRIC_PUMP_MAX;
 
     public static MetaItem<?>.MetaValueItem FLUID_REGULATOR_LV;
     public static MetaItem<?>.MetaValueItem FLUID_REGULATOR_MV;
     public static MetaItem<?>.MetaValueItem FLUID_REGULATOR_HV;
     public static MetaItem<?>.MetaValueItem FLUID_REGULATOR_EV;
     public static MetaItem<?>.MetaValueItem FLUID_REGULATOR_IV;
-    public static MetaItem<?>.MetaValueItem FLUID_REGULATOR_LUV;
+    public static MetaItem<?>.MetaValueItem FLUID_REGULATOR_LuV;
     public static MetaItem<?>.MetaValueItem FLUID_REGULATOR_ZPM;
     public static MetaItem<?>.MetaValueItem FLUID_REGULATOR_UV;
+    public static MetaItem<?>.MetaValueItem FLUID_REGULATOR_UHV;
+    public static MetaItem<?>.MetaValueItem FLUID_REGULATOR_UEV;
+    public static MetaItem<?>.MetaValueItem FLUID_REGULATOR_UIV;
+    public static MetaItem<?>.MetaValueItem FLUID_REGULATOR_UXV;
+    public static MetaItem<?>.MetaValueItem FLUID_REGULATOR_OpV;
+    public static MetaItem<?>.MetaValueItem FLUID_REGULATOR_MAX;
 
     public static MetaItem<?>.MetaValueItem FLUID_FILTER;
 
@@ -214,6 +228,7 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem CONVEYOR_MODULE_UIV;
     public static MetaItem<?>.MetaValueItem CONVEYOR_MODULE_UXV;
     public static MetaItem<?>.MetaValueItem CONVEYOR_MODULE_OpV;
+    public static MetaItem<?>.MetaValueItem CONVEYOR_MODULE_MAX;
 
     public static MetaItem<?>.MetaValueItem ELECTRIC_PISTON_LV;
     public static MetaItem<?>.MetaValueItem ELECTRIC_PISTON_MV;
@@ -228,6 +243,7 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem ELECTRIC_PISTON_UIV;
     public static MetaItem<?>.MetaValueItem ELECTRIC_PISTON_UXV;
     public static MetaItem<?>.MetaValueItem ELECTRIC_PISTON_OpV;
+    public static MetaItem<?>.MetaValueItem ELECTRIC_PISTON_MAX;
 
     public static MetaItem<?>.MetaValueItem ROBOT_ARM_LV;
     public static MetaItem<?>.MetaValueItem ROBOT_ARM_MV;
@@ -242,6 +258,7 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem ROBOT_ARM_UIV;
     public static MetaItem<?>.MetaValueItem ROBOT_ARM_UXV;
     public static MetaItem<?>.MetaValueItem ROBOT_ARM_OpV;
+    public static MetaItem<?>.MetaValueItem ROBOT_ARM_MAX;
 
     public static MetaItem<?>.MetaValueItem FIELD_GENERATOR_LV;
     public static MetaItem<?>.MetaValueItem FIELD_GENERATOR_MV;
@@ -256,6 +273,7 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem FIELD_GENERATOR_UIV;
     public static MetaItem<?>.MetaValueItem FIELD_GENERATOR_UXV;
     public static MetaItem<?>.MetaValueItem FIELD_GENERATOR_OpV;
+    public static MetaItem<?>.MetaValueItem FIELD_GENERATOR_MAX;
 
     public static MetaItem<?>.MetaValueItem EMITTER_LV;
     public static MetaItem<?>.MetaValueItem EMITTER_MV;
@@ -270,6 +288,7 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem EMITTER_UIV;
     public static MetaItem<?>.MetaValueItem EMITTER_UXV;
     public static MetaItem<?>.MetaValueItem EMITTER_OpV;
+    public static MetaItem<?>.MetaValueItem EMITTER_MAX;
 
     public static MetaItem<?>.MetaValueItem SENSOR_LV;
     public static MetaItem<?>.MetaValueItem SENSOR_MV;
@@ -284,10 +303,13 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem SENSOR_UIV;
     public static MetaItem<?>.MetaValueItem SENSOR_UXV;
     public static MetaItem<?>.MetaValueItem SENSOR_OpV;
+    public static MetaItem<?>.MetaValueItem SENSOR_MAX;
 
     public static MetaItem<?>.MetaValueItem TOOL_DATA_STICK;
     public static MetaItem<?>.MetaValueItem TOOL_DATA_ORB;
     public static MetaItem<?>.MetaValueItem TOOL_DATA_MODULE;
+
+    public static MetaItem<?>.MetaValueItem MULTIBLOCK_PREVIEW;
 
     public static final Map<MarkerMaterial, MetaValueItem> GLASS_LENSES = new HashMap<>();
 
@@ -449,6 +471,7 @@ public final class MetaItems {
 
     public static MetaItem<?>.MetaValueItem COVER_SCREEN;
     public static MetaItem<?>.MetaValueItem COVER_INFINITE_WATER;
+    public static MetaItem<?>.MetaValueItem COVER_AIR_VENT;
     public static MetaItem<?>.MetaValueItem COVER_ENDER_FLUID_LINK;
     public static MetaItem<?>.MetaValueItem COVER_ENDER_ITEM_LINK;
     public static MetaItem<?>.MetaValueItem COVER_DIGITAL_INTERFACE;
@@ -458,6 +481,9 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem COVER_ITEM_VOIDING;
     public static MetaItem<?>.MetaValueItem COVER_ITEM_VOIDING_ADVANCED;
     public static MetaItem<?>.MetaValueItem COVER_STORAGE;
+    public static MetaItem<?>.MetaValueItem COVER_STORAGE_MEDIUM;
+    public static MetaItem<?>.MetaValueItem COVER_STORAGE_LARGE;
+    public static MetaItem<?>.MetaValueItem COVER_STORAGE_HUGE;
 
     public static MetaItem<?>.MetaValueItem COVER_SOLAR_PANEL;
     public static MetaItem<?>.MetaValueItem COVER_SOLAR_PANEL_ULV;
@@ -469,6 +495,12 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem COVER_SOLAR_PANEL_LUV;
     public static MetaItem<?>.MetaValueItem COVER_SOLAR_PANEL_ZPM;
     public static MetaItem<?>.MetaValueItem COVER_SOLAR_PANEL_UV;
+    public static MetaItem<?>.MetaValueItem COVER_SOLAR_PANEL_UHV;
+    public static MetaItem<?>.MetaValueItem COVER_SOLAR_PANEL_UEV;
+    public static MetaItem<?>.MetaValueItem COVER_SOLAR_PANEL_UIV;
+    public static MetaItem<?>.MetaValueItem COVER_SOLAR_PANEL_UXV;
+    public static MetaItem<?>.MetaValueItem COVER_SOLAR_PANEL_OPV;
+    public static MetaItem<?>.MetaValueItem COVER_SOLAR_PANEL_MAX;
 
     public static MetaItem<?>.MetaValueItem PLUGIN_TEXT;
     public static MetaItem<?>.MetaValueItem PLUGIN_ONLINE_PIC;
@@ -504,6 +536,9 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem PROSPECTOR_UV;
     public static MetaItem<?>.MetaValueItem PROSPECTOR_UHV;
 
+    public static MetaItem<?>.MetaValueItem MINING_LASER;
+    public static MetaItem<?>.MetaValueItem VAJRA;
+
     public static MetaItem<?>.MetaValueItem TRICORDER_SCANNER;
     public static MetaItem<?>.MetaValueItem DEBUG_SCANNER;
 
@@ -522,8 +557,8 @@ public final class MetaItems {
 
     public static final MetaItem<?>.MetaValueItem[] DYE_ONLY_ITEMS = new MetaItem.MetaValueItem[EnumDyeColor
             .values().length];
-    public static final MetaItem<?>.MetaValueItem[] SPRAY_CAN_DYES = new MetaItem.MetaValueItem[EnumDyeColor
-            .values().length];
+    public static final EnumMap<EnumDyeColor, MetaItem<?>.MetaValueItem> SPRAY_CAN_DYES = new EnumMap<>(
+            EnumDyeColor.class);
 
     public static MetaItem<?>.MetaValueItem TURBINE_ROTOR;
 
@@ -624,12 +659,14 @@ public final class MetaItems {
         orePrefixes.add(OrePrefix.toolHeadBuzzSaw);
         orePrefixes.add(OrePrefix.toolHeadScrewdriver);
     }
+    public static MetaItem1 GT_META_ITEM;
+    public static MetaArmor GT_ARMOR;
 
     public static void init() {
-        MetaItem1 first = new MetaItem1();
-        first.setRegistryName("meta_item_1");
-        MetaArmor armor = new MetaArmor();
-        armor.setRegistryName("gt_armor");
+        GT_META_ITEM = new MetaItem1();
+        GT_META_ITEM.setRegistryName("meta_item_1");
+        GT_ARMOR = new MetaArmor();
+        GT_ARMOR.setRegistryName("gt_armor");
         for (OrePrefix prefix : orePrefixes) {
             for (MaterialRegistry registry : GregTechAPI.materialManager.getRegistries()) {
                 String regName = CaseFormat.UPPER_CAMEL.to(CaseFormat.LOWER_UNDERSCORE, prefix.name());

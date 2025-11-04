@@ -6,6 +6,7 @@ import gregtech.api.capability.impl.CommonFluidFilters;
 import gregtech.api.items.metaitem.ElectricStats;
 import gregtech.api.items.metaitem.FilteredFluidStats;
 import gregtech.api.items.metaitem.FoodStats;
+import gregtech.api.items.metaitem.MetaItem;
 import gregtech.api.items.metaitem.MusicDiscStats;
 import gregtech.api.items.metaitem.StandardMetaItem;
 import gregtech.api.items.metaitem.stats.IItemComponent;
@@ -33,7 +34,6 @@ import gregtech.common.covers.filter.SmartItemFilter;
 import gregtech.common.creativetab.GTCreativeTabs;
 import gregtech.common.entities.GTBoatEntity.GTBoatType;
 import gregtech.common.items.behaviors.ClipboardBehavior;
-import gregtech.common.items.behaviors.ColorSprayBehaviour;
 import gregtech.common.items.behaviors.DataItemBehavior;
 import gregtech.common.items.behaviors.DoorBehavior;
 import gregtech.common.items.behaviors.DynamiteBehaviour;
@@ -44,12 +44,15 @@ import gregtech.common.items.behaviors.GTBoatBehavior;
 import gregtech.common.items.behaviors.IntCircuitBehaviour;
 import gregtech.common.items.behaviors.ItemMagnetBehavior;
 import gregtech.common.items.behaviors.LighterBehaviour;
+import gregtech.common.items.behaviors.MiningLaserBehavior;
 import gregtech.common.items.behaviors.MultiblockBuilderBehavior;
 import gregtech.common.items.behaviors.NanoSaberBehavior;
 import gregtech.common.items.behaviors.ProspectorScannerBehavior;
+import gregtech.common.items.behaviors.RenderItemBehavior;
 import gregtech.common.items.behaviors.TooltipBehavior;
 import gregtech.common.items.behaviors.TricorderBehavior;
 import gregtech.common.items.behaviors.TurbineRotorBehavior;
+import gregtech.common.items.behaviors.VajraBehavior;
 import gregtech.common.items.behaviors.filter.OreDictFilterUIManager;
 import gregtech.common.items.behaviors.filter.SimpleFilterUIManager;
 import gregtech.common.items.behaviors.filter.SimpleFluidFilterUIManager;
@@ -58,17 +61,24 @@ import gregtech.common.items.behaviors.monitorplugin.AdvancedMonitorPluginBehavi
 import gregtech.common.items.behaviors.monitorplugin.FakeGuiPluginBehavior;
 import gregtech.common.items.behaviors.monitorplugin.OnlinePicPluginBehavior;
 import gregtech.common.items.behaviors.monitorplugin.TextPluginBehavior;
+import gregtech.common.items.behaviors.spray.CreativeSprayBehavior;
+import gregtech.common.items.behaviors.spray.DurabilitySprayBehavior;
 import gregtech.core.sound.GTSoundEvents;
 
 import net.minecraft.client.resources.I18n;
+import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.init.Items;
 import net.minecraft.init.MobEffects;
 import net.minecraft.item.EnumDyeColor;
 import net.minecraft.item.EnumRarity;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.NonNullList;
 import net.minecraft.util.ResourceLocation;
 
+import org.jetbrains.annotations.NotNull;
+
 import static gregtech.api.GTValues.M;
+import static gregtech.api.GTValues.MAX;
 import static gregtech.api.unification.material.Materials.Steel;
 import static gregtech.api.util.DyeUtil.getOredictColorName;
 import static gregtech.common.items.MetaItems.*;
@@ -78,6 +88,28 @@ public class MetaItem1 extends StandardMetaItem {
     public MetaItem1() {
         super();
     }
+
+    @Override
+    public void getSubItems(@NotNull CreativeTabs tab, @NotNull NonNullList<ItemStack> subItems) {
+        if (!isInCreativeTab(tab)) return;
+        for (MetaItem<?>.MetaValueItem item : metaItems.values()) {
+            if (!item.isInCreativeTab(tab)) continue;
+
+            int itemMeta = item.getMetaValue();
+            // Skip extra molds, see below
+            if (itemMeta >= 1006 && itemMeta <= 1010) continue;
+            // Skip creative spray can, see below
+            if (itemMeta == 88) continue;
+
+            item.getSubItemHandler().getSubItems(item.getStackForm(), tab, subItems);
+
+            // Add the creative spray can after the last normal spray can
+            if (itemMeta == 77) {
+                subItems.add(SPRAY_CREATIVE.getStackForm());
+            }
+        }
+    }
+
 
     @Override
     public void registerSubItems() {
@@ -198,14 +230,14 @@ public class MetaItem1 extends StandardMetaItem {
 
         // out of registry order so it can reference the Empty Spray Can
         SPRAY_SOLVENT = addItem(60, "spray.solvent").setMaxStackSize(1)
-                .addComponents(new ColorSprayBehaviour(SPRAY_EMPTY.getStackForm(), 1024, -1))
+                .addComponents(new DurabilitySprayBehavior(SPRAY_EMPTY.getStackForm(), 1024, null))
                 .setCreativeTabs(GTCreativeTabs.TAB_GREGTECH_TOOLS);
 
-        for (int i = 0; i < EnumDyeColor.values().length; i++) {
-            SPRAY_CAN_DYES[i] = addItem(62 + i, "spray.can.dyes." + EnumDyeColor.values()[i].getName())
+        for (EnumDyeColor color : EnumDyeColor.values()) {
+            SPRAY_CAN_DYES.put(color, addItem(62 + color.ordinal(), "spray.can.dyes." + color.getName())
                     .setMaxStackSize(1)
-                    .addComponents(new ColorSprayBehaviour(SPRAY_EMPTY.getStackForm(), 512, i))
-                    .setCreativeTabs(GTCreativeTabs.TAB_GREGTECH_TOOLS);
+                    .addComponents(new DurabilitySprayBehavior(SPRAY_EMPTY.getStackForm(), 512, color))
+                    .setCreativeTabs(GTCreativeTabs.TAB_GREGTECH_TOOLS));
         }
 
         // Fluid Cells: ID 78-88
@@ -266,6 +298,8 @@ public class MetaItem1 extends StandardMetaItem {
                 .setRecyclingData(new RecyclingData(new MaterialStack(Materials.Glass, M / 4))) // small dust
                 .setCreativeTabs(GTCreativeTabs.TAB_GREGTECH_TOOLS);
 
+        SPRAY_CREATIVE = addItem(88, "spray.creative")
+                .addComponents(new CreativeSprayBehavior());
         // Limited-Use Items: ID 89-95
 
         TOOL_MATCHES = addItem(89, "tool.matches")
@@ -329,6 +363,7 @@ public class MetaItem1 extends StandardMetaItem {
         ELECTRIC_MOTOR_UIV = addItem(137, "electric.motor.uiv").setInvisibleIf(!GregTechAPI.isHighTier());
         ELECTRIC_MOTOR_UXV = addItem(138, "electric.motor.uxv").setInvisibleIf(!GregTechAPI.isHighTier());
         ELECTRIC_MOTOR_OpV = addItem(139, "electric.motor.opv").setInvisibleIf(!GregTechAPI.isHighTier());
+        ELECTRIC_MOTOR_MAX = addItem(140, "electric.motor.max").setInvisibleIf(!GregTechAPI.isHighTier());
 
         // Pumps: ID 141-155
         ELECTRIC_PUMP_LV = addItem(142, "electric.pump.lv").addComponents(new TooltipBehavior(lines -> {
@@ -380,6 +415,10 @@ public class MetaItem1 extends StandardMetaItem {
             lines.add(I18n.format("gregtech.universal.tooltip.fluid_transfer_rate", 1280 * 64 * 64 * 4 / 20));
         })).setInvisibleIf(!GregTechAPI.isHighTier());
         ELECTRIC_PUMP_OpV = addItem(154, "electric.pump.opv").addComponents(new TooltipBehavior(lines -> {
+            lines.add(I18n.format("metaitem.electric.pump.tooltip"));
+            lines.add(I18n.format("gregtech.universal.tooltip.fluid_transfer_rate", 1280 * 64 * 64 * 4 / 20));
+        })).setInvisibleIf(!GregTechAPI.isHighTier());
+        ELECTRIC_PUMP_MAX = addItem(155, "electric.pump.max").addComponents(new TooltipBehavior(lines -> {
             lines.add(I18n.format("metaitem.electric.pump.tooltip"));
             lines.add(I18n.format("gregtech.universal.tooltip.fluid_transfer_rate", 1280 * 64 * 64 * 4 / 20));
         })).setInvisibleIf(!GregTechAPI.isHighTier());
@@ -437,6 +476,10 @@ public class MetaItem1 extends StandardMetaItem {
             lines.add(I18n.format("metaitem.conveyor.module.tooltip"));
             lines.add(I18n.format("gregtech.universal.tooltip.item_transfer_rate_stacks", 16));
         })).setInvisibleIf(!GregTechAPI.isHighTier());
+        CONVEYOR_MODULE_MAX = addItem(170, "conveyor.module.max").addComponents(new TooltipBehavior(lines -> {
+            lines.add(I18n.format("metaitem.conveyor.module.tooltip"));
+            lines.add(I18n.format("gregtech.universal.tooltip.item_transfer_rate_stacks", 16));
+        })).setInvisibleIf(!GregTechAPI.isHighTier());
 
         // Pistons: ID 171-185
         ELECTRIC_PISTON_LV = addItem(172, "electric.piston.lv");
@@ -452,6 +495,7 @@ public class MetaItem1 extends StandardMetaItem {
         ELECTRIC_PISTON_UIV = addItem(182, "electric.piston.uiv").setInvisibleIf(!GregTechAPI.isHighTier());
         ELECTRIC_PISTON_UXV = addItem(183, "electric.piston.uxv").setInvisibleIf(!GregTechAPI.isHighTier());
         ELECTRIC_PISTON_OpV = addItem(184, "electric.piston.opv").setInvisibleIf(!GregTechAPI.isHighTier());
+        ELECTRIC_PISTON_MAX = addItem(185, "electric.piston.max").setInvisibleIf(!GregTechAPI.isHighTier());
 
         // Robot Arms: ID 186-200
         ROBOT_ARM_LV = addItem(187, "robot.arm.lv").addComponents(new TooltipBehavior(lines -> {
@@ -506,6 +550,10 @@ public class MetaItem1 extends StandardMetaItem {
             lines.add(I18n.format("metaitem.robot.arm.tooltip"));
             lines.add(I18n.format("gregtech.universal.tooltip.item_transfer_rate_stacks", 16));
         })).setInvisibleIf(!GregTechAPI.isHighTier());
+        ROBOT_ARM_MAX = addItem(200, "robot.arm.max").addComponents(new TooltipBehavior(lines -> {
+            lines.add(I18n.format("metaitem.robot.arm.tooltip"));
+            lines.add(I18n.format("gregtech.universal.tooltip.item_transfer_rate_stacks", 16));
+        })).setInvisibleIf(!GregTechAPI.isHighTier());
 
         // Field Generators: ID 201-215
         FIELD_GENERATOR_LV = addItem(202, "field.generator.lv");
@@ -521,6 +569,7 @@ public class MetaItem1 extends StandardMetaItem {
         FIELD_GENERATOR_UIV = addItem(212, "field.generator.uiv").setInvisibleIf(!GregTechAPI.isHighTier());
         FIELD_GENERATOR_UXV = addItem(213, "field.generator.uxv").setInvisibleIf(!GregTechAPI.isHighTier());
         FIELD_GENERATOR_OpV = addItem(214, "field.generator.opv").setInvisibleIf(!GregTechAPI.isHighTier());
+        FIELD_GENERATOR_MAX = addItem(215, "field.generator.max").setInvisibleIf(!GregTechAPI.isHighTier());
 
         // Emitters: ID 216-230
         EMITTER_LV = addItem(217, "emitter.lv");
@@ -536,6 +585,7 @@ public class MetaItem1 extends StandardMetaItem {
         EMITTER_UIV = addItem(227, "emitter.uiv").setInvisibleIf(!GregTechAPI.isHighTier());
         EMITTER_UXV = addItem(228, "emitter.uxv").setInvisibleIf(!GregTechAPI.isHighTier());
         EMITTER_OpV = addItem(229, "emitter.opv").setInvisibleIf(!GregTechAPI.isHighTier());
+        EMITTER_MAX = addItem(230, "emitter.max").setInvisibleIf(!GregTechAPI.isHighTier());
 
         // Sensors: ID 231-245
         SENSOR_LV = addItem(232, "sensor.lv");
@@ -551,6 +601,7 @@ public class MetaItem1 extends StandardMetaItem {
         SENSOR_UIV = addItem(242, "sensor.uiv").setInvisibleIf(!GregTechAPI.isHighTier());
         SENSOR_UXV = addItem(243, "sensor.uxv").setInvisibleIf(!GregTechAPI.isHighTier());
         SENSOR_OpV = addItem(244, "sensor.opv").setInvisibleIf(!GregTechAPI.isHighTier());
+        SENSOR_MAX = addItem(245, "sensor.max").setInvisibleIf(!GregTechAPI.isHighTier());
 
         // Fluid Regulators: ID 246-260
         FLUID_REGULATOR_LV = addItem(247, "fluid.regulator.lv").addComponents(new TooltipBehavior(lines -> {
@@ -573,7 +624,7 @@ public class MetaItem1 extends StandardMetaItem {
             lines.add(I18n.format("metaitem.fluid.regulator.tooltip"));
             lines.add(I18n.format("gregtech.universal.tooltip.fluid_transfer_rate", 1280 * 64 * 4 / 20));
         }));
-        FLUID_REGULATOR_LUV = addItem(252, "fluid.regulator.luv").addComponents(new TooltipBehavior(lines -> {
+        FLUID_REGULATOR_LuV = addItem(252, "fluid.regulator.luv").addComponents(new TooltipBehavior(lines -> {
             lines.add(I18n.format("metaitem.fluid.regulator.tooltip"));
             lines.add(I18n.format("gregtech.universal.tooltip.fluid_transfer_rate", 1280 * 64 * 16 / 20));
         }));
@@ -585,6 +636,31 @@ public class MetaItem1 extends StandardMetaItem {
             lines.add(I18n.format("metaitem.fluid.regulator.tooltip"));
             lines.add(I18n.format("gregtech.universal.tooltip.fluid_transfer_rate", 1280 * 64 * 64 * 4 / 20));
         }));
+        FLUID_REGULATOR_UHV = addItem(255, "fluid.regulator.uhv").addComponents(new TooltipBehavior(lines -> {
+            lines.add(I18n.format("metaitem.fluid.regulator.tooltip"));
+            lines.add(I18n.format("gregtech.universal.tooltip.fluid_transfer_rate", 1280 * 64 * 64 * 16 / 20));
+        })).setInvisibleIf(!GregTechAPI.isHighTier());
+        FLUID_REGULATOR_UEV = addItem(256, "fluid.regulator.uev").addComponents(new TooltipBehavior(lines -> {
+            lines.add(I18n.format("metaitem.fluid.regulator.tooltip"));
+            lines.add(I18n.format("gregtech.universal.tooltip.fluid_transfer_rate", 1280 * 64 * 64 * 64 / 20));
+        })).setInvisibleIf(!GregTechAPI.isHighTier());
+        FLUID_REGULATOR_UIV = addItem(257, "fluid.regulator.uiv").addComponents(new TooltipBehavior(lines -> {
+            lines.add(I18n.format("metaitem.fluid.regulator.tooltip"));
+            lines.add(I18n.format("gregtech.universal.tooltip.fluid_transfer_rate", 1280 * 64 * 64 * 64 * 4 / 20));
+        })).setInvisibleIf(!GregTechAPI.isHighTier());
+        FLUID_REGULATOR_UXV = addItem(258, "fluid.regulator.uxv").addComponents(new TooltipBehavior(lines -> {
+            lines.add(I18n.format("metaitem.fluid.regulator.tooltip"));
+            lines.add(I18n.format("gregtech.universal.tooltip.fluid_transfer_rate", 1280 * 64 * 64 * 64 * 4 / 20));
+        })).setInvisibleIf(!GregTechAPI.isHighTier());
+        FLUID_REGULATOR_OpV = addItem(259, "fluid.regulator.opv").addComponents(new TooltipBehavior(lines -> {
+            lines.add(I18n.format("metaitem.fluid.regulator.tooltip"));
+            lines.add(I18n.format("gregtech.universal.tooltip.fluid_transfer_rate", 1280 * 64 * 64 * 64 * 4 / 20));
+        })).setInvisibleIf(!GregTechAPI.isHighTier());
+        FLUID_REGULATOR_MAX = addItem(260, "fluid.regulator.max").addComponents(new TooltipBehavior(lines -> {
+            lines.add(I18n.format("metaitem.fluid.regulator.tooltip"));
+            lines.add(I18n.format("gregtech.universal.tooltip.fluid_transfer_rate", 1280 * 64 * 64 * 64 * 4 / 20));
+        })).setInvisibleIf(!GregTechAPI.isHighTier());
+
 
         // Data Items: ID 261-265
         TOOL_DATA_STICK = addItem(261, "tool.datastick").addComponents(new DataItemBehavior());
@@ -629,13 +705,12 @@ public class MetaItem1 extends StandardMetaItem {
         COVER_ACTIVITY_DETECTOR = addItem(302, "cover.activity.detector");
         COVER_ACTIVITY_DETECTOR_ADVANCED = addItem(303, "cover.activity.detector_advanced");
         COVER_FLUID_DETECTOR = addItem(304, "cover.fluid.detector");
-        COVER_FLUID_DETECTOR_ADVANCED = addItem(319, "cover.fluid.detector.advanced");
+
         COVER_ITEM_DETECTOR = addItem(305, "cover.item.detector");
-        COVER_ITEM_DETECTOR_ADVANCED = addItem(320, "cover.item.detector.advanced");
+
         COVER_ENERGY_DETECTOR = addItem(306, "cover.energy.detector");
-        COVER_ENERGY_DETECTOR_ADVANCED = addItem(318, "cover.energy.detector.advanced");
+
         COVER_SCREEN = addItem(307, "cover.screen");
-        // FREE ID 308
         COVER_ENDER_ITEM_LINK = addItem(308, "cover.ender_item_link");
         COVER_SHUTTER = addItem(309, "cover.shutter");
         COVER_INFINITE_WATER = addItem(310, "cover.infinite_water").addComponents(new TooltipBehavior(lines -> {
@@ -649,8 +724,15 @@ public class MetaItem1 extends StandardMetaItem {
         COVER_FLUID_VOIDING_ADVANCED = addItem(315, "cover.fluid.voiding.advanced");
         COVER_ITEM_VOIDING = addItem(316, "cover.item.voiding");
         COVER_ITEM_VOIDING_ADVANCED = addItem(317, "cover.item.voiding.advanced");
-        COVER_STORAGE = addItem(321, "cover.storage");
-        COVER_MAINTENANCE_DETECTOR = addItem(322, "cover.maintenance.detector");
+        COVER_ENERGY_DETECTOR_ADVANCED = addItem(318, "cover.energy.detector.advanced");
+        COVER_FLUID_DETECTOR_ADVANCED = addItem(319, "cover.fluid.detector.advanced");
+        COVER_ITEM_DETECTOR_ADVANCED = addItem(320, "cover.item.detector.advanced");
+        COVER_MAINTENANCE_DETECTOR = addItem(321, "cover.maintenance.detector");
+        COVER_AIR_VENT = addItem(322, "cover.air_vent");
+        COVER_STORAGE = addItem(323, "cover.storage");
+        COVER_STORAGE_MEDIUM = addItem(324, "cover.storage_medium");
+        COVER_STORAGE_LARGE = addItem(325, "cover.storage_large");
+        COVER_STORAGE_HUGE = addItem(326, "cover.storage_huge");
 
         COVER_FACADE = addItem(330, "cover.facade").addComponents(new FacadeItem()).disableModelLoading();
 
@@ -714,13 +796,50 @@ public class MetaItem1 extends StandardMetaItem {
             lines.add(I18n.format("gregtech.universal.tooltip.voltage_out", GTValues.V[GTValues.UV],
                     GTValues.VNF[GTValues.UV]));
         }));
-        // MAX-tier solar panel?
+        COVER_SOLAR_PANEL_UHV = addItem(341, "cover.solar.panel.uhv").addComponents(new TooltipBehavior(lines -> {
+            lines.add(I18n.format("metaitem.cover.solar.panel.tooltip.1"));
+            lines.add(I18n.format("metaitem.cover.solar.panel.tooltip.2"));
+            lines.add(I18n.format("gregtech.universal.tooltip.voltage_out", GTValues.V[GTValues.UHV],
+                    GTValues.VNF[GTValues.UHV]));
+        }));
+        COVER_SOLAR_PANEL_UEV = addItem(342, "cover.solar.panel.uev").addComponents(new TooltipBehavior(lines -> {
+            lines.add(I18n.format("metaitem.cover.solar.panel.tooltip.1"));
+            lines.add(I18n.format("metaitem.cover.solar.panel.tooltip.2"));
+            lines.add(I18n.format("gregtech.universal.tooltip.voltage_out", GTValues.V[GTValues.UEV],
+                    GTValues.VNF[GTValues.UEV]));
+        }));
+        COVER_SOLAR_PANEL_UIV = addItem(343, "cover.solar.panel.uiv").addComponents(new TooltipBehavior(lines -> {
+            lines.add(I18n.format("metaitem.cover.solar.panel.tooltip.1"));
+            lines.add(I18n.format("metaitem.cover.solar.panel.tooltip.2"));
+            lines.add(I18n.format("gregtech.universal.tooltip.voltage_out", GTValues.V[GTValues.UIV],
+                    GTValues.VNF[GTValues.UIV]));
+        }));
+        COVER_SOLAR_PANEL_UXV = addItem(344, "cover.solar.panel.uxv").addComponents(new TooltipBehavior(lines -> {
+            lines.add(I18n.format("metaitem.cover.solar.panel.tooltip.1"));
+            lines.add(I18n.format("metaitem.cover.solar.panel.tooltip.2"));
+            lines.add(I18n.format("gregtech.universal.tooltip.voltage_out", GTValues.V[GTValues.UXV],
+                    GTValues.VNF[GTValues.UXV]));
+        }));
+        COVER_SOLAR_PANEL_OPV = addItem(345, "cover.solar.panel.opv").addComponents(new TooltipBehavior(lines -> {
+            lines.add(I18n.format("metaitem.cover.solar.panel.tooltip.1"));
+            lines.add(I18n.format("metaitem.cover.solar.panel.tooltip.2"));
+            lines.add(I18n.format("gregtech.universal.tooltip.voltage_out", GTValues.V[GTValues.OpV],
+                    GTValues.VNF[GTValues.OpV]));
+        }));
+        COVER_SOLAR_PANEL_MAX = addItem(346, "cover.solar.panel.max").addComponents(new TooltipBehavior(lines -> {
+            lines.add(I18n.format("metaitem.cover.solar.panel.tooltip.1"));
+            lines.add(I18n.format("metaitem.cover.solar.panel.tooltip.2"));
+            lines.add(I18n.format("gregtech.universal.tooltip.voltage_out", GTValues.V[MAX],
+                    GTValues.VNF[GTValues.MAX]));
+        }));
 
         if (!ConfigHolder.machines.enableHighTierSolars) {
-            COVER_SOLAR_PANEL_IV.setInvisible();
-            COVER_SOLAR_PANEL_LUV.setInvisible();
-            COVER_SOLAR_PANEL_ZPM.setInvisible();
-            COVER_SOLAR_PANEL_UV.setInvisible();
+            COVER_SOLAR_PANEL_UHV.setInvisible();
+            COVER_SOLAR_PANEL_UEV.setInvisible();
+            COVER_SOLAR_PANEL_UIV.setInvisible();
+            COVER_SOLAR_PANEL_UXV.setInvisible();
+            COVER_SOLAR_PANEL_OPV.setInvisible();
+            COVER_SOLAR_PANEL_MAX.setInvisible();
         }
 
         // Early Game Brick Related: ID 347-360
@@ -890,6 +1009,18 @@ public class MetaItem1 extends StandardMetaItem {
         PROSPECTOR_UHV = addItem(488, "prospector.uhv")
                 .addComponents(ElectricStats.createElectricItem(1_000_000_000L, GTValues.UHV),
                         new ProspectorScannerBehavior(6, GTValues.UHV))
+                .setMaxStackSize(1)
+                .setCreativeTabs(GTCreativeTabs.TAB_GREGTECH_TOOLS);
+
+        MINING_LASER = addItem(489, "mining_laser")
+                .addComponents(ElectricStats.createElectricItem(10_000_000L, GTValues.IV),
+                        new MiningLaserBehavior())
+                .setMaxStackSize(1)
+                .setCreativeTabs(GTCreativeTabs.TAB_GREGTECH_TOOLS);
+
+        VAJRA = addItem(490, "vajra")
+                .addComponents(ElectricStats.createElectricItem(100_000_000L, GTValues.ZPM),
+                        new VajraBehavior())
                 .setMaxStackSize(1)
                 .setCreativeTabs(GTCreativeTabs.TAB_GREGTECH_TOOLS);
 
@@ -1161,12 +1292,44 @@ public class MetaItem1 extends StandardMetaItem {
                 .setUnificationData(OrePrefix.battery, Tier.UV).setModelAmount(8)
                 .setCreativeTabs(GTCreativeTabs.TAB_GREGTECH_TOOLS);
 
-        ZERO_POINT_MODULE = addItem(752, "zpm")
+        //特殊
+        ZERO_POINT_MODULE = addItem(752, "zero_point_module")
                 .addComponents(ElectricStats.createBattery(2000000000000L, GTValues.ZPM, true)).setModelAmount(8)
                 .setCreativeTabs(GTCreativeTabs.TAB_GREGTECH_TOOLS);
+
         ULTIMATE_BATTERY = addItem(753, "max.battery")
-                .addComponents(ElectricStats.createRechargeableBattery(Long.MAX_VALUE, GTValues.UHV))
+                .addComponents(ElectricStats.createRechargeableBattery(Long.MAX_VALUE, GTValues.MAX))
+                .setUnificationData(OrePrefix.battery, Tier.MAX).setModelAmount(8)
+                .setCreativeTabs(GTCreativeTabs.TAB_GREGTECH_TOOLS);
+
+        // UHV级电池 (9) - 量子能核心
+        QUANTUM_CORE = addItem(754, "battery.uhv.quantum_core")
+                .addComponents(ElectricStats.createRechargeableBattery(320_000_000_000L, GTValues.UHV))
                 .setUnificationData(OrePrefix.battery, Tier.UHV).setModelAmount(8)
+                .setCreativeTabs(GTCreativeTabs.TAB_GREGTECH_TOOLS);
+
+        // UEV级电池 (10) - 引力奇点单元
+        SINGULARITY_CELL = addItem(755, "battery.uev.singularity_cell")
+                .addComponents(ElectricStats.createRechargeableBattery(5_120_000_000_000L, GTValues.UEV))
+                .setUnificationData(OrePrefix.battery, Tier.UEV).setModelAmount(8)
+                .setCreativeTabs(GTCreativeTabs.TAB_GREGTECH_TOOLS);
+
+        // UIV级电池 (11) - 时空晶体矩阵
+        CHRONO_MATRIX = addItem(756, "battery.uiv.chrono_matrix")
+                .addComponents(ElectricStats.createRechargeableBattery(81_920_000_000_000L, GTValues.UIV))
+                .setUnificationData(OrePrefix.battery, Tier.UIV).setModelAmount(8)
+                .setCreativeTabs(GTCreativeTabs.TAB_GREGTECH_TOOLS);
+
+        // UXV级电池 (12) - 超光速粒子反应堆
+        TACHYON_REACTOR = addItem(757, "battery.uxv.tachyon_reactor")
+                .addComponents(ElectricStats.createRechargeableBattery(1_310_720_000_000_000L, GTValues.UXV))
+                .setUnificationData(OrePrefix.battery, Tier.UXV).setModelAmount(8)
+                .setCreativeTabs(GTCreativeTabs.TAB_GREGTECH_TOOLS);
+
+        // OPV级电池 (13) - 宇宙弦能量体
+        COSMIC_STRING = addItem(758, "battery.opv.cosmic_string")
+                .addComponents(ElectricStats.createRechargeableBattery(20_971_520_000_000_000L, GTValues.OpV))
+                .setUnificationData(OrePrefix.battery, Tier.OpV).setModelAmount(8)
                 .setCreativeTabs(GTCreativeTabs.TAB_GREGTECH_TOOLS);
 
         POWER_THRUSTER = addItem(776, "power_thruster").setRarity(EnumRarity.UNCOMMON);
@@ -1202,5 +1365,8 @@ public class MetaItem1 extends StandardMetaItem {
 
         MULTIBLOCK_BUILDER = addItem(1004, "tool.multiblock_builder").addComponents(new MultiblockBuilderBehavior())
                 .setMaxStackSize(1);
+        MULTIBLOCK_PREVIEW = addItem(1005, "tool.mutliblock_preview").addComponents(new RenderItemBehavior())
+                .setMaxStackSize(1);
+
     }
 }

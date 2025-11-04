@@ -35,6 +35,57 @@ metaitem.programmable_circuit_30.name=Programmable Circuit（30）
 metaitem.programmable_circuit_31.name=Programmable Circuit（31）
 metaitem.programmable_circuit_32.name=Programmable Circuit（32）
 
+metaitem.shape.mold.vanadium_steel.empty.name=Empty Casting Mold
+metaitem.shape.mold.vanadium_steel.empty.tooltip=Mold for making Casting Molds
+metaitem.shape.mold.vanadium_steel.saw.name=Casting Mold (Saw)
+metaitem.shape.mold.vanadium_steel.saw.tooltip=Mold for making Disposable Saw
+metaitem.shape.mold.vanadium_steel.hard_hammer.name=Casting Mold (Hard Hammer)
+metaitem.shape.mold.vanadium_steel.hard_hammer.tooltip=Mold for making Disposable Hard Hammer
+metaitem.shape.mold.vanadium_steel.soft_mallet.name=Casting Mold (Soft Mallet)
+metaitem.shape.mold.vanadium_steel.soft_mallet.tooltip=Mold for making Disposable Soft Mallet
+metaitem.shape.mold.vanadium_steel.wrench.name=Casting Mold (Wrench)
+metaitem.shape.mold.vanadium_steel.wrench.tooltip=Mold for making Disposable Wrench
+metaitem.shape.mold.vanadium_steel.file.name=Casting Mold (File)
+metaitem.shape.mold.vanadium_steel.file.tooltip=Mold for making Disposable File
+metaitem.shape.mold.vanadium_steel.crowbar.name=Casting Mold (Crowbar)
+metaitem.shape.mold.vanadium_steel.crowbar.tooltip=Mold for making Disposable Crowbar
+metaitem.shape.mold.vanadium_steel.screwdriver.name=Casting Mold (Screwdriver)
+metaitem.shape.mold.vanadium_steel.screwdriver.tooltip=Mold for making Disposable Screwdriver
+metaitem.shape.mold.vanadium_steel.mortar.name=Casting Mold (Mortar)
+metaitem.shape.mold.vanadium_steel.mortar.tooltip=Mold for making Disposable Mortar
+metaitem.shape.mold.vanadium_steel.wire_cutter.name=Casting Mold (Wire Cutter)
+metaitem.shape.mold.vanadium_steel.wire_cutter.tooltip=Mold for making Disposable Wire Cutter
+metaitem.shape.mold.vanadium_steel.knife.name=Casting Mold (Knife)
+metaitem.shape.mold.vanadium_steel.knife.tooltip=Mold for making Disposable Knife
+metaitem.shape.mold.vanadium_steel.butchery_knife.name=Casting Mold (Butchery Knife)
+metaitem.shape.mold.vanadium_steel.butchery_knife.tooltip=Mold for making Disposable Butchery Knife
+metaitem.shape.mold.vanadium_steel.rolling_pin.name=Casting Mold (Rolling Pin)
+metaitem.shape.mold.vanadium_steel.rolling_pin.tooltip=Mold for making Disposable Rolling Pin
+
+metaitem.tool.disposable.saw.name=Disposable Saw
+metaitem.tool.disposable.saw.tooltip=Disposable Tool for crafting recipes
+metaitem.tool.disposable.hard_hammer.name=Disposable Hard Hammer
+metaitem.tool.disposable.hard_hammer.tooltip=Disposable Tool for crafting recipes
+metaitem.tool.disposable.soft_mallet.name=Disposable Soft mallet
+metaitem.tool.disposable.soft_mallet.tooltip=Disposable Tool for crafting recipes
+metaitem.tool.disposable.wrench.name=Disposable Wrench
+metaitem.tool.disposable.wrench.tooltip=Disposable Tool for crafting recipes
+metaitem.tool.disposable.file.name=Disposable File
+metaitem.tool.disposable.file.tooltip=Disposable Tool for crafting recipes
+metaitem.tool.disposable.crowbar.name=Disposable Crowbar
+metaitem.tool.disposable.crowbar.tooltip=Disposable Tool for crafting recipes
+metaitem.tool.disposable.screwdriver.name=Disposable Screwdriver
+metaitem.tool.disposable.screwdriver.tooltip=Disposable Tool for crafting recipes
+metaitem.tool.disposable.mortar.name=Disposable Mortar
+metaitem.tool.disposable.mortar.tooltip=Disposable Tool for crafting recipes
+metaitem.tool.disposable.wire_cutter.name=Disposable Wire Cutter
+metaitem.tool.disposable.wire_cutter.tooltip=Disposable Tool for crafting recipes
+metaitem.tool.disposable.knife.name=Disposable Knife
+metaitem.tool.disposable.knife.tooltip=Disposable Tool for crafting recipes
+metaitem.tool.disposable.butchery_knife.name=Disposable Butchery Knife
+metaitem.tool.disposable.butchery_knife.tooltip=Disposable Tool for crafting recipes
+metaitem.tool.disposable.rolling_pin.name=Disposable Rolling Pin
+metaitem.tool.disposable.rolling_pin.tooltip=Disposable Tool for crafting recipes
 #  Universal Circuit Boards
 metaitem.general_circuit.ulv.name=Universal Circuit Board (§8ULV§r)
 metaitem.general_circuit.lv.name=Universal Circuit Board (§7LV§r)
@@ -73,26 +124,39 @@ metaitem.large_fluid_cell.chrome.name=%s Chrome Cell
 metaitem.large_fluid_cell.iridium.name=%s Iridium Cell
 metaitem.large_fluid_cell.naquadah_alloy.name=%s Naquadah Alloy Cell
 metaitem.large_fluid_cell.neutronium.name=%s Neutronium Cell
-
-metaitem.endless_spray.empty.name=Endless Spray Can (Empty)
-metaitem.endless_spray.solvent.name=Endless Spray Can (Solvent)
-metaitem.endless_spray.can.dyes.white.name=Endless Spray Can (White)
-metaitem.endless_spray.can.dyes.orange.name=Endless Spray Can (Orange)
-metaitem.endless_spray.can.dyes.magenta.name=Endless Spray Can (Magenta)
-metaitem.endless_spray.can.dyes.light_blue.name=Endless Spray Can (Light Blue)
-metaitem.endless_spray.can.dyes.yellow.name=Endless Spray Can (Yellow)
-metaitem.endless_spray.can.dyes.lime.name=Endless Spray Can (Lime)
-metaitem.endless_spray.can.dyes.pink.name=Endless Spray Can (Pink)
-metaitem.endless_spray.can.dyes.gray.name=Endless Spray Can (Gray)
-metaitem.endless_spray.can.dyes.silver.name=Endless Spray Can (Light Gray)
-metaitem.endless_spray.can.dyes.cyan.name=Endless Spray Can (Cyan)
-metaitem.endless_spray.can.dyes.purple.name=Endless Spray Can (Purple)
-metaitem.endless_spray.can.dyes.blue.name=Endless Spray Can (Blue)
-metaitem.endless_spray.can.dyes.brown.name=Endless Spray Can (Brown)
-metaitem.endless_spray.can.dyes.green.name=Endless Spray Can (Green)
-metaitem.endless_spray.can.dyes.red.name=Endless Spray Can (Red)
-metaitem.endless_spray.can.dyes.black.name=Endless Spray Can (Black)
 #hatch
+gregtech.machine.huge_item_bus.import.ulv.name=ULV Huge Input Bus
+gregtech.machine.huge_item_bus.import.lv.name=LV Huge Input Bus
+gregtech.machine.huge_item_bus.import.mv.name=MV Huge Input Bus
+gregtech.machine.huge_item_bus.import.hv.name=HV Huge Input Bus
+gregtech.machine.huge_item_bus.import.ev.name=EV Huge Input Bus
+gregtech.machine.huge_item_bus.import.iv.name=IV Huge Input Bus
+gregtech.machine.huge_item_bus.import.luv.name=LuV Huge Input Bus
+gregtech.machine.huge_item_bus.import.zpm.name=ZPM Huge Input Bus
+gregtech.machine.huge_item_bus.import.uv.name=UV Huge Input Bus
+gregtech.machine.huge_item_bus.import.uhv.name=UHV Huge Input Bus
+gregtech.machine.huge_item_bus.import.uev.name=UEV Huge Input Bus
+gregtech.machine.huge_item_bus.import.uiv.name=UIV Huge Input Bus
+gregtech.machine.huge_item_bus.import.uxv.name=UXV Huge Input Bus
+gregtech.machine.huge_item_bus.import.opv.name=OpV Huge Input Bus
+gregtech.machine.huge_item_bus.import.max.name=MAX Huge Input Bus
+
+gregtech.machine.huge_item_bus.export.ulv.name=ULV Huge Output Bus
+gregtech.machine.huge_item_bus.export.lv.name=LV Huge Output Bus
+gregtech.machine.huge_item_bus.export.mv.name=MV Huge Output Bus
+gregtech.machine.huge_item_bus.export.hv.name=HV Huge Output Bus
+gregtech.machine.huge_item_bus.export.ev.name=EV Huge Output Bus
+gregtech.machine.huge_item_bus.export.iv.name=IV Huge Output Bus
+gregtech.machine.huge_item_bus.export.luv.name=LuV Huge Output Bus
+gregtech.machine.huge_item_bus.export.zpm.name=ZPM Huge Output Bus
+gregtech.machine.huge_item_bus.export.uv.name=UV Huge Output Bus
+gregtech.machine.huge_item_bus.export.uhv.name=UHV Huge Output Bus
+gregtech.machine.huge_item_bus.export.uev.name=UEV Huge Output Bus
+gregtech.machine.huge_item_bus.export.uiv.name=UIV Huge Output Bus
+gregtech.machine.huge_item_bus.export.uxv.name=UXV Huge Output Bus
+gregtech.machine.huge_item_bus.export.opv.name=OpV Huge Output Bus
+gregtech.machine.huge_item_bus.export.max.name=MAX Huge Output Bus
+
 gregtech.machine.dual_hatch.import.ulv.name=§8ULV§rDual Input Hatch
 gregtech.machine.dual_hatch.import.lv.name=§7LV§rDual Input Hatch
 gregtech.machine.dual_hatch.import.mv.name=§bMV§rDual Input Hatch
@@ -125,6 +189,38 @@ gregtech.machine.dual_hatch.export.uxv.name=§eUXV§rDual Output Hatch
 gregtech.machine.dual_hatch.export.opv.name=§9OpV§rDual Output Hatch
 gregtech.machine.dual_hatch.export.max.name=§c§lMAX§rDual Output Hatch
 
+gregtech.machine.huge_dual_hatch.import.ulv.name=§8ULV§rHuge Dual Input Hatch
+gregtech.machine.huge_dual_hatch.import.lv.name=§7LV§rHuge Dual Input Hatch
+gregtech.machine.huge_dual_hatch.import.mv.name=§bMV§rHuge Dual Input Hatch
+gregtech.machine.huge_dual_hatch.import.hv.name=§6HV§rHuge Dual Input Hatch
+gregtech.machine.huge_dual_hatch.import.ev.name=§5EV§rHuge Dual Input Hatch
+gregtech.machine.huge_dual_hatch.import.iv.name=§1IV§rHuge Dual Input Hatch
+gregtech.machine.huge_dual_hatch.import.luv.name=§dLuV§rHuge Dual Input Hatch
+gregtech.machine.huge_dual_hatch.import.zpm.name=§cZPM§rHuge Dual Input Hatch
+gregtech.machine.huge_dual_hatch.import.uv.name=§3UV§rHuge Dual Input Hatch
+gregtech.machine.huge_dual_hatch.import.uhv.name=§4UHV§rHuge Dual Input Hatch
+gregtech.machine.huge_dual_hatch.import.uev.name=§aUEV§rHuge Dual Input Hatch
+gregtech.machine.huge_dual_hatch.import.uiv.name=§2UIV§rHuge Dual Input Hatch
+gregtech.machine.huge_dual_hatch.import.uxv.name=§eUXV§rHuge Dual Input Hatch
+gregtech.machine.huge_dual_hatch.import.opv.name=§9OpV§rHuge Dual Input Hatch
+gregtech.machine.huge_dual_hatch.import.max.name=§c§lMAX§rHuge Dual Input Hatch
+
+gregtech.machine.huge_dual_hatch.export.ulv.name=§8ULV§rHuge Dual Output Hatch
+gregtech.machine.huge_dual_hatch.export.lv.name=§7LV§rHuge Dual Output Hatch
+gregtech.machine.huge_dual_hatch.export.mv.name=§bMV§rHuge Dual Output Hatch
+gregtech.machine.huge_dual_hatch.export.hv.name=§6HV§rHuge Dual Output Hatch
+gregtech.machine.huge_dual_hatch.export.ev.name=§5EV§rHuge Dual Output Hatch
+gregtech.machine.huge_dual_hatch.export.iv.name=§1IV§rHuge Dual Output Hatch
+gregtech.machine.huge_dual_hatch.export.luv.name=§dLuV§rHuge Dual Output Hatch
+gregtech.machine.huge_dual_hatch.export.zpm.name=§cZPM§rHuge Dual Output Hatch
+gregtech.machine.huge_dual_hatch.export.uv.name=§3UV§rHuge Dual Output Hatch
+gregtech.machine.huge_dual_hatch.export.uhv.name=§4UHV§rHuge Dual Output Hatch
+gregtech.machine.huge_dual_hatch.export.uev.name=§aUEV§r§aUEV§rHuge Dual Output Hatch
+gregtech.machine.huge_dual_hatch.export.uiv.name=§2UIV§rHuge Dual Output Hatch
+gregtech.machine.huge_dual_hatch.export.uxv.name=§eUXV§rHuge Dual Output Hatch
+gregtech.machine.huge_dual_hatch.export.opv.name=§9OpV§rHuge Dual Output Hatch
+gregtech.machine.huge_dual_hatch.export.max.name=§c§lMAX§rHuge Dual Output Hatch
+
 gregtech.machine.me_pattern_provider.ulv.name=§8ULV§rDual Pattern Hatch
 gregtech.machine.me_pattern_provider.lv.name=§7LV§rDual Pattern Hatch
 gregtech.machine.me_pattern_provider.mv.name=§bMV§rDual Pattern Hatch
@@ -140,6 +236,54 @@ gregtech.machine.me_pattern_provider.uiv.name=§2UIV§rDual Pattern Hatch
 gregtech.machine.me_pattern_provider.uxv.name=§eUXV§rDual Pattern Hatch
 gregtech.machine.me_pattern_provider.opv.name=§9OpV§rDual Pattern Hatch
 gregtech.machine.me_pattern_provider.max.name=§c§lMAX§rDual Pattern Hatch
+
+gregtech.machine.huge_me_pattern_provider.ulv.name=§8ULV§rHuge Dual Pattern Hatch
+gregtech.machine.huge_me_pattern_provider.lv.name=§7LV§rHuge Dual Pattern Hatch
+gregtech.machine.huge_me_pattern_provider.mv.name=§bMV§rHuge Dual Pattern Hatch
+gregtech.machine.huge_me_pattern_provider.hv.name=§6HV§rHuge Dual Pattern Hatch
+gregtech.machine.huge_me_pattern_provider.ev.name=§5EV§rHuge Dual Pattern Hatch
+gregtech.machine.huge_me_pattern_provider.iv.name=§1IV§rHuge Dual Pattern Hatch
+gregtech.machine.huge_me_pattern_provider.luv.name=§dLuV§rHuge Dual Pattern Hatch
+gregtech.machine.huge_me_pattern_provider.zpm.name=§cZPM§rHuge Dual Pattern Hatch
+gregtech.machine.huge_me_pattern_provider.uv.name=§3UV§rHuge Dual Pattern Hatch
+gregtech.machine.huge_me_pattern_provider.uhv.name=§4UHV§rHuge Dual Pattern Hatch
+gregtech.machine.huge_me_pattern_provider.uev.name=§aUEV§rHuge Dual Pattern Hatch
+gregtech.machine.huge_me_pattern_provider.uiv.name=§2UIV§rHuge Dual Pattern Hatch
+gregtech.machine.huge_me_pattern_provider.uxv.name=§eUXV§rHuge Dual Pattern Hatch
+gregtech.machine.huge_me_pattern_provider.opv.name=§9OpV§rHuge Dual Pattern Hatch
+gregtech.machine.huge_me_pattern_provider.max.name=§c§lMAX§rHuge Dual Pattern Hatch
+
+gregtech.machine.complex_dual_hatch.ulv.name=§8ULV§rComplex Dual Hatch
+gregtech.machine.complex_dual_hatch.lv.name=§7LV§rComplex Dual Hatch
+gregtech.machine.complex_dual_hatch.mv.name=§bMV§rComplex Dual Hatch
+gregtech.machine.complex_dual_hatch.hv.name=§6HV§rComplex Dual Hatch
+gregtech.machine.complex_dual_hatch.ev.name=§5EV§rComplex Dual Hatch
+gregtech.machine.complex_dual_hatch.iv.name=§1IV§rComplex Dual Hatch
+gregtech.machine.complex_dual_hatch.luv.name=§dLuV§rComplex Dual Hatch
+gregtech.machine.complex_dual_hatch.zpm.name=§cZPM§rComplex Dual Hatch
+gregtech.machine.complex_dual_hatch.uv.name=§3UV§rComplex Dual Hatch
+gregtech.machine.complex_dual_hatch.uhv.name=§4UHV§rComplex Dual Hatch
+gregtech.machine.complex_dual_hatch.uev.name=§aUEV§rComplex Dual Hatch
+gregtech.machine.complex_dual_hatch.uiv.name=§2UIV§rComplex Dual Hatch
+gregtech.machine.complex_dual_hatch.uxv.name=§eUXV§rComplex Dual Hatch
+gregtech.machine.complex_dual_hatch.opv.name=§9OpV§rComplex Dual Hatch
+gregtech.machine.complex_dual_hatch.max.name=§c§lMAX§rComplex Dual Hatch
+
+gregtech.machine.huge_complex_dual_hatch.ulv.name=§8ULV§rHuge Complex Dual Hatch
+gregtech.machine.huge_complex_dual_hatch.lv.name=§7LV§rHuge Complex Dual Hatch
+gregtech.machine.huge_complex_dual_hatch.mv.name=§bMV§rHuge Complex Dual Hatch
+gregtech.machine.huge_complex_dual_hatch.hv.name=§6HV§rHuge Complex Dual Hatch
+gregtech.machine.huge_complex_dual_hatch.ev.name=§5EV§rHuge Complex Dual Hatch
+gregtech.machine.huge_complex_dual_hatch.iv.name=§1IV§rHuge Complex Dual Hatch
+gregtech.machine.huge_complex_dual_hatch.luv.name=§dLuV§rHuge Complex Dual Hatch
+gregtech.machine.huge_complex_dual_hatch.zpm.name=§cZPM§rHuge Complex Dual Hatch
+gregtech.machine.huge_complex_dual_hatch.uv.name=§3UV§rHuge Complex Dual Hatch
+gregtech.machine.huge_complex_dual_hatch.uhv.name=§4UHV§rHuge Complex Dual Hatch
+gregtech.machine.huge_complex_dual_hatch.uev.name=§aUEV§rHuge Complex Dual Hatch
+gregtech.machine.huge_complex_dual_hatch.uiv.name=§2UIV§rHuge Complex Dual Hatch
+gregtech.machine.huge_complex_dual_hatch.uxv.name=§eUXV§rHuge Complex Dual Hatch
+gregtech.machine.huge_complex_dual_hatch.opv.name=§9OpV§rHuge Complex Dual Hatch
+gregtech.machine.huge_complex_dual_hatch.max.name=§c§lMAX§rHuge Complex Dual Hatch
 
 gregtech.machine.thread_hatch.lv.name=Thread Hatch(LV)
 gregtech.machine.thread_hatch.mv.name=Thread Hatch(MV)
@@ -161,6 +305,10 @@ gregtech.machine.thread_hatch.display=Adjust independent core count for multiblo
 
 gregtech.machine.me_dual_hatch.import.name=ME Input Bus
 gregtech.machine.me_dual_hatch.export.name=ME Output Bus
+gregtech.machine.me_pattern_provider_proxy.name=ME Pattern Provider Proxy
+gregtech.machine.huge_me_pattern_provider_proxy.name=Huge ME Pattern Provider Proxy
+
+gregtech.machine.me_ore_dict_bus.name=ME OreDict Input Bus
 
 gregtech.machine.wireless_energy_hatch.tooltip.1=Stores energy in wireless network, capacity up to 2^(2^31) EU.
 gregtech.machine.wireless_energy_hatch.tooltip.2=No cables needed, automatically interacts with network to draw/store energy.
@@ -533,23 +681,49 @@ gregtech.gui.dual_auto_input.tooltip.disabled=Item/Fluid Auto-Input (Disabled)
 gregtech.gui.dual_auto_output.tooltip.enabled=Item/Fluid Auto-Output (Enabled)
 gregtech.gui.dual_auto_output.tooltip.disabled=Item/Fluid Auto-Output (Disabled)
 
+gregtech.gui.complex_dual_auto_io.tooltip.enabled=Item/fluid Auto-Input/Output (Enabled)
+gregtech.gui.complex_dual_auto_io.tooltip.disabled=Item/fluid Auto-Input/Output (Disabled)
+
 gregtech.gui.dual_auto_collapse.tooltip.enabled=Item/Fluid Stack Auto-Collapse (Enabled)
 gregtech.gui.dual_auto_collapse.tooltip.disabled=Item/Fluid Stack Auto-Collapse (Disabled)
 
 # Tooltips
+gregtech.machine.super_item_bus.tooltip=Single Tank Capacity: INT MAX
+
+gregtech.machine.dual_hatch.import.tooltip=Input items and fluids for a multiblock structure
+gregtech.machine.dual_hatch.export.tooltip=Output items and fluids for multiblock structures
+
+gregtech.machine.me.dual_import.tooltip=Draws specified items and fluids from the ME network
+gregtech.machine.me_import_dual_hatch.configs.tooltip=Can mark 16 items and 16 fluids
+
+gregtech.machine.me.dual_export.tooltip=Transfers items and fluids directly into the ME network
+gregtech.machine.me.dual_export.tooltip.2=Can cache unlimited quantities of items and fluids
+
+gregtech.machine.me_bus.ore_dict.tooltip=After entering the regular expression of the term in the text box, you can pull the item of the specified phrase
+
+gregtech.machine.me.data_stick_proxy=Allows the use of a data stick to write directly to the saved wireless access point coordinates
+
+gregtech.machine.complex_dual_hatch.tooltip.1=Input items and fluids for multiblock structures and output items and fluids at the same time
+gregtech.machine.complex_dual_hatch.tooltip.2=If the IO function is enabled, the assembly pull will be performed at odd times, and the assembly push operation will be performed at even times
+
 gregtech.machine.me_pattern.tooltip.1=Built-in pattern provider: Directly orders machines after marking recipes with patterns
 gregtech.machine.me_pattern.tooltip.2=Blocking Mode: Only allows item flows matching cached recipes in bus, blocks other recipe items
 gregtech.machine.me_pattern.tooltip.3=Pattern Optimization: Automatically multiplies patterns according to current thread count, adjusts dynamically with multiblock parallel changes
 gregtech.machine.me_pattern.tooltip.4=Advanced Template Circuit: In Template Reading, if a virtual circuit (without programmable circuits) is read, the value of the current virtual circuit is automatically set to the circuit in the template and the virtual circuit is sent back to the network
 
-gregtech.machine.thread_multiblock.tooltip.1=Supports core expansion via thread hatches for processing different recipe types across batches
-gregtech.machine.thread_multiblock.tooltip.2=Each core has complete independent recipe scheduling system with separate power/overclocking/parallel calculations
-gregtech.machine.thread_multiblock.tooltip.3=Core adjustments only allowed when idle. Excessive threads may cause severe performance impact
-
-gregtech.machine.budget_crib_proxy.tooltip=Shares the inventory of the linked Budget CRIB
-
 gregtech.machine.budget_crib.data_stick_use=Wrote location to data stick
 gregtech.machine.budget_crib.data_stick_name=Budget CRIB Location Data
 gregtech.machine.budget_crib_proxy.data_stick_use=Linked to Budget CRIB at X: %s, Y: %s, Z: %s
+
+# ME Pattern Provider Proxy Tooltips
+gtqt.machine.me_pattern_proxy.tooltip.function=Provides remote item and fluid input proxy for multiblock structures
+gtqt.machine.me_pattern_proxy.tooltip.features=Shares inventory with the main bus, supports one-to-many proxy connections, and direct access to the main bus GUI
+gtqt.machine.me_pattern_proxy.tooltip.usage=Use a data stick to bind by right-clicking the main bus, then apply the binding data by right-clicking the proxy bus. Reform the multiblock to activate the proxy function
+gtqt.machine.me_pattern_proxy.tooltip.requirements=Can only bind to the main bus in the same dimension. Please ensure the corresponding chunks are loaded!
 #item group
 itemGroup.gtqt_programmable=GTQT | Programmable Hatch
+#Villager
+entity.Villager.level_lv=Folk Scientist
+entity.Villager.level_mv=Villager Craftsmen
+entity.Villager.level_hv=Villager Engineer
+

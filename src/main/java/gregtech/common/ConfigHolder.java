@@ -5,8 +5,6 @@ import gregtech.api.GregTechAPI;
 
 import net.minecraftforge.common.config.Config;
 
-import org.jetbrains.annotations.Range;
-
 @Config(modid = GTValues.MODID, name = GTValues.MODID + '/' + GTValues.MODID)
 public class ConfigHolder {
 
@@ -44,25 +42,47 @@ public class ConfigHolder {
     @Config.RequiresMcRestart
     public static WorldGenOptions worldgen = new WorldGenOptions();
 
-    //简单模式
-    @Config.Comment("Config options for Easy Mode")
-    @Config.Name("Easy Mode")
-    public static EasyModeOptions easyMode = new EasyModeOptions();
+    //原版优化 Vanilla Optimize
+    @Config.Comment("Config options for Vanilla Optimize")
+    @Config.Name("Vanilla Optimize")
+    public static VanillaOptimizeOptions vanillaOptimizeOptions = new VanillaOptimizeOptions();
 
-    //专家模式
-    @Config.Comment("Config options for Expert Mode")
-    @Config.Name("Expert Mode")
-    public static ExpertModeOptions expertMode = new ExpertModeOptions();
+    public static class VanillaOptimizeOptions {
 
-    public static class ExpertModeOptions {
-        @Config.Comment({"Whether or not to enable the Expert Mode", })
-        @Config.Name("Expert Mode Enable")
-        public boolean expertModeEnable = false;
+        @Config.Comment({"对蝙蝠进行立即处死", })
+        @Config.Name("特定生物处死优化")
+        public boolean killEntityEnable = false;
+
+        @Config.Comment({"对所有动物进行立即处死", })
+        @Config.Name("动物处死优化")
+        public boolean killAnimalEnable = false;
+
+        @Config.Comment({"对林业的蝴蝶进行立即处死", })
+        @Config.Name("林业蝴蝶处死优化")
+        public boolean killButterflyEnable = false;
+
+        @Config.Comment({"拒绝地形矿物生成", })
+        @Config.Name("拒绝矿物生成")
+        public boolean disableOreGeneration = false;
+
+        @Config.Comment({"禁用生物随机生成", })
+        @Config.Name("禁用生物随机生成")
+        public boolean disableSpawnEnable = false;
+
+        @Config.Comment({"禁用方块随机更新", })
+        @Config.Name("禁用方块随机更新")
+        public boolean disableUpdateEnable = false;
     }
-    public static class EasyModeOptions {
-        @Config.Comment("Whether or not to enable the easy mode, which will open up a way to adjust sensitive values to reduce the difficulty of the game")
-        @Config.Name("Enable Easy Mode")
-        public boolean easyModeEnable = false;
+    //难度模式
+    @Config.Comment("Config options for Difficulty Mode")
+    @Config.Name("Difficulty Mode")
+    public static DifficultyModeOptions difficultyMode = new DifficultyModeOptions();
+
+    public static class DifficultyModeOptions {
+        @Config.Comment({"Whether or not to enable the Expert Mode",
+            "0:简单模式，1:标准模式，2:困难模式"})
+        @Config.Name("Expert Mode Enable")
+        public int difficultyMode = 1;
     }
 
     public static class MachineOptions {
@@ -81,7 +101,7 @@ public class ConfigHolder {
 
         @Config.Comment({ "Whether to enable High-Tier Solar Panels (IV-UV). They will not have recipes.",
                 "Default: false" })
-        public boolean enableHighTierSolars = false;
+        public boolean enableHighTierSolars = true;
 
         @Config.Comment({
                 "Whether to enable World Accelerators, which accelerate ticks for surrounding Tile Entities, Crops, etc.",
@@ -196,8 +216,19 @@ public class ConfigHolder {
         //每次检查的时间间隔（单位tick）
         @Config.Comment({ "The delay between structure checks for machines that require a structure.",
                 "值得注意的是，在原版逻辑中，就是每20tick检测一次，如果你设置为20tick，那么他将什么效果都没有",})
-        @Config.RangeInt(min = 20, max = 200)
+        @Config.RangeInt(min = 20, max = 2000)
         public int delayStructureCheckTick = 100;
+
+        @Config.Comment({ "Specifies whether to enable delayed structure checks for machines that require a structure in the standby state.",
+                "If detected, detection is delayed for multi-party blocks that mark the need for delayed detection.", "If it is not detected, it will be the same as the original",
+                "Default: true",})
+        public boolean delayStructureCheckStandbySwitch = true;
+
+        //待机状态时，检测间隔延长x倍
+        @Config.Comment({ "The delay multiplier for structure checks for machines that require a structure.",
+                "对配方类型多方块待机时的检测间隔，需要设置的比delayStructureCheckTick大，否则你会更卡"})
+        @Config.RangeInt(min = 20, max = 2000)
+        public int delayStructureCheckStandby = 600;
 
         //是否开启抽样多方块成型检测
         @Config.Comment({ "Whether to enable sampling for structure checks for machines that require a structure.",
@@ -209,6 +240,10 @@ public class ConfigHolder {
         "Each failed sampling increases the proportion of the next sampling until the test is completed"})
         @Config.RangeDouble(min = 0.05,max = 1)
         public double delayStructureCheckSample = 0.20;
+
+        //转子仓伤害
+        @Config.Comment({ "The amount of damage a rotor holder can take before it breaks.", "Default: 100" })
+        public boolean enableRotorDamage = true;
     }
 
     public static class WorldGenOptions {
@@ -330,6 +365,12 @@ public class ConfigHolder {
                 "Whether to nerf the output amounts of the first circuit in a set to 1 (from 2) and SoC to 2 (from 4).",
                 "Default: false" })
         public boolean harderCircuitRecipes = false;
+
+        @Config.Comment({ "Allows HotIngot to be cooled by throwing it into water.", "Default: false" })
+        public boolean easyCooling = true;
+
+        @Config.Comment({ "Allows cleaning by water instead of a cauldron.", "Default: false" })
+        public boolean easyCleaning = true;
     }
 
     public static class CompatibilityOptions {
@@ -406,7 +447,7 @@ public class ConfigHolder {
         @Config.Comment({
                 "Setting this to true makes GTCEu ignore error and invalid recipes that would otherwise cause crash.",
                 "Default: true" })
-        public boolean ignoreErrorOrInvalidRecipes = false;
+        public boolean ignoreErrorOrInvalidRecipes = true;
 
         @Config.Comment({ "Whether to enable a login message to players when they join the world.", "Default: true" })
         public boolean loginMessage = true;
@@ -516,6 +557,10 @@ public class ConfigHolder {
 
         @Config.Comment({ "Whether to prefer the Material Tree over other categories in JEI", "Default: false" })
         public boolean preferMaterialTreeInJEI = false;
+
+        //是否运行Quit插件
+        @Config.Comment({ "是否运行Quit插件", "Default: true" })
+        public boolean runQuit = true;
 
         public static class GuiConfig {
 
@@ -766,6 +811,11 @@ public class ConfigHolder {
         @Config.RangeInt(min = 1, max = 100)
         @Config.SlidingOption
         public int magnetDelay = 10;
+
+
+        @Config.Comment({ "The maximum amount of pipes a recursive spray can do at once", "Default: 128 blocks" })
+        @Config.RangeInt(min = 1, max = 1024)
+        public int maxRecursiveSprayLength = 128;
     }
 
     public static class ArmorHud {

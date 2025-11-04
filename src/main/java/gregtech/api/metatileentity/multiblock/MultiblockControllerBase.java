@@ -41,6 +41,7 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.fml.relauncher.Side;
@@ -52,6 +53,7 @@ import codechicken.lib.render.pipeline.ColourMultiplier;
 import codechicken.lib.render.pipeline.IVertexOperation;
 import codechicken.lib.vec.Matrix4;
 import codechicken.lib.vec.Rotation;
+import lombok.Getter;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.ApiStatus;
@@ -84,7 +86,10 @@ public abstract class MultiblockControllerBase extends MetaTileEntity implements
     public BlockPattern structurePattern;
     protected EnumFacing upwardsFacing = EnumFacing.NORTH;
     protected boolean isFlipped;
+    @Getter
     private boolean structureFormed;
+
+    private int structureTier = 0;
 
     public MultiblockControllerBase(ResourceLocation metaTileEntityId) {
         super(metaTileEntityId);
@@ -203,16 +208,31 @@ public abstract class MultiblockControllerBase extends MetaTileEntity implements
     public void update() {
         super.update();
         if (!getWorld().isRemote) {
-            if (shouldDelayCheck() && ConfigHolder.machines.delayStructureCheckSwitch &&
-                    getOffsetTimer() % ConfigHolder.machines.delayStructureCheckTick == 0 || isFirstTick()) {
-                checkStructurePattern();
-            } else if (getOffsetTimer() % 20 == 0 || isFirstTick()) {
-                checkStructurePattern();
-            }
+            doStructureCheck();
             // DummyWorld is the world for the JEI preview. We do not want to update the Multi in this world,
             // besides initially forming it in checkStructurePattern
             if (isStructureFormed() && !(getWorld() instanceof DummyWorld)) {
                 updateFormedValid();
+            }
+        }
+    }
+
+    public void doStructureCheck() {
+        // 如果是首次tick，直接进行检测
+        if (isFirstTick()) {
+            checkStructurePattern();
+            return;
+        }
+        // 检查是否启用延迟检测
+        if (ConfigHolder.machines.delayStructureCheckSwitch && shouldDelayCheck()) {
+            // 延迟检测模式：使用配置的检测间隔
+            if (getOffsetTimer() % ConfigHolder.machines.delayStructureCheckTick == 0) {
+                checkStructurePattern();
+            }
+        } else {
+            // 正常检测模式：每20tick检测一次
+            if (getOffsetTimer() % 20 == 0) {
+                checkStructurePattern();
             }
         }
     }
@@ -433,6 +453,32 @@ public abstract class MultiblockControllerBase extends MetaTileEntity implements
         return Collections.unmodifiableList(multiblockParts);
     }
 
+    /**
+     * Grabs the current tier of the multi(whether in DummyWorld or Server) useful for whatever you want
+     */
+    public int getStructureTier() {
+        return this.structureTier;
+    }
+
+    /**
+     * sets the tier of the multi clamped between 1 and maxTier()
+     */
+    public void setStructureTier(int structureTier) {
+        if (this.structureTier != structureTier) {
+            this.structureTier = MathHelper.clamp(structureTier, 0, getMaxStructureTier());
+            if (getWorld() != null && !getWorld().isRemote) {
+                reinitializeStructurePattern();
+            }
+        }
+    }
+
+    /**
+     * Override if you are using the multiblock tiered system max tier of 0 means tiering is disabled
+     */
+    public int getMaxStructureTier() {
+        return 0;
+    }
+
     @Override
     public void readFromNBT(NBTTagCompound data) {
         super.readFromNBT(data);
@@ -442,6 +488,7 @@ public abstract class MultiblockControllerBase extends MetaTileEntity implements
         if (data.hasKey("IsFlipped")) {
             this.isFlipped = data.getBoolean("IsFlipped");
         }
+        structureTier = data.getInteger("structureTier");
         this.reinitializeStructurePattern();
     }
 
@@ -450,6 +497,7 @@ public abstract class MultiblockControllerBase extends MetaTileEntity implements
         super.writeToNBT(data);
         data.setByte("UpwardsFacing", (byte) upwardsFacing.getIndex());
         data.setBoolean("IsFlipped", isFlipped);
+        data.setInteger("structureTier", structureTier);
         return data;
     }
 
@@ -494,10 +542,6 @@ public abstract class MultiblockControllerBase extends MetaTileEntity implements
             return GregtechCapabilities.CAPABILITY_MULTIBLOCK_CONTROLLER.cast(this);
         }
         return null;
-    }
-
-    public boolean isStructureFormed() {
-        return structureFormed;
     }
 
     @Override

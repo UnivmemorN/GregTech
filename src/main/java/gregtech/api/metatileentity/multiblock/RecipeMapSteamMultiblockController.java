@@ -16,7 +16,6 @@ import gregtech.api.pattern.TraceabilityPredicate;
 import gregtech.api.recipes.Recipe;
 import gregtech.api.recipes.RecipeMap;
 import gregtech.api.util.KeyUtil;
-import gregtech.client.utils.TooltipHelper;
 import gregtech.common.ConfigHolder;
 
 import net.minecraft.client.resources.I18n;
@@ -26,44 +25,80 @@ import net.minecraft.util.SoundEvent;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.World;
 import net.minecraftforge.fluids.IFluidTank;
+import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
 
 import codechicken.lib.render.CCRenderState;
 import codechicken.lib.render.pipeline.IVertexOperation;
 import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.drawable.IKey;
+import gtqt.api.util.GTQTUtility;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 
-public abstract class RecipeMapSteamMultiblockController extends MultiblockWithDisplayBase implements IControllable {
+public abstract class RecipeMapSteamMultiblockController extends MultiblockWithDisplayBase implements IControllable,
+                                                                                                      IDistinctBusController {
 
     protected static final double CONVERSION_RATE = ConfigHolder.machines.multiblockSteamToEU;
 
     public final RecipeMap<?> recipeMap;
     protected SteamMultiWorkable recipeMapWorkable;
-    ParallelLogicType type;
     protected IItemHandlerModifiable inputInventory;
     protected IItemHandlerModifiable outputInventory;
     protected IMultipleTankHandler steamFluidTank;
+    protected IMultipleTankHandler inputFluidInventory;
+    protected IMultipleTankHandler outputFluidInventory;
+    ParallelLogicType type;
+    private boolean isDistinct = false;
 
     public RecipeMapSteamMultiblockController(ResourceLocation metaTileEntityId, RecipeMap<?> recipeMap,
-                                              double conversionRate,ParallelLogicType type) {
+                                              double conversionRate, ParallelLogicType type) {
         super(metaTileEntityId);
         this.recipeMap = recipeMap;
-        this.recipeMapWorkable = new SteamMultiWorkable(this, conversionRate ,type);
+        this.recipeMapWorkable = new SteamMultiWorkable(this, conversionRate, type);
         resetTileAbilities();
+    }
+
+    @Override
+    public boolean canBeDistinct() {
+        return false;
+    }
+
+    @Override
+    public boolean isDistinct() {
+        return isDistinct;
+    }
+
+    @Override
+    public void setDistinct(boolean isDistinct) {
+        this.isDistinct = isDistinct;
+        recipeMapWorkable.onDistinctChanged();
+        getMultiblockParts().forEach(part -> part.onDistinctChange(isDistinct));
+        // mark buses as changed on distinct toggle
+        if (this.isDistinct) {
+            this.notifiedItemInputList
+                    .addAll(this.getAbilities(MultiblockAbility.IMPORT_ITEMS));
+            this.notifiedItemInputList
+                    .addAll(this.getAbilities(MultiblockAbility.DUAL_IMPORT));
+            this.notifiedItemInputList
+                    .addAll(this.getAbilities(MultiblockAbility.COMPLEX_DUAL));
+        } else {
+            this.notifiedItemInputList.add(this.inputInventory);
+        }
     }
 
     @Override
     public void addInformation(ItemStack stack, @Nullable World player, @NotNull List<String> tooltip,
                                boolean advanced) {
         super.addInformation(stack, player, tooltip, advanced);
-        if(type==ParallelLogicType.APPEND_ITEMS)tooltip.add(I18n.format("多方块并行模式：配方并发（允许同时运行多个配方，但是输入物品仅限一个）"));
-        if(type==ParallelLogicType.MULTIPLY)tooltip.add(I18n.format("多方块并行模式：单配方并行（只允许同时运行一个配方）"));
+        if (type == ParallelLogicType.APPEND_ITEMS)
+            tooltip.add(I18n.format("多方块并行模式：配方并发（允许同时运行多个配方，但是输入物品仅限一个）"));
+        if (type == ParallelLogicType.MULTIPLY)
+            tooltip.add(I18n.format("多方块并行模式：单配方并行（只允许同时运行一个配方）"));
     }
-
 
     public IItemHandlerModifiable getInputInventory() {
         return inputInventory;
@@ -77,9 +112,12 @@ public abstract class RecipeMapSteamMultiblockController extends MultiblockWithD
         return steamFluidTank;
     }
 
+    public IMultipleTankHandler getInputFluidInventory() {return inputFluidInventory;}
+
+    public IMultipleTankHandler getOutputFluidInventory() {return outputFluidInventory;}
+
     /**
-     * Performs extra checks for validity of given recipe before multiblock
-     * will start it's processing.
+     * Performs extra checks for validity of given recipe before multiblock will start it's processing.
      */
     public boolean checkRecipe(Recipe recipe, boolean consumeIfProcess) {
         return true;
@@ -102,15 +140,29 @@ public abstract class RecipeMapSteamMultiblockController extends MultiblockWithD
         recipeMapWorkable.update();
     }
 
-    private void initializeAbilities() {
-        this.inputInventory = new ItemHandlerList(getAbilities(MultiblockAbility.STEAM_IMPORT_ITEMS));
-        this.outputInventory = new ItemHandlerList(getAbilities(MultiblockAbility.STEAM_EXPORT_ITEMS));
+    protected void initializeAbilities() {
         this.steamFluidTank = new FluidTankList(true, getAbilities(MultiblockAbility.STEAM));
+
+        List<IItemHandler> inputItems = new ArrayList<>(getAbilities(MultiblockAbility.STEAM_IMPORT_ITEMS));
+        this.inputInventory = new ItemHandlerList(inputItems);
+
+        List<IMultipleTankHandler> inputFluids = new ArrayList<>();
+        inputFluids.add(new FluidTankList(true, getAbilities(MultiblockAbility.STEAM_IMPORT_FLUID)));
+        this.inputFluidInventory = GTQTUtility.mergeTankHandlers(inputFluids, true);
+
+        List<IItemHandler> outputItems = new ArrayList<>(getAbilities(MultiblockAbility.STEAM_EXPORT_ITEMS));
+        this.outputInventory = new ItemHandlerList(outputItems);
+
+        List<IMultipleTankHandler> outputFluids = new ArrayList<>();
+        outputFluids.add(new FluidTankList(false, getAbilities(MultiblockAbility.STEAM_EXPORT_FLUID)));
+        this.outputFluidInventory = GTQTUtility.mergeTankHandlers(outputFluids, false);
     }
 
     private void resetTileAbilities() {
         this.inputInventory = new GTItemStackHandler(this, 0);
+        this.inputFluidInventory = new FluidTankList(true);
         this.outputInventory = new GTItemStackHandler(this, 0);
+        this.outputFluidInventory = new FluidTankList(true);
         this.steamFluidTank = new FluidTankList(true);
     }
 
@@ -155,13 +207,15 @@ public abstract class RecipeMapSteamMultiblockController extends MultiblockWithD
 
     @Override
     public TraceabilityPredicate autoAbilities() {
-        return autoAbilities(true, true, true, true, true);
+        return autoAbilities(true, true, true, true, true, true, true);
     }
 
     public TraceabilityPredicate autoAbilities(boolean checkSteam,
                                                boolean checkMaintainer,
                                                boolean checkItemIn,
                                                boolean checkItemOut,
+                                               boolean checkFluidIn,
+                                               boolean checkFluidOut,
                                                boolean checkMuffler) {
         TraceabilityPredicate predicate = super.autoAbilities(checkMaintainer, checkMuffler)
                 .or(checkSteam ? abilities(MultiblockAbility.STEAM).setMinGlobalLimited(1).setPreviewCount(1) :
@@ -174,6 +228,16 @@ public abstract class RecipeMapSteamMultiblockController extends MultiblockWithD
         if (checkItemOut) {
             if (recipeMap.getMaxOutputs() > 0) {
                 predicate = predicate.or(abilities(MultiblockAbility.STEAM_EXPORT_ITEMS).setPreviewCount(1));
+            }
+        }
+        if (checkFluidIn) {
+            if (recipeMap.getMaxFluidInputs() > 0) {
+                predicate = predicate.or(abilities(MultiblockAbility.STEAM_IMPORT_FLUID).setPreviewCount(1));
+            }
+        }
+        if (checkFluidOut) {
+            if (recipeMap.getMaxFluidOutputs() > 0) {
+                predicate = predicate.or(abilities(MultiblockAbility.STEAM_EXPORT_FLUID).setPreviewCount(1));
             }
         }
         return predicate;

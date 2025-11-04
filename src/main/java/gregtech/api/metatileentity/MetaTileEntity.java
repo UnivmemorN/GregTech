@@ -41,16 +41,19 @@ import gregtech.common.creativetab.GTCreativeTabs;
 import gregtech.common.items.MetaItems;
 
 import net.minecraft.block.Block;
+import net.minecraft.block.SoundType;
 import net.minecraft.block.state.BlockFaceShape;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.creativetab.CreativeTabs;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
+import net.minecraft.item.EnumDyeColor;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
@@ -101,7 +104,6 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArraySet;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -921,6 +923,13 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     }
 
     /**
+     * @return The sound type used when this block is broken, placed, stepped on, hit, or fallen on.
+     */
+    @NotNull
+    public SoundType getSoundType() {
+        return SoundType.METAL;
+    }
+    /**
      * Add special drops which this meta tile entity contains here
      * Meta tile entity item is ALREADY added into this list
      * Do NOT add inventory contents in this list - it will be dropped automatically when breakBlock is called
@@ -1050,7 +1059,7 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     @Override
     public void receiveCustomData(int dataId, @NotNull PacketBuffer buf) {
         if (dataId == UPDATE_FRONT_FACING) {
-            this.frontFacing = EnumFacing.VALUES[buf.readByte()];
+            setFrontFacing(EnumFacing.byIndex(buf.readByte()));
             scheduleRenderUpdate();
         } else if (dataId == UPDATE_PAINTING_COLOR) {
             this.paintingColor = buf.readInt();
@@ -1272,6 +1281,14 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     }
 
     public void setPaintingColor(int paintingColor) {
+        setPaintingColor(paintingColor, null);
+    }
+
+    public void setPaintingColor(@Nullable EnumDyeColor color, @Nullable EnumFacing side) {
+        setPaintingColor(color == null ? -1 : color.colorValue, side);
+    }
+
+    public void setPaintingColor(int paintingColor, @Nullable EnumFacing side) {
         this.paintingColor = paintingColor;
         if (getWorld() != null && !getWorld().isRemote) {
             notifyBlockUpdate();
@@ -1508,7 +1525,11 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     public UUID getOwnerGT() {
         return owner;
     }
-
+    public boolean canBeModifiedBy(@NotNull Entity entity) {
+        UUID owner = getOwnerGT();
+        if (owner == null) return true;
+        return owner.equals(entity.getUniqueID());
+    }
     public final void toggleMuffled() {
         muffled = !muffled;
         if (!getWorld().isRemote) {

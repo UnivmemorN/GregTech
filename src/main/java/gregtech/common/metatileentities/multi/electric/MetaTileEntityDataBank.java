@@ -42,6 +42,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
+import static gregtech.api.util.RelativeDirection.*;
+
 public class MetaTileEntityDataBank extends MultiblockWithDisplayBase implements IControllable {
 
     private static final int EUT_PER_HATCH = GTValues.VA[GTValues.EV];
@@ -91,6 +93,11 @@ public class MetaTileEntityDataBank extends MultiblockWithDisplayBase implements
 
     @Override
     protected void updateFormedValid() {
+        if (!this.isWorkingEnabled) {
+            this.hasNotEnoughEnergy = false;
+            setActive(false);
+            return;
+        }
         int energyToConsume = this.getEnergyUsage();
         boolean hasMaintenance = ConfigHolder.machines.enableMaintenance && hasMaintenanceMechanics();
         if (hasMaintenance) {
@@ -156,24 +163,25 @@ public class MetaTileEntityDataBank extends MultiblockWithDisplayBase implements
     @NotNull
     @Override
     protected BlockPattern createStructurePattern() {
-        return FactoryBlockPattern.start()
-                .aisle("XDDDX", "XDDDX", "XDDDX")
-                .aisle("XDDDX", "XAAAX", "XDDDX")
-                .aisle("XCCCX", "XCSCX", "XCCCX")
+        FactoryBlockPattern pattern = FactoryBlockPattern.start(FRONT, UP, RIGHT)
+                .aisle("XXX", "XXX", "XXX")
+                .aisle("CDD", "CAD", "CDD").setRepeatable(1, 3)
+                .aisle("CDD", "SAD", "CDD")
+                .aisle("CDD", "CAD", "CDD").setRepeatable(1, 3)
+                .aisle("XXX", "XXX", "XXX")
                 .where('S', selfPredicate())
                 .where('X', states(getOuterState()))
                 .where('D', states(getInnerState()).setMinGlobalLimited(3)
                         .or(abilities(MultiblockAbility.DATA_ACCESS_HATCH).setPreviewCount(3))
-                        .or(abilities(MultiblockAbility.OPTICAL_DATA_TRANSMISSION)
-                                .setMinGlobalLimited(1, 1))
+                        .or(abilities(MultiblockAbility.OPTICAL_DATA_TRANSMISSION).setMinGlobalLimited(1, 1))
                         .or(abilities(MultiblockAbility.OPTICAL_DATA_RECEPTION).setPreviewCount(1)))
                 .where('A', states(getInnerState()))
                 .where('C', states(getFrontState())
                         .setMinGlobalLimited(4)
                         .or(autoAbilities())
                         .or(abilities(MultiblockAbility.INPUT_ENERGY)
-                                .setMinGlobalLimited(1).setMaxGlobalLimited(2).setPreviewCount(1)))
-                .build();
+                                .setMinGlobalLimited(1).setMaxGlobalLimited(2).setPreviewCount(1)));
+        return pattern.build();
     }
 
     @NotNull
@@ -250,12 +258,14 @@ public class MetaTileEntityDataBank extends MultiblockWithDisplayBase implements
 
     @Override
     protected void configureDisplayText(MultiblockUIBuilder builder) {
-        builder.setWorkingStatus(true, isActive() && isWorkingEnabled()) // transform into two-state system for display
+        builder.setWorkingStatus(isWorkingEnabled(), isActive())
                 .setWorkingStatusKeys("gregtech.multiblock.idling",
                         "gregtech.multiblock.idling",
                         "gregtech.multiblock.data_bank.providing")
-                .addEnergyUsageExactLine(getEnergyUsage())
                 .addWorkingStatusLine();
+
+        if(isWorkingEnabled() && isActive())
+            builder.addEnergyUsageExactLine(getEnergyUsage());
     }
 
     @Override

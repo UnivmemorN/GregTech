@@ -189,22 +189,25 @@ public class Recipe {
         Pair<Boolean, int[]> fluids = null;
         Pair<Boolean, int[]> items = null;
 
-        if (!fluidInputs.getFluidTanks().isEmpty()) {
+        // Handle fluid inputs only if the recipe has fluid inputs
+        if (!getFluidInputs().isEmpty()) {
+            if (fluidInputs == null || fluidInputs.getFluidTanks().isEmpty()) {
+                return false;
+            }
             fluids = matchesFluid(GTUtility.fluidHandlerToList(fluidInputs));
             if (!fluids.getKey()) {
                 return false;
             }
         }
 
-        if (inputs != null && inputs.getSlots() > 0) {
-            List<ItemStack> itemList = GTUtility.itemHandlerToList(inputs);
-            if (itemList != null) {
-                items = matchesItems(itemList);
-                if (!items.getKey()) {
-                    return false;
-                }
-            } else {
-                return false; // 或者根据业务逻辑处理
+        // Handle item inputs only if the recipe has item inputs
+        if (!getInputs().isEmpty()) {
+            if (inputs == null || inputs.getSlots() == 0) {
+                return false;
+            }
+            items = matchesItems(GTUtility.itemHandlerToList(inputs));
+            if (!items.getKey()) {
+                return false;
             }
         }
 

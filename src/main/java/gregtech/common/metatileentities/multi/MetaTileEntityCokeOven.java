@@ -9,6 +9,8 @@ import gregtech.api.metatileentity.multiblock.RecipeMapPrimitiveMultiblockContro
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIFactory;
 import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuiTheme;
+import gregtech.api.mui.factory.MetaTileEntityGuiFactory;
+import gregtech.api.mui.widget.RecipeProgressWidget;
 import gregtech.api.pattern.BlockPattern;
 import gregtech.api.pattern.FactoryBlockPattern;
 import gregtech.api.recipes.RecipeMaps;
@@ -21,6 +23,7 @@ import gregtech.common.blocks.MetaBlocks;
 import gregtech.common.metatileentities.MetaTileEntities;
 import gregtech.common.mui.widget.GTFluidSlot;
 
+import net.minecraft.block.SoundType;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -111,11 +114,13 @@ public class MetaTileEntityCokeOven extends RecipeMapPrimitiveMultiblockControll
                                     .slot(new ModularSlot(importItems, 0)
                                             .singletonSlotGroup())
                                     .pos(52, 30))
-                            .child(new ProgressWidget()
-                                    .texture(GTGuiTextures.PRIMITIVE_BLAST_FURNACE_PROGRESS_BAR, -1)
+                            .child(new RecipeProgressWidget()
+                                    .recipeMap(this.recipeMapWorkable.recipeMap)
                                     .size(20, 15)
                                     .pos(76, 32)
-                                    .value(new DoubleSyncValue(recipeMapWorkable::getProgressPercent)))
+                                    .value(new DoubleSyncValue(recipeMapWorkable::getProgressPercent))
+                                    .texture(GTGuiTextures.PRIMITIVE_BLAST_FURNACE_PROGRESS_BAR, -1)
+                                    .direction(ProgressWidget.Direction.RIGHT))
                             .child(new ItemSlot()
                                     .slot(new ModularSlot(exportItems, 0)
                                             .accessibility(false, true))
@@ -161,12 +166,20 @@ public class MetaTileEntityCokeOven extends RecipeMapPrimitiveMultiblockControll
                 return getWorld().isRemote || FluidUtil.interactWithFluidHandler(playerIn, hand, getFluidInventory());
             } else {
                 // allow opening UI on shift-right-click with fluid container item
-                if (getWorld() != null && !getWorld().isRemote) {
+                if (usesMui2()) {
+                    MetaTileEntityGuiFactory.open(playerIn, this);
+                } else {
                     MetaTileEntityUIFactory.INSTANCE.openUI(getHolder(), (EntityPlayerMP) playerIn);
                 }
                 return true;
             }
         }
         return super.onRightClick(playerIn, hand, facing, hitResult);
+    }
+
+    @NotNull
+    @Override
+    public SoundType getSoundType() {
+        return SoundType.STONE;
     }
 }

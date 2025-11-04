@@ -4,6 +4,8 @@ import gregtech.api.capability.IControllable;
 import gregtech.common.ConfigHolder;
 import gregtech.common.metatileentities.multi.multiblockpart.MetaTileEntityMultiblockNotifiablePart;
 
+import lombok.Getter;
+
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -41,6 +43,7 @@ public abstract class MetaTileEntityAEHostablePart<T extends IAEStack<T>> extend
         implements IControllable {
 
     private final Class<? extends IStorageChannel<T>> storageChannel;
+    @Getter
     protected boolean isOnline;
     protected boolean meStatusChanged = false;
     private AENetworkProxy aeProxy;
@@ -56,15 +59,19 @@ public abstract class MetaTileEntityAEHostablePart<T extends IAEStack<T>> extend
     }
 
     @Override
+    public void onRemoval() {
+        super.onRemoval();
+        if (this.aeProxy != null) {
+            this.aeProxy.invalidate();
+        }
+    }
+
+    @Override
     public void update() {
         super.update();
         if (!this.getWorld().isRemote) {
             this.meUpdateTick++;
         }
-    }
-
-    public boolean isOnline() {
-        return isOnline;
     }
 
     /**
@@ -174,7 +181,7 @@ public abstract class MetaTileEntityAEHostablePart<T extends IAEStack<T>> extend
         return this.meUpdateTick % ConfigHolder.compat.ae2.updateIntervals == 0;
     }
 
-    protected IActionSource getActionSource() {
+    public IActionSource getActionSource() {
         if (this.getHolder() instanceof IActionHost holder) {
             return new MachineSource(holder);
         }
@@ -199,7 +206,7 @@ public abstract class MetaTileEntityAEHostablePart<T extends IAEStack<T>> extend
     }
 
     @Nullable
-    protected IMEMonitor<T> getMonitor() {
+    public IMEMonitor<T> getMonitor() {
         AENetworkProxy proxy = getProxy();
         if (proxy == null) return null;
 
@@ -249,4 +256,5 @@ public abstract class MetaTileEntityAEHostablePart<T extends IAEStack<T>> extend
         super.readFromNBT(data);
         this.allowExtraConnections = data.getBoolean("AllowExtraConnections");
     }
+
 }

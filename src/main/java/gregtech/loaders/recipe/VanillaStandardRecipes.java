@@ -271,8 +271,9 @@ public class VanillaStandardRecipes {
                 Items.WHEAT);
         ModHandler.addShapelessRecipe("gravel_to_flint", new ItemStack(Items.FLINT), 'm', Blocks.GRAVEL);
         ModHandler.addShapelessRecipe("bone_to_bone_meal", new ItemStack(Items.DYE, 4, 15), 'm', Items.BONE);
-        ModHandler.addShapelessRecipe("blaze_rod_to_powder", new ItemStack(Items.BLAZE_POWDER, 3), 'm',
-                Items.BLAZE_ROD);
+
+        ModHandler.addShapelessRecipe("blaze_rod_to_powder", OreDictUnifier.get(dustSmall, Blaze), 'm', Items.BLAZE_ROD);
+        ModHandler.removeRecipeByName("minecraft:blaze_powder");
 
         RecipeMaps.MACERATOR_RECIPES.recipeBuilder()
                 .inputs(new ItemStack(Items.DYE, 1, EnumDyeColor.BROWN.getDyeDamage()))
@@ -980,12 +981,6 @@ public class VanillaStandardRecipes {
         ModHandler.addSmeltingRecipe(new ItemStack(Items.SLIME_BALL), STICKY_RESIN.getStackForm(), 0.3f);
 
         ASSEMBLER_RECIPES.recipeBuilder()
-                .inputs(new ItemStack(Items.STRING, 4))
-                .circuitMeta(4)
-                .outputs(new ItemStack(Blocks.WOOL, 1, 0))
-                .duration(100).EUt(4).buildAndRegister();
-
-        ASSEMBLER_RECIPES.recipeBuilder()
                 .input(cobblestone.name(), 1)
                 .inputs(new ItemStack(Blocks.VINE))
                 .outputs(new ItemStack(Blocks.MOSSY_COBBLESTONE))
@@ -1254,7 +1249,7 @@ public class VanillaStandardRecipes {
                 .duration(50).EUt(VA[HV]).buildAndRegister();
 
         COMPRESSOR_RECIPES.recipeBuilder()
-                .input(dust, Blaze, 4)
+                .input(dust, Blaze, 5)
                 .output(stick, Blaze)
                 .buildAndRegister();
 

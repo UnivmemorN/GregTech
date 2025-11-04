@@ -325,7 +325,7 @@ public class MixerRecipes {
                 .input(dust, Nickel)
                 .input(dust, Zinc)
                 .input(dust, Iron, 4)
-                .circuitMeta(2)
+                .circuitMeta(6)
                 .output(dust, FerriteMixture, 6)
                 .buildAndRegister();
 
@@ -442,7 +442,7 @@ public class MixerRecipes {
                 .output(dust, HSSE, 9)
                 .buildAndRegister();
 
-        MIXER_RECIPES.recipeBuilder().duration(200).EUt(VA[IV])
+        MIXER_RECIPES.recipeBuilder().duration(200).EUt(VA[EV])
                 .input(dust, Niobium)
                 .input(dust, Titanium)
                 .circuitMeta(1)
@@ -576,7 +576,7 @@ public class MixerRecipes {
                 .input(dust, Titanium)
                 .input(dust, Copper, 7)
                 .fluidInputs(Oxygen.getFluid(14000))
-                .circuitMeta(4)
+                .circuitMeta(6)
                 .output(dust, IndiumTinBariumTitaniumCuprate, 16)
                 .buildAndRegister();
 
@@ -613,6 +613,20 @@ public class MixerRecipes {
                 .input(dust, Molybdenum)
                 .circuitMeta(1)
                 .output(dust, RTMAlloy, 7)
+                .buildAndRegister();
+
+        MIXER_RECIPES.recipeBuilder().duration(800).EUt(VA[IV])
+                .input(dust, Cadmium, 4)
+                .input(dust, Antimony, 3)
+                .input(dust, Indium)
+                .output(dust, HighGradeSolderingAlloy, 8)
+                .buildAndRegister();
+
+
+        MIXER_RECIPES.recipeBuilder().duration(350).EUt(VA[IV])
+                .input(dust, Antimony, 2)
+                .input(dust, Tellurium, 3)
+                .output(dust, AntimonyTelluride, 5)
                 .buildAndRegister();
 
         MIXER_RECIPES.recipeBuilder().duration(600).EUt(VA[EV])

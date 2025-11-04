@@ -21,6 +21,7 @@ import gregtech.api.pattern.BlockPattern;
 import gregtech.api.pattern.FactoryBlockPattern;
 import gregtech.api.pattern.PatternMatchContext;
 import gregtech.api.util.KeyUtil;
+import gregtech.api.util.TextFormattingUtil;
 import gregtech.client.renderer.ICubeRenderer;
 import gregtech.client.utils.TooltipHelper;
 import gregtech.core.sound.GTSoundEvents;
@@ -237,7 +238,7 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
                         .child(new SliderWidget()
                                 .background(new Rectangle().setColor(Color.BLACK.brighter(2)).asIcon()
                                         .height(8))
-                                .bounds(0, 1)
+                                .bounds(0.2, 1)
                                 .setAxis(GuiAxis.X)
                                 .value(sliderValue)
                                 .widthRel(0.7f)
@@ -255,7 +256,7 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
 
                                     try {
                                         long l = Long.parseLong(str);
-                                        if (l < 0) l = 0;
+                                        if (l < 20) l = 20;
                                         else if (l > 100) l = 100;
                                         return String.valueOf(l);
                                     } catch (NumberFormatException ignored) {
@@ -267,7 +268,7 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
     }
 
     private void setThrottlePercentage(int amount) {
-        this.throttlePercentage = amount;
+        this.throttlePercentage = Math.max(20, Math.min(amount, 100));
     }
 
     private int getThrottlePercentage() {
@@ -288,10 +289,10 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
                 .where('S', selfPredicate())
                 .where('P', states(boilerType.pipeState))
                 .where('X', states(boilerType.fireboxState).setMinGlobalLimited(4)
-                        .or(abilities(MultiblockAbility.IMPORT_FLUIDS).setMinGlobalLimited(1).setMaxGlobalLimited(3).setPreviewCount(1))
-                        .or(abilities(MultiblockAbility.IMPORT_ITEMS).setMaxGlobalLimited(1).setPreviewCount(1))
-                        .or(abilities(MultiblockAbility.MUFFLER_HATCH).setExactLimit(1))
-                        .or(abilities(MultiblockAbility.MAINTENANCE_HATCH).setExactLimit(1)))
+                        .or(abilities(MultiblockAbility.IMPORT_FLUIDS).setMinGlobalLimited(1, 1))
+                        // setting this to max 2 makes the import fluids max 2 for some reason
+                        .or(abilities(MultiblockAbility.IMPORT_ITEMS).setMaxGlobalLimited(2, 1))
+                        .or(autoAbilities())) // muffler, maintenance
                 .where('C', states(boilerType.casingState).setMinGlobalLimited(20)
                         .or(abilities(MultiblockAbility.EXPORT_FLUIDS).setMinGlobalLimited(1)))
                 .build();
@@ -307,7 +308,8 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
                                boolean advanced) {
         super.addInformation(stack, player, tooltip, advanced);
         tooltip.add(I18n.format("gregtech.multiblock.large_boiler.rate_tooltip",
-                (int) (boilerType.steamPerTick() * 20 * boilerType.runtimeBoost(20) / 20.0)));
+                TextFormattingUtil
+                        .formatNumbers((int) (boilerType.steamPerTick() * 20 * boilerType.runtimeBoost(200) / 20.0))));
         tooltip.add(
                 I18n.format("gregtech.multiblock.large_boiler.heat_time_tooltip", boilerType.getTicksToBoiling() / 20));
         tooltip.add(I18n.format("gregtech.universal.tooltip.base_production_fluid", boilerType.steamPerTick()));

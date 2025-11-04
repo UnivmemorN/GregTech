@@ -57,7 +57,7 @@ public class SurfaceRockPopulator implements VeinChunkPopulator {
                 }
             } else {
                 ItemStack itemStack = new ItemStack(blockState.getBlock(), 1,
-                        blockState.getBlock().damageDropped(blockState));
+                        blockState.getBlock().getMetaFromState(blockState));
                 UnificationEntry entry = OreDictUnifier.getUnificationEntry(itemStack);
                 if (entry != null && entry.material != null && entry.material.hasProperty(PropertyKey.ORE)) {
                     return true;
@@ -99,8 +99,8 @@ public class SurfaceRockPopulator implements VeinChunkPopulator {
             int baseZ = chunkZ * 16 + 8;
 
             for (int i = 0; i < stonesCount; i++) {
-                int randomX = baseX + random.nextInt(8);
-                int randomZ = baseZ + random.nextInt(8);
+                int randomX = baseX + random.nextInt(16);
+                int randomZ = baseZ + random.nextInt(16);
 
                 generateSurfaceRock(world, new BlockPos(randomX, 0, randomZ));
 

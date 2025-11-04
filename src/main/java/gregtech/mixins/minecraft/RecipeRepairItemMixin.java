@@ -24,6 +24,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 @Mixin(RecipeRepairItem.class)
@@ -64,7 +65,7 @@ public class RecipeRepairItemMixin {
         IGTTool second = (IGTTool) stack2.getItem();
 
         // must be same material
-        if (first.getToolMaterial(stack1) != second.getToolMaterial(stack2))
+        if (!Objects.equals(first.getToolMaterial(stack1), second.getToolMaterial(stack2)))
             return false;
 
         // must not be electric

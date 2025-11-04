@@ -1,5 +1,7 @@
 package gregtech.api.metatileentity;
 
+import com.cleanroommc.modularui.factory.SidedPosGuiData;
+
 import gregtech.api.GTValues;
 import gregtech.api.capability.GregtechTileCapabilities;
 import gregtech.api.capability.IActiveOutputSide;
@@ -31,11 +33,13 @@ import gregtech.client.renderer.ICubeRenderer;
 import gregtech.client.renderer.texture.Textures;
 import gregtech.client.utils.RenderUtil;
 
+import net.minecraft.block.Block;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.ResourceLocation;
@@ -56,16 +60,19 @@ import codechicken.lib.raytracer.CuboidRayTraceResult;
 import codechicken.lib.render.CCRenderState;
 import codechicken.lib.render.pipeline.IVertexOperation;
 import codechicken.lib.vec.Matrix4;
+import com.cleanroommc.modularui.api.IPanelHandler;
 import com.cleanroommc.modularui.api.drawable.IKey;
+import com.cleanroommc.modularui.drawable.ItemDrawable;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
-import com.cleanroommc.modularui.value.BoolValue;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.SyncHandlers;
 import com.cleanroommc.modularui.widget.Widget;
+import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.ToggleButton;
+import com.cleanroommc.modularui.widgets.layout.Flow;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -79,30 +86,24 @@ import static gregtech.api.capability.GregtechDataCodes.*;
 public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
         implements IActiveOutputSide, IGhostSlotConfigurable {
 
-    private final boolean hasFrontFacing;
-
-    protected final GTItemStackHandler chargerInventory;
-    @Nullable
-    protected GhostCircuitItemStackHandler circuitInventory;
-    private EnumFacing outputFacingItems;
-    private EnumFacing outputFacingFluids;
-
-    private boolean autoOutputItems;
-    private boolean autoOutputFluids;
-    private boolean allowInputFromOutputSideItems = false;
-    private boolean allowInputFromOutputSideFluids = false;
-
-    protected IItemHandler outputItemInventory;
-    protected IFluidHandler outputFluidInventory;
-
-    private IItemHandlerModifiable actualImportItems;
-
     private static final int FONT_HEIGHT = 9; // Minecraft's FontRenderer FONT_HEIGHT value
-
+    protected final GTItemStackHandler chargerInventory;
     @Nullable // particle run every tick when the machine is active
     protected final IMachineParticleEffect tickingParticle;
     @Nullable // particle run in randomDisplayTick() when the machine is active
     protected final IMachineParticleEffect randomParticle;
+    private final boolean hasFrontFacing;
+    @Nullable
+    protected GhostCircuitItemStackHandler circuitInventory;
+    protected IItemHandler outputItemInventory;
+    protected IFluidHandler outputFluidInventory;
+    private EnumFacing outputFacingItems;
+    private EnumFacing outputFacingFluids;
+    private boolean autoOutputItems;
+    private boolean autoOutputFluids;
+    private boolean allowInputFromOutputSideItems = false;
+    private boolean allowInputFromOutputSideFluids = false;
+    private IItemHandlerModifiable actualImportItems;
 
     public SimpleMachineMetaTileEntity(ResourceLocation metaTileEntityId, RecipeMap<?> recipeMap,
                                        ICubeRenderer renderer, int tier, boolean hasFrontFacing) {
@@ -368,74 +369,6 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
         return super.isValidFrontFacing(facing) && facing != outputFacingItems && facing != outputFacingFluids;
     }
 
-    @Deprecated
-    public void setOutputFacing(EnumFacing outputFacing) {
-        this.outputFacingItems = outputFacing;
-        this.outputFacingFluids = outputFacing;
-        if (!getWorld().isRemote) {
-            notifyBlockUpdate();
-            writeCustomData(UPDATE_OUTPUT_FACING, buf -> {
-                buf.writeByte(outputFacingItems.getIndex());
-                buf.writeByte(outputFacingFluids.getIndex());
-            });
-            markDirty();
-        }
-    }
-
-    public void setOutputFacingItems(EnumFacing outputFacing) {
-        this.outputFacingItems = outputFacing;
-        if (!getWorld().isRemote) {
-            notifyBlockUpdate();
-            writeCustomData(UPDATE_OUTPUT_FACING, buf -> {
-                buf.writeByte(outputFacingItems.getIndex());
-                buf.writeByte(outputFacingFluids.getIndex());
-            });
-            markDirty();
-        }
-    }
-
-    public void setOutputFacingFluids(EnumFacing outputFacing) {
-        this.outputFacingFluids = outputFacing;
-        if (!getWorld().isRemote) {
-            notifyBlockUpdate();
-            writeCustomData(UPDATE_OUTPUT_FACING, buf -> {
-                buf.writeByte(outputFacingItems.getIndex());
-                buf.writeByte(outputFacingFluids.getIndex());
-            });
-            markDirty();
-        }
-    }
-
-    public void setAutoOutputItems(boolean autoOutputItems) {
-        this.autoOutputItems = autoOutputItems;
-        if (!getWorld().isRemote) {
-            writeCustomData(UPDATE_AUTO_OUTPUT_ITEMS, buf -> buf.writeBoolean(autoOutputItems));
-            markDirty();
-        }
-    }
-
-    public void setAutoOutputFluids(boolean autoOutputFluids) {
-        this.autoOutputFluids = autoOutputFluids;
-        if (!getWorld().isRemote) {
-            writeCustomData(UPDATE_AUTO_OUTPUT_FLUIDS, buf -> buf.writeBoolean(autoOutputFluids));
-            markDirty();
-        }
-    }
-
-    public void setAllowInputFromOutputSideItems(boolean allowInputFromOutputSide) {
-        this.allowInputFromOutputSideItems = allowInputFromOutputSide;
-        if (!getWorld().isRemote) {
-            markDirty();
-        }
-    }
-
-    public void setAllowInputFromOutputSideFluids(boolean allowInputFromOutputSide) {
-        this.allowInputFromOutputSideFluids = allowInputFromOutputSide;
-        if (!getWorld().isRemote) {
-            markDirty();
-        }
-    }
-
     @Override
     public void setGhostCircuitConfig(int config) {
         if (this.circuitInventory == null || this.circuitInventory.getCircuitValue() == config) {
@@ -461,28 +394,95 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
         return getOutputFacingItems();
     }
 
+    public void setOutputFacing(EnumFacing outputFacing) {
+        this.outputFacingItems = outputFacing;
+        this.outputFacingFluids = outputFacing;
+        if (!getWorld().isRemote) {
+            notifyBlockUpdate();
+            writeCustomData(UPDATE_OUTPUT_FACING, buf -> {
+                buf.writeByte(outputFacingItems.getIndex());
+                buf.writeByte(outputFacingFluids.getIndex());
+            });
+            markDirty();
+        }
+    }
+
     public EnumFacing getOutputFacingItems() {
         return outputFacingItems == null ? EnumFacing.SOUTH : outputFacingItems;
+    }
+
+    public void setOutputFacingItems(EnumFacing outputFacing) {
+        this.outputFacingItems = outputFacing;
+        if (!getWorld().isRemote) {
+            notifyBlockUpdate();
+            writeCustomData(UPDATE_OUTPUT_FACING, buf -> {
+                buf.writeByte(outputFacingItems.getIndex());
+                buf.writeByte(outputFacingFluids.getIndex());
+            });
+            markDirty();
+        }
     }
 
     public EnumFacing getOutputFacingFluids() {
         return outputFacingFluids == null ? EnumFacing.SOUTH : outputFacingFluids;
     }
 
+    public void setOutputFacingFluids(EnumFacing outputFacing) {
+        this.outputFacingFluids = outputFacing;
+        if (!getWorld().isRemote) {
+            notifyBlockUpdate();
+            writeCustomData(UPDATE_OUTPUT_FACING, buf -> {
+                buf.writeByte(outputFacingItems.getIndex());
+                buf.writeByte(outputFacingFluids.getIndex());
+            });
+            markDirty();
+        }
+    }
+
     public boolean isAutoOutputItems() {
         return autoOutputItems;
+    }
+
+    public void setAutoOutputItems(boolean autoOutputItems) {
+        this.autoOutputItems = autoOutputItems;
+        if (!getWorld().isRemote) {
+            writeCustomData(UPDATE_AUTO_OUTPUT_ITEMS, buf -> buf.writeBoolean(autoOutputItems));
+            markDirty();
+        }
     }
 
     public boolean isAutoOutputFluids() {
         return autoOutputFluids;
     }
 
+    public void setAutoOutputFluids(boolean autoOutputFluids) {
+        this.autoOutputFluids = autoOutputFluids;
+        if (!getWorld().isRemote) {
+            writeCustomData(UPDATE_AUTO_OUTPUT_FLUIDS, buf -> buf.writeBoolean(autoOutputFluids));
+            markDirty();
+        }
+    }
+
     public boolean isAllowInputFromOutputSideItems() {
         return allowInputFromOutputSideItems;
     }
 
+    public void setAllowInputFromOutputSideItems(boolean allowInputFromOutputSide) {
+        this.allowInputFromOutputSideItems = allowInputFromOutputSide;
+        if (!getWorld().isRemote) {
+            markDirty();
+        }
+    }
+
     public boolean isAllowInputFromOutputSideFluids() {
         return allowInputFromOutputSideFluids;
+    }
+
+    public void setAllowInputFromOutputSideFluids(boolean allowInputFromOutputSide) {
+        this.allowInputFromOutputSideFluids = allowInputFromOutputSide;
+        if (!getWorld().isRemote) {
+            markDirty();
+        }
     }
 
     @Override
@@ -511,7 +511,7 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
                 exportItems, importFluids, exportFluids, yOffset, guiSyncManager);
 
         BooleanSyncValue hasEnergy = new BooleanSyncValue(workable::isHasNotEnoughEnergy);
-
+        guiSyncManager.syncValue("has_energy", hasEnergy);
         panel.child(widget)
                 .child(IKey.lang(getMetaFullName()).asWidget().pos(5, 5))
                 .child(new ItemSlot()
@@ -524,8 +524,6 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
                         .size(18, 18)
                         .pos(79, 42 + yOffset)
                         .background(GTGuiTextures.INDICATOR_NO_ENERGY)
-                        // todo flicker appears on ui open even when it has enough energy
-                        // will need to test this
                         .setEnabledIf($ -> hasEnergy.getBoolValue()))
                 .bindPlayerInventory();
 
@@ -551,6 +549,8 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
                     .value(new BooleanSyncValue(() -> autoOutputFluids, val -> autoOutputFluids = val))
                     .addTooltip(true, IKey.lang("gregtech.gui.fluid_auto_output.tooltip.enabled"))
                     .addTooltip(false, IKey.lang("gregtech.gui.fluid_auto_output.tooltip.disabled")));
+
+            leftButtonStartX += 18;
         }
 
         if (exportItems.getSlots() + exportFluids.getTanks() <= 9) {
@@ -566,7 +566,262 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
                         .background(GTGuiTextures.SLOT, GTGuiTextures.INT_CIRCUIT_OVERLAY));
             }
         }
+        var throttle = guiSyncManager.panel("io_setting", this::makeThrottlePanel, true);
+
+        panel.child(new ButtonWidget<>()
+                .size(18)
+                .pos(leftButtonStartX, 62 + yOffset)
+                .overlay(GTGuiTextures.BUTTON_EXPORT_FACE)
+                .addTooltipLine("IO设置")
+                .onMousePressed(i -> {
+                    if (throttle.isPanelOpen()) {
+                        throttle.closePanel();
+                    } else {
+                        throttle.openPanel();
+                    }
+                    return true;
+                })
+        );
+
         return panel;
+    }
+
+    public String getEnumFacingName(EnumFacing facing) {
+        TileEntity tileEntity = this.getWorld().getTileEntity(getPos().offset(facing));
+        if (tileEntity instanceof IGregTechTileEntity igtte) {
+            MetaTileEntity mte = igtte.getMetaTileEntity();
+            return IKey.lang(mte.getMetaFullName()).toString();
+        }
+        Block block = this.getWorld().getBlockState(getPos().offset(facing)).getBlock();
+        return block.getLocalizedName();
+    }
+
+    private ModularPanel makeThrottlePanel(PanelSyncManager syncManager, IPanelHandler syncHandler) {
+        return GTGuis.createPopupPanel("io_setting", 180, 95)
+                .child(Flow.row()
+                        .pos(4, 4)
+                        .height(16)
+                        .coverChildrenWidth()
+                        .child(new ItemDrawable(getStackForm())
+                                .asWidget()
+                                .size(16)
+                                .marginRight(4))
+                        .child(IKey.lang("IO设置")
+                                .asWidget()
+                                .heightRel(1.0f)))
+                .child(Flow.row()
+                        // 顶部IO按钮
+                        .child(new ToggleButton()
+                                .pos(40, 25)
+                                .overlay(true, GTGuiTextures.OVERLAY_ITEM_EXPORT[1])
+                                .overlay(false, GTGuiTextures.OVERLAY_ITEM_EXPORT[0])
+                                .value(new BooleanSyncValue(
+                                        () -> outputFacingItems == EnumFacing.UP,
+                                        val -> {
+                                            if (!getWorld().isRemote && val) {
+                                                setOutputFacingItems(EnumFacing.UP);
+                                            }
+                                        }))
+                                .addTooltipLine("设置顶部物品IO")
+                                .addTooltipLine(getEnumFacingName(EnumFacing.UP))
+                        )
+
+                        // 正面IO按钮
+                        .child(new ToggleButton()
+                                .pos(40, 45)
+                                .overlay(true, GTGuiTextures.OVERLAY_ITEM_EXPORT[1])
+                                .overlay(false, GTGuiTextures.OVERLAY_ITEM_EXPORT[0])
+                                .value(new BooleanSyncValue(
+                                        () -> outputFacingItems == frontFacing,
+                                        val -> {
+                                            if (!getWorld().isRemote && val) {
+                                                setOutputFacingItems(frontFacing);
+                                            }
+                                        }))
+                                .addTooltipLine("设置正面物品IO")
+                                .addTooltipLine(getEnumFacingName(frontFacing))
+                        )
+
+                        // 左面IO按钮
+                        .child(new ToggleButton()
+                                .pos(20, 45)
+                                .overlay(true, GTGuiTextures.OVERLAY_ITEM_EXPORT[1])
+                                .overlay(false, GTGuiTextures.OVERLAY_ITEM_EXPORT[0])
+                                .value(new BooleanSyncValue(
+                                        () -> outputFacingItems == frontFacing.rotateY(),
+                                        val -> {
+                                            if (!getWorld().isRemote && val) {
+                                                setOutputFacingItems(frontFacing.rotateY());
+                                            }
+                                        }))
+                                .addTooltipLine("设置左面物品IO")
+                                .addTooltipLine(getEnumFacingName(frontFacing.rotateY()))
+                        )
+
+                        // 右面IO按钮
+                        .child(new ToggleButton()
+                                .pos(60, 45)
+                                .overlay(true, GTGuiTextures.OVERLAY_ITEM_EXPORT[1])
+                                .overlay(false, GTGuiTextures.OVERLAY_ITEM_EXPORT[0])
+                                .value(new BooleanSyncValue(
+                                        () -> outputFacingItems == frontFacing.getOpposite().rotateY(),
+                                        val -> {
+                                            if (!getWorld().isRemote && val) {
+                                                setOutputFacingItems(frontFacing.getOpposite().rotateY());
+                                            }
+                                        }))
+                                .addTooltipLine("设置右面物品IO")
+                                .addTooltipLine(getEnumFacingName(frontFacing.getOpposite().rotateY()))
+                        )
+
+                        // 底部IO按钮
+                        .child(new ToggleButton()
+                                .pos(40, 65)
+                                .overlay(true, GTGuiTextures.OVERLAY_ITEM_EXPORT[1])
+                                .overlay(false, GTGuiTextures.OVERLAY_ITEM_EXPORT[0])
+                                .value(new BooleanSyncValue(
+                                        () -> outputFacingItems == EnumFacing.DOWN,
+                                        val -> {
+                                            if (!getWorld().isRemote && val) {
+                                                setOutputFacingItems(EnumFacing.DOWN);
+                                            }
+                                        }))
+                                .addTooltipLine("设置底部物品IO")
+                                .addTooltipLine(getEnumFacingName(EnumFacing.DOWN))
+                        )
+
+                        // 背面IO按钮
+                        .child(new ToggleButton()
+                                .pos(20, 65)
+                                .overlay(true, GTGuiTextures.OVERLAY_ITEM_EXPORT[1])
+                                .overlay(false, GTGuiTextures.OVERLAY_ITEM_EXPORT[0])
+                                .value(new BooleanSyncValue(
+                                        () -> outputFacingItems == frontFacing.getOpposite(),
+                                        val -> {
+                                            if (!getWorld().isRemote && val) {
+                                                setOutputFacingItems(frontFacing.getOpposite());
+                                            }
+                                        }))
+                                .addTooltipLine("设置背面物品IO")
+                                .addTooltipLine(getEnumFacingName(frontFacing.getOpposite()))
+                        )
+
+                        /// ///////////////////////////////////////////////////////////////////////
+                        // 顶部IO按钮
+                        .child(new ToggleButton()
+                                .pos(120, 25)
+                                .overlay(true, GTGuiTextures.OVERLAY_FLUID_EXPORT[1])
+                                .overlay(false, GTGuiTextures.OVERLAY_FLUID_EXPORT[0])
+                                .value(new BooleanSyncValue(
+                                        () -> outputFacingFluids == EnumFacing.UP,
+                                        val -> {
+                                            if (!getWorld().isRemote && val) {
+                                                setOutputFacingFluids(EnumFacing.UP);
+                                            }
+                                        }))
+                                .addTooltipLine("设置顶部流体IO")
+                                .addTooltipLine(getEnumFacingName(EnumFacing.UP))
+                        )
+
+                        // 正面IO按钮
+                        .child(new ToggleButton()
+                                .pos(120, 45)
+                                .overlay(true, GTGuiTextures.OVERLAY_FLUID_EXPORT[1])
+                                .overlay(false, GTGuiTextures.OVERLAY_FLUID_EXPORT[0])
+                                .value(new BooleanSyncValue(
+                                        () -> outputFacingFluids == frontFacing,
+                                        val -> {
+                                            if (!getWorld().isRemote && val) {
+                                                setOutputFacingFluids(frontFacing);
+                                            }
+                                        }))
+                                .addTooltipLine("设置正面流体IO")
+                                .addTooltipLine(getEnumFacingName(frontFacing))
+                        )
+
+                        // 左面IO按钮
+                        .child(new ToggleButton()
+                                .pos(100, 45)
+                                .overlay(true, GTGuiTextures.OVERLAY_FLUID_EXPORT[1])
+                                .overlay(false, GTGuiTextures.OVERLAY_FLUID_EXPORT[0])
+                                .value(new BooleanSyncValue(
+                                        () -> outputFacingFluids == frontFacing.rotateY(),
+                                        val -> {
+                                            if (!getWorld().isRemote && val) {
+                                                setOutputFacingFluids(frontFacing.rotateY());
+                                            }
+                                        }))
+                                .addTooltipLine("设置左面流体IO")
+                                .addTooltipLine(getEnumFacingName(frontFacing.rotateY()))
+                        )
+
+                        // 右面IO按钮
+                        .child(new ToggleButton()
+                                .pos(140, 45)
+                                .overlay(true, GTGuiTextures.OVERLAY_FLUID_EXPORT[1])
+                                .overlay(false, GTGuiTextures.OVERLAY_FLUID_EXPORT[0])
+                                .value(new BooleanSyncValue(
+                                        () -> outputFacingFluids == frontFacing.getOpposite().rotateY(),
+                                        val -> {
+                                            if (!getWorld().isRemote && val) {
+                                                setOutputFacingFluids(frontFacing.getOpposite().rotateY());
+                                            }
+                                        }))
+                                .addTooltipLine("设置右面流体IO")
+                                .addTooltipLine(getEnumFacingName(frontFacing.getOpposite().rotateY()))
+                        )
+
+                        // 底部IO按钮
+                        .child(new ToggleButton()
+                                .pos(120, 65)
+                                .overlay(true, GTGuiTextures.OVERLAY_FLUID_EXPORT[1])
+                                .overlay(false, GTGuiTextures.OVERLAY_FLUID_EXPORT[0])
+                                .value(new BooleanSyncValue(
+                                        () -> outputFacingFluids == EnumFacing.DOWN,
+                                        val -> {
+                                            if (!getWorld().isRemote && val) {
+                                                setOutputFacingFluids(EnumFacing.DOWN);
+                                            }
+                                        }))
+                                .addTooltipLine("设置底部流体IO")
+                                .addTooltipLine(getEnumFacingName(EnumFacing.DOWN))
+                        )
+
+                        // 背面IO按钮
+                        .child(new ToggleButton()
+                                .pos(100, 65)
+                                .overlay(true, GTGuiTextures.OVERLAY_FLUID_EXPORT[1])
+                                .overlay(false, GTGuiTextures.OVERLAY_FLUID_EXPORT[0])
+                                .value(new BooleanSyncValue(
+                                        () -> outputFacingFluids == frontFacing.getOpposite(),
+                                        val -> {
+                                            if (!getWorld().isRemote && val) {
+                                                setOutputFacingFluids(frontFacing.getOpposite());
+                                            }
+                                        }))
+                                .addTooltipLine("设置背面流体IO")
+                                .addTooltipLine(getEnumFacingName(frontFacing.getOpposite()))
+                        )
+
+                        //允许从输出口输入
+                        .child(new ToggleButton()
+                                .pos(60, 65)
+                                .overlay(true, GTGuiTextures.OVERLAY_ITEM_EXPORT_IMPORT[1])
+                                .overlay(false, GTGuiTextures.OVERLAY_ITEM_EXPORT_IMPORT[0])
+                                .value(new BooleanSyncValue(this::isAllowInputFromOutputSideItems, this::setAllowInputFromOutputSideItems))
+                                .addTooltip(true, IKey.lang("允许从物品输出口输入物品"))
+                                .addTooltip(false, IKey.lang("禁止从物品输出口输入物品"))
+                        )
+
+                        .child(new ToggleButton()
+                                .pos(140, 65)
+                                .overlay(true, GTGuiTextures.OVERLAY_FLUID_EXPORT_IMPORT[1])
+                                .overlay(false, GTGuiTextures.OVERLAY_FLUID_EXPORT_IMPORT[0])
+                                .value(new BooleanSyncValue(this::isAllowInputFromOutputSideFluids, this::setAllowInputFromOutputSideFluids))
+                                .addTooltip(true, IKey.lang("允许从流体输出口输入物品"))
+                                .addTooltip(false, IKey.lang("禁止从流体输出口输入物品"))
+                        )
+                );
     }
 
     @Override
@@ -621,6 +876,7 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
                 builder.widget(circuitSlot.setConsumer(this::getCircuitSlotTooltip)).widget(logo);
             }
         }
+
         return builder;
     }
 

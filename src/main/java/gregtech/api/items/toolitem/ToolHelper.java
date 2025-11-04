@@ -3,8 +3,6 @@ package gregtech.api.items.toolitem;
 import gregtech.api.GTValues;
 import gregtech.api.capability.GregtechCapabilities;
 import gregtech.api.capability.IElectricItem;
-import gregtech.api.items.metaitem.MetaItem;
-import gregtech.api.items.metaitem.stats.IItemBehaviour;
 import gregtech.api.items.toolitem.aoe.AoESymmetrical;
 import gregtech.api.recipes.Recipe;
 import gregtech.api.recipes.RecipeMaps;
@@ -17,7 +15,7 @@ import gregtech.api.util.GTUtility;
 import gregtech.api.util.function.QuintFunction;
 import gregtech.common.ConfigHolder;
 import gregtech.common.items.MetaItems;
-import gregtech.common.items.behaviors.ColorSprayBehaviour;
+import gregtech.common.items.behaviors.spray.AbstractSprayBehavior;
 import gregtech.tools.enchants.EnchantmentHardHammer;
 
 import net.minecraft.advancements.CriteriaTriggers;
@@ -37,6 +35,7 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.Enchantments;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemTool;
 import net.minecraft.nbt.NBTTagCompound;
@@ -374,10 +373,13 @@ public final class ToolHelper {
     /**
      * @return if any of the specified tool classes exists in the tool
      */
-    public static boolean isTool(ItemStack tool, String... toolClasses) {
+    public static boolean isTool(@NotNull ItemStack tool, String... toolClasses) {
+        if (tool.isEmpty()) return false;
+
         if (toolClasses.length == 1) {
             return tool.getItem().getToolClasses(tool).contains(toolClasses[0]);
         }
+
         for (String toolClass : tool.getItem().getToolClasses(tool)) {
             for (String specified : toolClasses) {
                 if (toolClass.equals(specified)) {
@@ -385,42 +387,43 @@ public final class ToolHelper {
                 }
             }
         }
+
         return false;
     }
 
     /**
      * @return if the itemstack should be considered a utility item and thus can be put into toolbelts.
      */
-    public static boolean isUtilityItem(ItemStack utility) {
-        return isTool(utility) || isSpraycan(utility);
+    public static boolean isUtilityItem(@NotNull ItemStack utility) {
+        return isTool(utility) || isSprayCan(utility);
     }
 
     /**
      * @return if the itemstack should be considered a tool
      */
-    public static boolean isTool(ItemStack tool) {
+    public static boolean isTool(@NotNull ItemStack tool) {
+        if (tool.isEmpty()) return false;
         return tool.getItem() instanceof ItemTool || tool.getItem() instanceof IGTTool;
     }
 
     /**
-     * @return if the itemstack should be considered a spraycan
+     * @return if the itemstack should be considered a spray can
      */
-    public static boolean isSpraycan(ItemStack spraycan) {
-        if (spraycan.getItem() instanceof MetaItem<?>meta) {
-            for (IItemBehaviour behaviour : meta.getBehaviours(spraycan)) {
-                if (behaviour instanceof ColorSprayBehaviour) return true;
-            }
-        }
-        return false;
+    public static boolean isSprayCan(@NotNull ItemStack sprayCan) {
+        if (sprayCan.isEmpty()) return false;
+        return AbstractSprayBehavior.getSprayCanBehavior(sprayCan) != null;
     }
 
     /**
      * Return if all the specified tool classes exists in the tool
      */
-    public static boolean areTools(ItemStack tool, String... toolClasses) {
+    public static boolean areTools(@NotNull ItemStack tool, String... toolClasses) {
+        if (tool.isEmpty()) return false;
+
         if (toolClasses.length == 1) {
             return tool.getItem().getToolClasses(tool).contains(toolClasses[0]);
         }
+
         return tool.getItem().getToolClasses(tool).containsAll(new ObjectArraySet<String>(toolClasses));
     }
 
@@ -851,5 +854,38 @@ public final class ToolHelper {
         var tag = stack.getTagCompound();
         if (tag == null || !tag.hasKey(TOOL_TAG_KEY)) return false;
         return tag.getCompoundTag(TOOL_TAG_KEY).hasKey(MATERIAL_KEY);
+    }
+
+    /**
+     * Get maximum durability of material from ToolProperty,
+     * this method is just a lazy method to change ToolProperty#getToolDurability().
+     */
+    public static int getMaxDurability(Material material)
+    {
+        if (!material.hasProperty(PropertyKey.TOOL))
+            System.out.println("Material " + material.getName() + " does not have ToolProperty!");
+        return material.getProperty(PropertyKey.TOOL).getToolDurability();
+    }
+
+    /**
+     * Get maximum crafting durability of material from ToolProperty.
+     * This method is a choice to get crafting durability via material.
+     */
+
+    public static int  getMaxCraftingDurability(Material material)
+    {
+        if (!material.hasProperty(PropertyKey.TOOL))
+            System.out.println("Material " + material.getName() + " does not have ToolProperty!");
+        return material.getProperty(PropertyKey.TOOL).getToolDurability() / 2;
+    }
+
+    /**
+     * Check if the stack has full durability, means it is not damaged (first, it must be
+     * not repairable).
+     */
+    public static Boolean isItemHasFullDurability(ItemStack stack)
+    {
+        Item item = stack.getItem();
+        return !item.isRepairable() || item.getDamage(stack) <= 0;
     }
 }

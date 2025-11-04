@@ -49,6 +49,13 @@ public class MiscRecipeLoader {
                 'S', new UnificationEntry(screw, StainlessSteel),
                 'R', new UnificationEntry(stick, StainlessSteel));
 
+        ModHandler.addShapedRecipe(true, "multiblock_preview", MULTIBLOCK_PREVIEW.getStackForm(),
+                "wCE", "SRC", "RSd",
+                'C', new UnificationEntry(circuit, MarkerMaterials.Tier.HV),
+                'E', new UnificationEntry(gem, Emerald),
+                'S', new UnificationEntry(screw, StainlessSteel),
+                'R', new UnificationEntry(stick, StainlessSteel));
+
         // Potin Recipe
         ModHandler.addShapelessRecipe("potin_dust", OreDictUnifier.get(dust, Potin, 8),
                 new UnificationEntry(dust, Copper),

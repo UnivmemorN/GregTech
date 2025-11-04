@@ -17,6 +17,7 @@ import gregtech.common.mui.widget.workbench.CraftingInputSlot;
 import gregtech.common.mui.widget.workbench.CraftingOutputSlot;
 import gregtech.common.mui.widget.workbench.RecipeMemorySlot;
 
+import net.minecraft.block.SoundType;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.init.Blocks;
@@ -275,9 +276,24 @@ public class MetaTileEntityWorkbench extends MetaTileEntity {
     }
 
     private ModularSlot trackSlot(IItemHandler handler, int slot) {
-        int offset = combinedInventory.getIndexOffset(handler);
-        if (offset == -1) throw new NullPointerException("handler cannot be found");
-        this.recipeLogic.updateSlotMap(offset, slot);
+        if (combinedInventory == null) {
+            return new ModularSlot(handler, slot);
+        }
+
+        int offset = 0;
+        boolean found = false;
+        for (IItemHandler h : combinedInventory.getBackingHandlers()) {
+            if (h == handler) {
+                found = true;
+                break;
+            }
+            offset += h.getSlots();
+        }
+
+        if (found) {
+            int globalSlot = offset + slot;
+            this.recipeLogic.updateSlotMap(globalSlot, slot);
+        }
         return new ModularSlot(handler, slot);
     }
 
@@ -375,7 +391,7 @@ public class MetaTileEntityWorkbench extends MetaTileEntity {
         List<ItemSlot> list = new ArrayList<>(this.connectedInventory.getSlots());
 
         int rowSize = Math.min(this.connectedInventory.getSlots(), 8);
-        var connected = new SlotGroup("connected_inventory", rowSize, true)
+        var connected = new SlotGroup("connected_inventory", rowSize, false)
                 .setAllowSorting(false);
         syncManager.registerSlotGroup(connected);
 
@@ -484,5 +500,11 @@ public class MetaTileEntityWorkbench extends MetaTileEntity {
     @Override
     public boolean showToolUsages() {
         return false;
+    }
+
+    @NotNull
+    @Override
+    public SoundType getSoundType() {
+        return SoundType.WOOD;
     }
 }

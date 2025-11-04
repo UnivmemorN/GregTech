@@ -36,6 +36,10 @@ public class GregtechDataCodes {
     // Drum
     public static final int UPDATE_AUTO_OUTPUT = assignId();
 
+    // Safe
+    public static final int UPDATE_LOCKED_STATE = assignId();
+    public static final int UPDATE_CONTENTS_SEED = assignId();
+
     // Steam Machines
     public static final int NEEDS_VENTING = assignId();
     public static final int VENTING_SIDE = assignId();
@@ -143,6 +147,7 @@ public class GregtechDataCodes {
     // Recipe Logic
     public static final int WORKABLE_ACTIVE = assignId();
     public static final int WORKING_ENABLED = assignId();
+    public static final int WORKING_BATCH = assignId();
 
     // Creative Energy
     public static final int UPDATE_IO_SPEED = assignId();
@@ -166,6 +171,9 @@ public class GregtechDataCodes {
     public static final int DAMAGE_STATE = assignId();
     public static final int LOCK_OBJECT_HOLDER = assignId();
     public static final int CACHED_CWU = assignId();
+
+    //多线程
+    public static final int UPDATE_THREAD_STATE = assignId();
 
     // NBT Keys
 

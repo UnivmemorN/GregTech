@@ -62,6 +62,7 @@ import gregtech.common.metatileentities.multi.electric.MetaTileEntityHPCA;
 import gregtech.common.metatileentities.multi.electric.MetaTileEntityImplosionCompressor;
 import gregtech.common.metatileentities.multi.electric.MetaTileEntityLargeChemicalReactor;
 import gregtech.common.metatileentities.multi.electric.MetaTileEntityLargeMiner;
+import gregtech.common.metatileentities.multi.electric.MetaTileEntityMultiAlloyFurnace;
 import gregtech.common.metatileentities.multi.electric.MetaTileEntityMultiSmelter;
 import gregtech.common.metatileentities.multi.electric.MetaTileEntityNetworkSwitch;
 import gregtech.common.metatileentities.multi.electric.MetaTileEntityPowerSubstation;
@@ -93,6 +94,7 @@ import gregtech.common.metatileentities.multi.multiblockpart.MetaTileEntityPasst
 import gregtech.common.metatileentities.multi.multiblockpart.MetaTileEntityPassthroughHatchLaser;
 import gregtech.common.metatileentities.multi.multiblockpart.MetaTileEntityReservoirHatch;
 import gregtech.common.metatileentities.multi.multiblockpart.MetaTileEntityRotorHolder;
+import gregtech.common.metatileentities.multi.multiblockpart.MetaTileEntitySterileCleaningMaintenanceHatch;
 import gregtech.common.metatileentities.multi.multiblockpart.MetaTileEntitySubstationEnergyHatch;
 import gregtech.common.metatileentities.multi.multiblockpart.appeng.MetaTileEntityMEInputBus;
 import gregtech.common.metatileentities.multi.multiblockpart.appeng.MetaTileEntityMEInputHatch;
@@ -120,6 +122,10 @@ import gregtech.common.metatileentities.steam.SteamRockBreaker;
 import gregtech.common.metatileentities.steam.boiler.SteamCoalBoiler;
 import gregtech.common.metatileentities.steam.boiler.SteamLavaBoiler;
 import gregtech.common.metatileentities.steam.boiler.SteamSolarBoiler;
+import gregtech.common.metatileentities.steam.multiblockpart.MetaTileEntityHugeSteamFluidHatch;
+import gregtech.common.metatileentities.steam.multiblockpart.MetaTileEntityHugeSteamHatch;
+import gregtech.common.metatileentities.steam.multiblockpart.MetaTileEntityHugeSteamItemBus;
+import gregtech.common.metatileentities.steam.multiblockpart.MetaTileEntitySteamFluidHatch;
 import gregtech.common.metatileentities.steam.multiblockpart.MetaTileEntitySteamHatch;
 import gregtech.common.metatileentities.steam.multiblockpart.MetaTileEntitySteamItemBus;
 import gregtech.common.metatileentities.storage.MetaTileEntityBuffer;
@@ -128,6 +134,7 @@ import gregtech.common.metatileentities.storage.MetaTileEntityCreativeChest;
 import gregtech.common.metatileentities.storage.MetaTileEntityCreativeEnergy;
 import gregtech.common.metatileentities.storage.MetaTileEntityCreativeTank;
 import gregtech.common.metatileentities.storage.MetaTileEntityDrum;
+import gregtech.common.metatileentities.storage.MetaTileEntityLockedSafe;
 import gregtech.common.metatileentities.storage.MetaTileEntityQuantumChest;
 import gregtech.common.metatileentities.storage.MetaTileEntityQuantumExtender;
 import gregtech.common.metatileentities.storage.MetaTileEntityQuantumProxy;
@@ -152,7 +159,7 @@ import static gregtech.api.util.GTUtility.gregtechId;
 public class MetaTileEntities {
 
     // spotless:off
-
+    public static MetaTileEntityLockedSafe LOCKED_SAFE;
     // HULLS
     public static final MetaTileEntityHull[] HULL = new MetaTileEntityHull[GTValues.V.length];
     public static final MetaTileEntityTransformer[] TRANSFORMER = new MetaTileEntityTransformer[GTValues.V.length -
@@ -235,10 +242,22 @@ public class MetaTileEntities {
     public static final MetaTileEntityRockBreaker[] ROCK_BREAKER = new MetaTileEntityRockBreaker[GTValues.V.length - 1];
     public static final MetaTileEntityMiner[] MINER = new MetaTileEntityMiner[GTValues.V.length - 1];
 
+    public static final SimpleMachineMetaTileEntity[] TOOL_CASTER = new SimpleMachineMetaTileEntity[5];
+    public static final SimpleMachineMetaTileEntity[] BATH_CONDENSER = new SimpleMachineMetaTileEntity[5];
+    public static final SimpleMachineMetaTileEntity[] POLISHER = new SimpleMachineMetaTileEntity[GTValues.V.length - 1];
+    public static final SimpleMachineMetaTileEntity[] LAMINATOR = new SimpleMachineMetaTileEntity[GTValues.V.length - 1];
+    public static final SimpleMachineMetaTileEntity[] POLYMERIZATION_TANK = new SimpleMachineMetaTileEntity[GTValues.V.length - 1];
+    public static final SimpleMachineMetaTileEntity[] DESULFURIZER = new SimpleMachineMetaTileEntity[GTValues.V.length - 1];
+    public static final SimpleMachineMetaTileEntity[] BIO_REACTOR = new SimpleMachineMetaTileEntity[GTValues.V.length -1];
+    public static final SimpleMachineMetaTileEntity[] COMPONENT_ASSEMBLER = new SimpleMachineMetaTileEntity[GTValues.V.length - 1];
+    public static final SimpleMachineMetaTileEntity[] LOOM = new SimpleMachineMetaTileEntity[GTValues.V.length - 1];
+
     // GENERATORS SECTION
     public static final SimpleGeneratorMetaTileEntity[] COMBUSTION_GENERATOR = new SimpleGeneratorMetaTileEntity[5];
     public static final SimpleGeneratorMetaTileEntity[] STEAM_TURBINE = new SimpleGeneratorMetaTileEntity[5];
     public static final SimpleGeneratorMetaTileEntity[] GAS_TURBINE = new SimpleGeneratorMetaTileEntity[5];
+    public static final SimpleGeneratorMetaTileEntity[] SEMI_FLUID_GENERATOR = new SimpleGeneratorMetaTileEntity[5];
+    public static final SimpleGeneratorMetaTileEntity[] PLASMA_GENERATOR = new SimpleGeneratorMetaTileEntity[5];
 
     // MULTIBLOCK PARTS SECTION
     public static final MetaTileEntityItemBus[] ITEM_IMPORT_BUS = new MetaTileEntityItemBus[GTValues.V.length -
@@ -269,11 +288,12 @@ public class MetaTileEntities {
     public static final MetaTileEntityQuantumChest[] QUANTUM_CHEST = new MetaTileEntityQuantumChest[10];
     public static final MetaTileEntityQuantumTank[] QUANTUM_TANK = new MetaTileEntityQuantumTank[10];
     public static final MetaTileEntityBuffer[] BUFFER = new MetaTileEntityBuffer[5];
-    public static final MetaTileEntityPump[] PUMP = new MetaTileEntityPump[8];
+    public static final MetaTileEntityPump[] PUMP = new MetaTileEntityPump[9];
     public static final MetaTileEntityBlockBreaker[] BLOCK_BREAKER = new MetaTileEntityBlockBreaker[4];
+
     public static final MetaTileEntityItemCollector[] ITEM_COLLECTOR = new MetaTileEntityItemCollector[4];
     public static final MetaTileEntityFisher[] FISHER = new MetaTileEntityFisher[4];
-    public static final MetaTileEntityWorldAccelerator[] WORLD_ACCELERATOR = new MetaTileEntityWorldAccelerator[9]; // LV-UV
+    public static final MetaTileEntityWorldAccelerator[] WORLD_ACCELERATOR = new MetaTileEntityWorldAccelerator[GTValues.V.length-1];
     // Used for addons if they wish to disable certain tiers of machines
     private static final Map<String, Boolean> MID_TIER = new HashMap<>();
     private static final Map<String, Boolean> HIGH_TIER = new HashMap<>();
@@ -344,13 +364,21 @@ public class MetaTileEntities {
     public static MetaTileEntityPrimitiveWaterPump PRIMITIVE_WATER_PUMP;
     public static MetaTileEntityMagicEnergyAbsorber MAGIC_ENERGY_ABSORBER;
     public static MetaTileEntityCokeOvenHatch COKE_OVEN_HATCH;
+    public static MetaTileEntitySteamHatch STEAM_HATCH;
+    public static MetaTileEntityHugeSteamHatch HUGE_STEAM_HATCH;
     public static MetaTileEntitySteamItemBus STEAM_EXPORT_BUS;
     public static MetaTileEntitySteamItemBus STEAM_IMPORT_BUS;
-    public static MetaTileEntitySteamHatch STEAM_HATCH;
+    public static MetaTileEntitySteamFluidHatch STEAM_EXPORT_HATCH;
+    public static MetaTileEntitySteamFluidHatch STEAM_IMPORT_HATCH;
+    public static MetaTileEntityHugeSteamItemBus HUGE_STEAM_EXPORT_BUS;
+    public static MetaTileEntityHugeSteamItemBus HUGE_STEAM_IMPORT_BUS;
+    public static MetaTileEntityHugeSteamFluidHatch HUGE_STEAM_EXPORT_HATCH;
+    public static MetaTileEntityHugeSteamFluidHatch HUGE_STEAM_IMPORT_HATCH;
     public static MetaTileEntityMaintenanceHatch MAINTENANCE_HATCH;
     public static MetaTileEntityMaintenanceHatch CONFIGURABLE_MAINTENANCE_HATCH;
     public static MetaTileEntityAutoMaintenanceHatch AUTO_MAINTENANCE_HATCH;
     public static MetaTileEntityCleaningMaintenanceHatch CLEANING_MAINTENANCE_HATCH;
+    public static MetaTileEntitySterileCleaningMaintenanceHatch STERILE_CLEANING_MAINTENANCE_HATCH;
 
     // MULTIBLOCKS SECTION
     public static MetaTileEntityPrimitiveBlastFurnace PRIMITIVE_BLAST_FURNACE;
@@ -362,6 +390,7 @@ public class MetaTileEntities {
     public static MetaTileEntityDistillationTower DISTILLATION_TOWER;
     public static MetaTileEntityCrackingUnit CRACKER;
     public static MetaTileEntityMultiSmelter MULTI_FURNACE;
+    public static MetaTileEntityMultiAlloyFurnace MULTI_ALLOY_FURNACE;
     public static MetaTileEntityLargeCombustionEngine LARGE_COMBUSTION_ENGINE;
     public static MetaTileEntityLargeCombustionEngine EXTREME_COMBUSTION_ENGINE;
     public static MetaTileEntityLargeTurbine LARGE_STEAM_TURBINE;
@@ -453,6 +482,7 @@ public class MetaTileEntities {
     public static void init() {
         GTLog.logger.info("Registering MetaTileEntities");
 
+        LOCKED_SAFE = registerMetaTileEntity(0, new MetaTileEntityLockedSafe(gregtechId("locked_safe")));
         //蒸汽单方块
         STEAM_BOILER_COAL_BRONZE = registerMetaTileEntity(1,
                 new SteamCoalBoiler(gregtechId("steam_boiler_coal_bronze"), false));
@@ -643,7 +673,8 @@ public class MetaTileEntities {
         // Packer, IDs 500-514
         registerSimpleMetaTileEntity(PACKER, 500, "packer", RecipeMaps.PACKER_RECIPES, Textures.PACKER_OVERLAY, true);
 
-        // FREE, IDs 515-529
+        // UnPacker IDs 515-529
+        registerSimpleMetaTileEntity(UNPACKER, 515, "unpacker", RecipeMaps.UNPACKER_RECIPES, Textures.UNPACKER_OVERLAY, true);
 
         // Gas Collectors, IDs 530-544
         registerMetaTileEntities(GAS_COLLECTOR, 530, "gas_collector",
@@ -662,7 +693,8 @@ public class MetaTileEntities {
         // Sifter, IDs 575-589
         registerSimpleMetaTileEntity(SIFTER, 575, "sifter", RecipeMaps.SIFTER_RECIPES, Textures.SIFTER_OVERLAY, true);
 
-        // FREE, IDs 590-604
+        // Polisher IDs 590-604
+        registerSimpleMetaTileEntity(POLISHER, 590, "polisher", RecipeMaps.POLISHER_RECIPES, Textures.POLISHER_OVERLAY, true, GTUtility.hvCappedTankSizeFunction);
 
         // Thermal Centrifuge, IDs 605-619
         registerSimpleMetaTileEntity(THERMAL_CENTRIFUGE, 605, "thermal_centrifuge",
@@ -710,12 +742,45 @@ public class MetaTileEntities {
                     new MetaTileEntityPump(gregtechId("pump." + GTValues.VN[i + 1].toLowerCase()), i + 1));
         }
 
-        // Block Breakers, IDs 740-754
+        // Block Breakers, IDs 740-745
         for (int i = 0; i < BLOCK_BREAKER.length; i++) {
             String voltageName = GTValues.VN[i + 1].toLowerCase();
             BLOCK_BREAKER[i] = new MetaTileEntityBlockBreaker(gregtechId("block_breaker." + voltageName), i + 1);
             registerMetaTileEntity(740 + i, BLOCK_BREAKER[i]);
         }
+
+        //工具铸造 IDs 745-750
+        for (int i = 0; i < TOOL_CASTER.length; i++) {
+            String voltageName = GTValues.VN[i + 1].toLowerCase();
+            TOOL_CASTER[i] = new SimpleMachineMetaTileEntity(gregtechId("tool_caster." + voltageName), RecipeMaps.TOOL_CASTER_RECIPES, Textures.TOOL_CASTER_OVERLAY, i+1,true);
+            registerMetaTileEntity(745 + i, TOOL_CASTER[i]);
+        }
+
+        //水浴冷凝 IDs 750-755
+        for (int i = 0; i < BATH_CONDENSER.length; i++) {
+            String voltageName = GTValues.VN[i + 1].toLowerCase();
+            BATH_CONDENSER[i] = new SimpleMachineMetaTileEntity(gregtechId("bath_condenser." + voltageName), RecipeMaps.BATH_CONDENSER_RECIPES, Textures.BATH_CONDENSER_OVERLAY, i+1,true);
+            registerMetaTileEntity(750 + i, BATH_CONDENSER[i]);
+        }
+
+        //过胶机 IDs 755-770
+        registerSimpleMetaTileEntity(LAMINATOR, 755, "laminator", RecipeMaps.LAMINATOR_RECIPES, Textures.LAMINATOR_OVERLAY, true);
+
+        //聚合 IDs 770-785
+        registerSimpleMetaTileEntity(POLYMERIZATION_TANK, 770, "polymerization_tank", RecipeMaps.POLYMERIZATION_RECIPES, Textures.POLYMERIZATION_TANK_OVERLAY, true, GTUtility.hvCappedTankSizeFunction);
+
+        //脱硫 IDs 785-800
+        registerSimpleMetaTileEntity(DESULFURIZER, 785, "desulfurizer", RecipeMaps.DESULFURIZATION_RECIPES, Textures.DESULFURIZER_OVERLAY, true);
+
+        //生物反应 IDs 800-815
+        registerSimpleMetaTileEntity(BIO_REACTOR, 800, "bio_reactor", RecipeMaps.BIO_REACTOR_RECIPES, Textures.BIO_REACTOR_OVERLAY, true, GTUtility.hvCappedTankSizeFunction);
+
+        //部件组装 IDs 815-830
+        registerSimpleMetaTileEntity(COMPONENT_ASSEMBLER, 815, "component_assembler", RecipeMaps.COMPONENT_ASSEMBLER_RECIPES, Textures.ASSEMBLER_OVERLAY, true, GTUtility.hvCappedTankSizeFunction);
+
+        //纺线器 IDs 830-845 LOOM
+        registerSimpleMetaTileEntity(LOOM, 830, "loom", RecipeMaps.LOOM_RECIPES, Textures.LOOM_OVERLAY, true, GTUtility.hvCappedTankSizeFunction);
+
 
         // Chunk Miner, IDs 920-934
         MINER[0] = registerMetaTileEntity(920, new MetaTileEntityMiner(gregtechId("miner.lv"), 1, 160, 8, 1));
@@ -730,61 +795,95 @@ public class MetaTileEntities {
         BUFFER[4] = registerMetaTileEntity(934, new MetaTileEntityBuffer(gregtechId("buffer.iv"), 5));
 
         //单方块发电机
-        // Diesel Generator, IDs 935-949
+        // Diesel Generator, IDs 935-939
         COMBUSTION_GENERATOR[0] = registerMetaTileEntity(935,
                 new MetaTileEntitySingleCombustion(gregtechId("combustion_generator.lv"),
                         RecipeMaps.COMBUSTION_GENERATOR_FUELS, Textures.COMBUSTION_GENERATOR_OVERLAY, 1,
-                        GTUtility.genericGeneratorTankSizeFunction));
+                        GTUtility.genericGeneratorTankSizeFunction,true));
         COMBUSTION_GENERATOR[1] = registerMetaTileEntity(936,
                 new MetaTileEntitySingleCombustion(gregtechId("combustion_generator.mv"),
                         RecipeMaps.COMBUSTION_GENERATOR_FUELS, Textures.COMBUSTION_GENERATOR_OVERLAY, 2,
-                        GTUtility.genericGeneratorTankSizeFunction));
+                        GTUtility.genericGeneratorTankSizeFunction,true));
         COMBUSTION_GENERATOR[2] = registerMetaTileEntity(937,
                 new MetaTileEntitySingleCombustion(gregtechId("combustion_generator.hv"),
                         RecipeMaps.COMBUSTION_GENERATOR_FUELS, Textures.COMBUSTION_GENERATOR_OVERLAY, 3,
-                        GTUtility.genericGeneratorTankSizeFunction));
+                        GTUtility.genericGeneratorTankSizeFunction,true));
         COMBUSTION_GENERATOR[3] = registerMetaTileEntity(938,
                 new MetaTileEntitySingleCombustion(gregtechId("combustion_generator.ev"),
                         RecipeMaps.COMBUSTION_GENERATOR_FUELS, Textures.COMBUSTION_GENERATOR_OVERLAY, 4,
-                        GTUtility.genericGeneratorTankSizeFunction));
+                        GTUtility.genericGeneratorTankSizeFunction,true));
         COMBUSTION_GENERATOR[4] = registerMetaTileEntity(939,
                 new MetaTileEntitySingleCombustion(gregtechId("combustion_generator.iv"),
                         RecipeMaps.COMBUSTION_GENERATOR_FUELS, Textures.COMBUSTION_GENERATOR_OVERLAY, 5,
-                        GTUtility.genericGeneratorTankSizeFunction));
+                        GTUtility.genericGeneratorTankSizeFunction,true));
 
-        // Steam Turbine, IDs 950-964
-        STEAM_TURBINE[0] = registerMetaTileEntity(950,
+        // Steam Turbine, IDs 940-944
+        STEAM_TURBINE[0] = registerMetaTileEntity(940,
                 new MetaTileEntitySingleTurbine(gregtechId("steam_turbine.lv"), RecipeMaps.STEAM_TURBINE_FUELS,
-                        Textures.STEAM_TURBINE_OVERLAY, 1, GTUtility.steamGeneratorTankSizeFunction));
-        STEAM_TURBINE[1] = registerMetaTileEntity(951,
+                        Textures.STEAM_TURBINE_OVERLAY, 1, GTUtility.steamGeneratorTankSizeFunction,true));
+        STEAM_TURBINE[1] = registerMetaTileEntity(941,
                 new MetaTileEntitySingleTurbine(gregtechId("steam_turbine.mv"), RecipeMaps.STEAM_TURBINE_FUELS,
-                        Textures.STEAM_TURBINE_OVERLAY, 2, GTUtility.steamGeneratorTankSizeFunction));
-        STEAM_TURBINE[2] = registerMetaTileEntity(952,
+                        Textures.STEAM_TURBINE_OVERLAY, 2, GTUtility.steamGeneratorTankSizeFunction,true));
+        STEAM_TURBINE[2] = registerMetaTileEntity(942,
                 new MetaTileEntitySingleTurbine(gregtechId("steam_turbine.hv"), RecipeMaps.STEAM_TURBINE_FUELS,
-                        Textures.STEAM_TURBINE_OVERLAY, 3, GTUtility.steamGeneratorTankSizeFunction));
-        STEAM_TURBINE[3] = registerMetaTileEntity(953,
+                        Textures.STEAM_TURBINE_OVERLAY, 3, GTUtility.steamGeneratorTankSizeFunction,true));
+        STEAM_TURBINE[3] = registerMetaTileEntity(943,
                 new MetaTileEntitySingleTurbine(gregtechId("steam_turbine.ev"), RecipeMaps.STEAM_TURBINE_FUELS,
-                        Textures.STEAM_TURBINE_OVERLAY, 4, GTUtility.steamGeneratorTankSizeFunction));
-        STEAM_TURBINE[4] = registerMetaTileEntity(954,
+                        Textures.STEAM_TURBINE_OVERLAY, 4, GTUtility.steamGeneratorTankSizeFunction,true));
+        STEAM_TURBINE[4] = registerMetaTileEntity(944,
                 new MetaTileEntitySingleTurbine(gregtechId("steam_turbine.iv"), RecipeMaps.STEAM_TURBINE_FUELS,
-                        Textures.STEAM_TURBINE_OVERLAY, 5, GTUtility.steamGeneratorTankSizeFunction));
+                        Textures.STEAM_TURBINE_OVERLAY, 5, GTUtility.steamGeneratorTankSizeFunction,true));
 
-        // Gas Turbine, IDs 965-979
-        GAS_TURBINE[0] = registerMetaTileEntity(965,
+        // Gas Turbine, IDs 945-949
+        GAS_TURBINE[0] = registerMetaTileEntity(945,
                 new MetaTileEntitySingleTurbine(gregtechId("gas_turbine.lv"), RecipeMaps.GAS_TURBINE_FUELS,
-                        Textures.GAS_TURBINE_OVERLAY, 1, GTUtility.genericGeneratorTankSizeFunction));
-        GAS_TURBINE[1] = registerMetaTileEntity(966,
+                        Textures.GAS_TURBINE_OVERLAY, 1, GTUtility.genericGeneratorTankSizeFunction,true));
+        GAS_TURBINE[1] = registerMetaTileEntity(946,
                 new MetaTileEntitySingleTurbine(gregtechId("gas_turbine.mv"), RecipeMaps.GAS_TURBINE_FUELS,
-                        Textures.GAS_TURBINE_OVERLAY, 2, GTUtility.genericGeneratorTankSizeFunction));
-        GAS_TURBINE[2] = registerMetaTileEntity(967,
+                        Textures.GAS_TURBINE_OVERLAY, 2, GTUtility.genericGeneratorTankSizeFunction,true));
+        GAS_TURBINE[2] = registerMetaTileEntity(947,
                 new MetaTileEntitySingleTurbine(gregtechId("gas_turbine.hv"), RecipeMaps.GAS_TURBINE_FUELS,
-                        Textures.GAS_TURBINE_OVERLAY, 3, GTUtility.genericGeneratorTankSizeFunction));
-        GAS_TURBINE[3] = registerMetaTileEntity(968,
+                        Textures.GAS_TURBINE_OVERLAY, 3, GTUtility.genericGeneratorTankSizeFunction,true));
+        GAS_TURBINE[3] = registerMetaTileEntity(948,
                 new MetaTileEntitySingleTurbine(gregtechId("gas_turbine.ev"), RecipeMaps.GAS_TURBINE_FUELS,
-                        Textures.GAS_TURBINE_OVERLAY, 4, GTUtility.genericGeneratorTankSizeFunction));
-        GAS_TURBINE[4] = registerMetaTileEntity(969,
+                        Textures.GAS_TURBINE_OVERLAY, 4, GTUtility.genericGeneratorTankSizeFunction,true));
+        GAS_TURBINE[4] = registerMetaTileEntity(949,
                 new MetaTileEntitySingleTurbine(gregtechId("gas_turbine.iv"), RecipeMaps.GAS_TURBINE_FUELS,
-                        Textures.GAS_TURBINE_OVERLAY, 5, GTUtility.genericGeneratorTankSizeFunction));
+                        Textures.GAS_TURBINE_OVERLAY, 5, GTUtility.genericGeneratorTankSizeFunction,true));
+
+        // 半流质, IDs 950-954
+        SEMI_FLUID_GENERATOR[0] = registerMetaTileEntity(950,
+                new MetaTileEntitySingleCombustion(gregtechId("semi_fluid_generator.lv"), RecipeMaps.SEMI_FLUID_GENERATOR_FUELS,
+                        Textures.SEMI_FLUID_OVERLAY, 1, GTUtility.genericGeneratorTankSizeFunction,true));
+        SEMI_FLUID_GENERATOR[1] = registerMetaTileEntity(951,
+                new MetaTileEntitySingleCombustion(gregtechId("semi_fluid_generator.mv"), RecipeMaps.SEMI_FLUID_GENERATOR_FUELS,
+                        Textures.SEMI_FLUID_OVERLAY, 2, GTUtility.genericGeneratorTankSizeFunction,true));
+        SEMI_FLUID_GENERATOR[2] = registerMetaTileEntity(952,
+                new MetaTileEntitySingleCombustion(gregtechId("semi_fluid_generator.hv"), RecipeMaps.SEMI_FLUID_GENERATOR_FUELS,
+                        Textures.SEMI_FLUID_OVERLAY, 3, GTUtility.genericGeneratorTankSizeFunction,true));
+        SEMI_FLUID_GENERATOR[3] = registerMetaTileEntity(953,
+                new MetaTileEntitySingleCombustion(gregtechId("semi_fluid_generator.ev"), RecipeMaps.SEMI_FLUID_GENERATOR_FUELS,
+                        Textures.SEMI_FLUID_OVERLAY, 4, GTUtility.genericGeneratorTankSizeFunction,true));
+        SEMI_FLUID_GENERATOR[4] = registerMetaTileEntity(954,
+                new MetaTileEntitySingleCombustion(gregtechId("semi_fluid_generator.iv"), RecipeMaps.SEMI_FLUID_GENERATOR_FUELS,
+                        Textures.SEMI_FLUID_OVERLAY, 5, GTUtility.genericGeneratorTankSizeFunction,true));
+
+        // 等离子, IDs 955-959
+        PLASMA_GENERATOR[0] = registerMetaTileEntity(955,
+                new MetaTileEntitySingleTurbine(gregtechId("plasma_generator.ev"), RecipeMaps.PLASMA_GENERATOR_FUELS,
+                        Textures.PLASMA_TURBINE_OVERLAY, 4, GTUtility.genericGeneratorTankSizeFunction,false));
+        PLASMA_GENERATOR[1] = registerMetaTileEntity(956,
+                new MetaTileEntitySingleTurbine(gregtechId("plasma_generator.iv"), RecipeMaps.PLASMA_GENERATOR_FUELS,
+                        Textures.PLASMA_TURBINE_OVERLAY, 5, GTUtility.genericGeneratorTankSizeFunction,false));
+        PLASMA_GENERATOR[2] = registerMetaTileEntity(957,
+                new MetaTileEntitySingleTurbine(gregtechId("plasma_generator.luv"), RecipeMaps.PLASMA_GENERATOR_FUELS,
+                        Textures.PLASMA_TURBINE_OVERLAY, 6, GTUtility.genericGeneratorTankSizeFunction,false));
+        PLASMA_GENERATOR[3] = registerMetaTileEntity(958,
+                new MetaTileEntitySingleTurbine(gregtechId("plasma_generator.zpm"), RecipeMaps.PLASMA_GENERATOR_FUELS,
+                        Textures.PLASMA_TURBINE_OVERLAY, 7, GTUtility.genericGeneratorTankSizeFunction,false));
+        PLASMA_GENERATOR[4] = registerMetaTileEntity(959,
+                new MetaTileEntitySingleTurbine(gregtechId("plasma_generator.uv"), RecipeMaps.PLASMA_GENERATOR_FUELS,
+                        Textures.PLASMA_TURBINE_OVERLAY, 8, GTUtility.genericGeneratorTankSizeFunction,false));
 
         // Item Collector, IDs 980-983
         ITEM_COLLECTOR[0] = registerMetaTileEntity(980,
@@ -820,9 +919,10 @@ public class MetaTileEntities {
                 new MetaTileEntityDistillationTower(gregtechId("distillation_tower"), true));
         MULTI_FURNACE = registerMetaTileEntity(1006, new MetaTileEntityMultiSmelter(gregtechId("multi_furnace")));
         LARGE_COMBUSTION_ENGINE = registerMetaTileEntity(1007,
-                new MetaTileEntityLargeCombustionEngine(gregtechId("large_combustion_engine"), GTValues.EV));
+                new MetaTileEntityLargeCombustionEngine(gregtechId("large_combustion_engine"), GTValues.IV));
         EXTREME_COMBUSTION_ENGINE = registerMetaTileEntity(1008,
-                new MetaTileEntityLargeCombustionEngine(gregtechId("extreme_combustion_engine"), GTValues.IV));
+                new MetaTileEntityLargeCombustionEngine(gregtechId("extreme_combustion_engine"), GTValues.LuV));
+
         CRACKER = registerMetaTileEntity(1009, new MetaTileEntityCrackingUnit(gregtechId("cracker")));
 
         LARGE_STEAM_TURBINE = registerMetaTileEntity(1010,
@@ -868,12 +968,9 @@ public class MetaTileEntities {
         STEAM_OVEN = registerMetaTileEntity(1024, new MetaTileEntitySteamOven(gregtechId("steam_oven")));
         STEAM_GRINDER = registerMetaTileEntity(1025, new MetaTileEntitySteamGrinder(gregtechId("steam_grinder")));
 
-        BASIC_LARGE_MINER = registerMetaTileEntity(1026,
-                new MetaTileEntityLargeMiner(gregtechId("large_miner.ev"), GTValues.EV, 16, 3, 4, Materials.Steel, 8));
-        LARGE_MINER = registerMetaTileEntity(1027, new MetaTileEntityLargeMiner(gregtechId("large_miner.iv"),
-                GTValues.IV, 4, 5, 5, Materials.Titanium, 16));
-        ADVANCED_LARGE_MINER = registerMetaTileEntity(1028, new MetaTileEntityLargeMiner(gregtechId("large_miner.luv"),
-                GTValues.LuV, 1, 7, 6, Materials.TungstenSteel, 32));
+        BASIC_LARGE_MINER = registerMetaTileEntity(1026, new MetaTileEntityLargeMiner(gregtechId("large_miner.ev"), GTValues.EV, 16, 3, 4, Materials.Steel, 8));
+        LARGE_MINER = registerMetaTileEntity(1027, new MetaTileEntityLargeMiner(gregtechId("large_miner.iv"), GTValues.IV, 4, 5, 5, Materials.Titanium, 16));
+        ADVANCED_LARGE_MINER = registerMetaTileEntity(1028, new MetaTileEntityLargeMiner(gregtechId("large_miner.luv"), GTValues.LuV, 1, 7, 6, Materials.TungstenSteel, 32));
 
         CENTRAL_MONITOR = registerMetaTileEntity(1029, new MetaTileEntityCentralMonitor(gregtechId("central_monitor")));
 
@@ -906,6 +1003,7 @@ public class MetaTileEntities {
         ACTIVE_TRANSFORMER = registerMetaTileEntity(1042,
                 new MetaTileEntityActiveTransformer(gregtechId("active_transformer")));
 
+        MULTI_ALLOY_FURNACE = registerMetaTileEntity(1050, new MetaTileEntityMultiAlloyFurnace(gregtechId("multi_alloy_furnace")));
         //IO注册
         // Import/Export Buses/Hatches, IDs 1150-1300
         endPos = GregTechAPI.isHighTier() ? ITEM_IMPORT_BUS.length : GTValues.UHV + 1;
@@ -1062,6 +1160,8 @@ public class MetaTileEntities {
                 new MetaTileEntityAutoMaintenanceHatch(gregtechId("maintenance_hatch_full_auto")));
         CLEANING_MAINTENANCE_HATCH = registerMetaTileEntity(1703,
                 new MetaTileEntityCleaningMaintenanceHatch(gregtechId("maintenance_hatch_cleanroom_auto")));
+        STERILE_CLEANING_MAINTENANCE_HATCH = registerMetaTileEntity(1704,
+                new MetaTileEntitySterileCleaningMaintenanceHatch(gregtechId("maintenance_hatch_sterile_cleanroom_auto")));
 
         PASSTHROUGH_HATCH_ITEM = registerMetaTileEntity(1710,
                 new MetaTileEntityPassthroughHatchItem(gregtechId("passthrough_hatch_item"), 3));
@@ -1191,16 +1291,28 @@ public class MetaTileEntities {
         CREATIVE_ENERGY = registerMetaTileEntity(2003, new MetaTileEntityCreativeEnergy());
 
         // Steam Hatches/Buses
+        STEAM_HATCH = registerMetaTileEntity(2004, new MetaTileEntitySteamHatch(gregtechId("steam_hatch")));
+        HUGE_STEAM_HATCH = registerMetaTileEntity(2005, new MetaTileEntityHugeSteamHatch(gregtechId("huge_steam_hatch")));
 
-        STEAM_EXPORT_BUS = registerMetaTileEntity(2010,
+        STEAM_EXPORT_BUS = registerMetaTileEntity(2006,
                 new MetaTileEntitySteamItemBus(gregtechId("steam_export_bus"), true));
-        STEAM_IMPORT_BUS = registerMetaTileEntity(2011,
+        STEAM_IMPORT_BUS = registerMetaTileEntity(2007,
                 new MetaTileEntitySteamItemBus(gregtechId("steam_import_bus"), false));
-        STEAM_HATCH = registerMetaTileEntity(2012, new MetaTileEntitySteamHatch(gregtechId("steam_hatch")));
 
-        CLIPBOARD_TILE = registerMetaTileEntity(2013, new MetaTileEntityClipboard(gregtechId("clipboard")));
+        STEAM_EXPORT_HATCH = registerMetaTileEntity(2008,
+                new MetaTileEntitySteamFluidHatch(gregtechId("steam_export_hatch"), true));
+        STEAM_IMPORT_HATCH = registerMetaTileEntity(2009,
+                new MetaTileEntitySteamFluidHatch(gregtechId("steam_import_hatch"), false));
 
-        MONITOR_SCREEN = registerMetaTileEntity(2014, new MetaTileEntityMonitorScreen(gregtechId("monitor_screen")));
+        HUGE_STEAM_EXPORT_BUS = registerMetaTileEntity(2010,
+                new MetaTileEntityHugeSteamItemBus(gregtechId("huge_steam_export_bus"), true));
+        HUGE_STEAM_IMPORT_BUS = registerMetaTileEntity(2011,
+                new MetaTileEntityHugeSteamItemBus(gregtechId("huge_steam_import_bus"), false));
+
+        HUGE_STEAM_EXPORT_HATCH=registerMetaTileEntity(2012,
+                new MetaTileEntityHugeSteamFluidHatch(gregtechId("huge_steam_export_hatch"), true));
+        HUGE_STEAM_IMPORT_HATCH=registerMetaTileEntity(2013,
+                new MetaTileEntityHugeSteamFluidHatch(gregtechId("huge_steam_import_hatch"), false));
 
         // Creative Chest and Tank, IDs 1668-1669
         CREATIVE_CHEST = registerMetaTileEntity(2015, new MetaTileEntityCreativeChest(gregtechId("creative_chest")));
@@ -1260,6 +1372,11 @@ public class MetaTileEntities {
                 new MetaTileEntityTankValve(gregtechId("tank_valve.steel"), true));
         STEEL_TANK = registerMetaTileEntity(2053,
                 new MetaTileEntityMultiblockTank(gregtechId("tank.steel"), true, 1000 * 1000));
+
+
+        CLIPBOARD_TILE = registerMetaTileEntity(2055, new MetaTileEntityClipboard(gregtechId("clipboard")));
+
+        MONITOR_SCREEN = registerMetaTileEntity(2056, new MetaTileEntityMonitorScreen(gregtechId("monitor_screen")));
 
         // Drums, IDs 1610-1624
         WOODEN_DRUM = registerMetaTileEntity(2060,

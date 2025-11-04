@@ -101,6 +101,18 @@ public final class CoverBehaviors {
                 (def, tile, side) -> new CoverSolarPanel(def, tile, side, V[ZPM]));
         registerBehavior(gregtechId("solar_panel.uv"), MetaItems.COVER_SOLAR_PANEL_UV,
                 (def, tile, side) -> new CoverSolarPanel(def, tile, side, V[UV]));
+        registerBehavior(gregtechId("solar_panel.uhv"), MetaItems.COVER_SOLAR_PANEL_UHV,
+                (def, tile, side) -> new CoverSolarPanel(def, tile, side, V[UHV]));
+        registerBehavior(gregtechId("solar_panel.uev"), MetaItems.COVER_SOLAR_PANEL_UEV,
+                (def, tile, side) -> new CoverSolarPanel(def, tile, side, V[UEV]));
+        registerBehavior(gregtechId("solar_panel.uiv"), MetaItems.COVER_SOLAR_PANEL_UIV,
+                (def, tile, side) -> new CoverSolarPanel(def, tile, side, V[UIV]));
+        registerBehavior(gregtechId("solar_panel.uxv"), MetaItems.COVER_SOLAR_PANEL_UXV,
+                (def, tile, side) -> new CoverSolarPanel(def, tile, side, V[UXV]));
+        registerBehavior(gregtechId("solar_panel.opv"), MetaItems.COVER_SOLAR_PANEL_OPV,
+                (def, tile, side) -> new CoverSolarPanel(def, tile, side, V[OpV]));
+        registerBehavior(gregtechId("solar_panel.max"), MetaItems.COVER_SOLAR_PANEL_MAX,
+                (def, tile, side) -> new CoverSolarPanel(def, tile, side, V[MAX]));
 
         registerBehavior(gregtechId("machine_controller"), MetaItems.COVER_MACHINE_CONTROLLER,
                 CoverMachineController::new);
@@ -126,6 +138,11 @@ public final class CoverBehaviors {
         registerBehavior(gregtechId("maintenance_detector"), MetaItems.COVER_MAINTENANCE_DETECTOR,
                 CoverDetectorMaintenance::new);
         registerBehavior(gregtechId("infinite_water"), MetaItems.COVER_INFINITE_WATER, CoverInfiniteWater::new);
+
+        registerBehavior(gregtechId("air_vent"), MetaItems.COVER_AIR_VENT, (def, tile, side) -> new CoverAirVent(def, tile, side, 100));
+
+
+
         registerBehavior(gregtechId("ender_fluid_link"), MetaItems.COVER_ENDER_FLUID_LINK, CoverEnderFluidLink::new);
         registerBehavior(gregtechId("ender_item_link"), MetaItems.COVER_ENDER_ITEM_LINK, CoverEnderItemLink::new);
         registerBehavior(gregtechId("cover.digital"), MetaItems.COVER_DIGITAL_INTERFACE, CoverDigitalInterface::new);
@@ -163,7 +180,7 @@ public final class CoverBehaviors {
                 (def, tile, side) -> new CoverFluidRegulator(def, tile, side, GTValues.EV, 1280 * 64));
         registerBehavior(gregtechId("fluid.regulator.iv"), MetaItems.FLUID_REGULATOR_IV,
                 (def, tile, side) -> new CoverFluidRegulator(def, tile, side, GTValues.IV, 1280 * 64 * 4));
-        registerBehavior(gregtechId("fluid.regulator.luv"), MetaItems.FLUID_REGULATOR_LUV,
+        registerBehavior(gregtechId("fluid.regulator.luv"), MetaItems.FLUID_REGULATOR_LuV,
                 (def, tile, side) -> new CoverFluidRegulator(def, tile, side, GTValues.LuV, 1280 * 64 * 16));
         registerBehavior(gregtechId("fluid.regulator.zpm"), MetaItems.FLUID_REGULATOR_ZPM,
                 (def, tile, side) -> new CoverFluidRegulator(def, tile, side, GTValues.ZPM, 1280 * 64 * 64));
@@ -181,6 +198,8 @@ public final class CoverBehaviors {
                 (def, tile, side) -> new CoverConveyor(def, tile, side, GTValues.UXV, 16 * 64));
         registerBehavior(gregtechId("conveyor.opv"), MetaItems.CONVEYOR_MODULE_OpV,
                 (def, tile, side) -> new CoverConveyor(def, tile, side, GTValues.OpV, 16 * 64));
+        registerBehavior(gregtechId("conveyor.max"), MetaItems.CONVEYOR_MODULE_MAX,
+                (def, tile, side) -> new CoverConveyor(def, tile, side, GTValues.MAX, 16 * 64));
 
         registerBehavior(gregtechId("robotic_arm.uhv"), MetaItems.ROBOT_ARM_UHV,
                 (def, tile, side) -> new CoverRoboticArm(def, tile, side, GTValues.UHV, 16 * 64));
@@ -192,6 +211,8 @@ public final class CoverBehaviors {
                 (def, tile, side) -> new CoverRoboticArm(def, tile, side, GTValues.UXV, 16 * 64));
         registerBehavior(gregtechId("robotic_arm.opv"), MetaItems.ROBOT_ARM_OpV,
                 (def, tile, side) -> new CoverRoboticArm(def, tile, side, GTValues.OpV, 16 * 64));
+        registerBehavior(gregtechId("robotic_arm.max"), MetaItems.ROBOT_ARM_MAX,
+                (def, tile, side) -> new CoverRoboticArm(def, tile, side, GTValues.MAX, 16 * 64));
 
         registerBehavior(gregtechId("pump.uhv"), MetaItems.ELECTRIC_PUMP_UHV,
                 (def, tile, side) -> new CoverPump(def, tile, side, GTValues.UHV, 1280 * 64 * 64 * 4));
@@ -203,6 +224,8 @@ public final class CoverBehaviors {
                 (def, tile, side) -> new CoverPump(def, tile, side, GTValues.UXV, 1280 * 64 * 64 * 4));
         registerBehavior(gregtechId("pump.opv"), MetaItems.ELECTRIC_PUMP_OpV,
                 (def, tile, side) -> new CoverPump(def, tile, side, GTValues.OpV, 1280 * 64 * 64 * 4));
+        registerBehavior(gregtechId("pump.max"), MetaItems.ELECTRIC_PUMP_MAX,
+                (def, tile, side) -> new CoverPump(def, tile, side, GTValues.MAX, 1280 * 64 * 64 * 4));
 
         registerBehavior(gregtechId("fluid_voiding"), MetaItems.COVER_FLUID_VOIDING, CoverFluidVoiding::new);
         registerBehavior(gregtechId("fluid_voiding.advanced"), MetaItems.COVER_FLUID_VOIDING_ADVANCED,
@@ -210,7 +233,12 @@ public final class CoverBehaviors {
         registerBehavior(gregtechId("item_voiding"), MetaItems.COVER_ITEM_VOIDING, CoverItemVoiding::new);
         registerBehavior(gregtechId("item_voiding.advanced"), MetaItems.COVER_ITEM_VOIDING_ADVANCED,
                 CoverItemVoidingAdvanced::new);
-        registerBehavior(gregtechId("storage"), MetaItems.COVER_STORAGE, CoverStorage::new);
+        registerBehavior(gregtechId("storage"), MetaItems.COVER_STORAGE,   (def, tile, side) -> new CoverStorage(def, tile, side,9));
+        registerBehavior(gregtechId("storage_medium"), MetaItems.COVER_STORAGE_MEDIUM,   (def, tile, side) -> new CoverStorage(def, tile, side,18));
+        registerBehavior(gregtechId("storage_large"), MetaItems.COVER_STORAGE_LARGE,   (def, tile, side) -> new CoverStorage(def, tile, side,27));
+        registerBehavior(gregtechId("storage_huge"), MetaItems.COVER_STORAGE_HUGE,   (def, tile, side) -> new CoverStorage(def, tile, side,36));
+
+
     }
 
     /**

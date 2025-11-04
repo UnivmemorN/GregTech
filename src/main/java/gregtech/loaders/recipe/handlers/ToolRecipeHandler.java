@@ -39,6 +39,8 @@ import static gregtech.api.recipes.RecipeMaps.LATHE_RECIPES;
 import static gregtech.api.unification.material.Materials.*;
 import static gregtech.api.unification.material.info.MaterialFlags.*;
 import static gregtech.api.unification.material.properties.PropertyKey.GEM;
+import static gregtech.api.util.Mods.Names.GTQT_CORE;
+import static net.minecraftforge.fml.common.Loader.isModLoaded;
 
 public class ToolRecipeHandler {
 
@@ -50,7 +52,9 @@ public class ToolRecipeHandler {
     public static void register() {
         OrePrefix.plate.addProcessingHandler(PropertyKey.TOOL, ToolRecipeHandler::processTool);
         OrePrefix.plate.addProcessingHandler(PropertyKey.TOOL, ToolRecipeHandler::processElectricTool);
+        OrePrefix.pipeSmallFluid.addProcessingHandler(PropertyKey.TOOL, ToolRecipeHandler::processTreeTap);
     }
+
 
     public static void initializeMetaItems() {
         motorItems.put(GTValues.LV, MetaItems.ELECTRIC_MOTOR_LV);
@@ -101,6 +105,7 @@ public class ToolRecipeHandler {
         ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadWrench, ToolItems.WRENCH_IV);
         ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadBuzzSaw, ToolItems.BUZZSAW);
         ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadScrewdriver, ToolItems.SCREWDRIVER_LV);
+        ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.pipeSmallFluid, ToolItems.TREE_TAP_LV);
 
         ForgeRegistries.RECIPES
                 .register(new ToolHeadReplaceRecipe().setRegistryName(new ResourceLocation(MODID, "replacetoolhead")));
@@ -134,7 +139,6 @@ public class ToolRecipeHandler {
         UnificationEntry plate = new UnificationEntry(OrePrefix.plate, material);
         UnificationEntry ingot = new UnificationEntry(material.hasProperty(GEM) ? OrePrefix.gem : OrePrefix.ingot,
                 material);
-
         if (material.hasFlag(GENERATE_PLATE)) {
             addToolRecipe(material, ToolItems.MINING_HAMMER, true,
                     "PPf", "PPS", "PPh",
@@ -204,20 +208,29 @@ public class ToolRecipeHandler {
                     "PhP", " P ", " P ",
                     'P', plate);
 
+            // Combination Wrench
+            addToolRecipe(material, ToolItems.COMBINATION_WRENCH, true,
+                    "PhP", "IPI", "fP ",
+                    'I', ingot,
+                    'P', plate);
+
+
         }
         if (material.hasFlag(GENERATE_ROD)) {
             UnificationEntry rod = new UnificationEntry(OrePrefix.stick, material);
-
-            addToolRecipe(material, ToolItems.CHOOCHER, false,
-                    "PhP", "SPS", " P ",
-                    'P', plate,
-                    'S', rod);
-
             if (material.hasFlag(GENERATE_PLATE)) {
                 addToolRecipe(material, ToolItems.BUTCHERY_KNIFE, false,
                         "PPf", "PP ", "Sh ",
                         'P', plate,
                         'S', rod);
+
+                // Universal Tool
+                addToolRecipe(material, ToolItems.UNIVERSAL_TOOL, true,
+                        "hPI", "fPS", "IPS",
+                        'I', ingot,
+                        'P', plate,
+                        'S', rod
+                );
 
                 if (material.hasFlag(GENERATE_BOLT_SCREW)) {
                     addToolRecipe(material, ToolItems.WIRE_CUTTER, false,
@@ -225,6 +238,13 @@ public class ToolRecipeHandler {
                             'P', plate,
                             'T', new UnificationEntry(OrePrefix.screw, material),
                             'S', rod);
+
+                    addToolRecipe(material, ToolItems.TREE_TAP, false,
+                            "STS", "HHH", "Pfh",
+                            'P', plate,
+                            'T', new UnificationEntry(OrePrefix.gearSmall, material),
+                            'H', new UnificationEntry(OrePrefix.pipeSmallFluid, Wood),
+                            'S', stick);
                 }
             }
 
@@ -246,7 +266,34 @@ public class ToolRecipeHandler {
                     'S', rod,
                     'D', new UnificationEntry(OrePrefix.dye, MarkerMaterials.Color.Blue));
         }
+
+        if (material.hasFlags(GENERATE_PLATE) && material.hasFlags(GENERATE_ROD)) {
+            // Universal Spade
+            addToolRecipe(material, ToolItems.UNIVERSAL_SPADE, true,
+                    "hPP", "DRP", "RDf",
+                    'P', plate,
+                    'R', stick,
+                    'D', new UnificationEntry(OrePrefix.dye, MarkerMaterials.Color.Blue));
+        }
+
+        if (material.hasFlags(GENERATE_SPRING_SMALL) && material.hasFlags(GENERATE_SMALL_GEAR)
+                && material !=
+                Materials.Steel) // Do not generate Steel Flint And Steel because the vanilla Flint And Steel is Steel yet.
+        {
+            // Flint And Steel
+            addToolRecipe(material, ToolItems.FLINT_AND_STEEL, false,
+                    " G ", " F ", " S ",
+                    'G', new UnificationEntry(OrePrefix.gearSmall, material),
+                    'S', new UnificationEntry(OrePrefix.springSmall, material),
+                    'F', new ItemStack(Items.FLINT));
+        }
     }
+    private static void processTreeTap(OrePrefix orePrefix, Material material, MaterialToolProperty property) {
+        // tree tap
+        OrePrefix toolPrefix = OrePrefix.pipeSmallFluid;
+        addElectricToolRecipe(toolPrefix, material, new IGTTool[] { ToolItems.TREE_TAP_LV });
+    }
+
 
     private static void processElectricTool(OrePrefix prefix, Material material, MaterialToolProperty property) {
         final long voltageMultiplier = material.getBlastTemperature() > 2800 ? VA[LV] : VA[ULV];
@@ -271,6 +318,7 @@ public class ToolRecipeHandler {
             addHammerDrillRecipe(toolPrefix, material,
                     new IGTTool[] { ToolItems.HARD_HAMMER_LV, ToolItems.HARD_HAMMER_MV, ToolItems.HARD_HAMMER_HV,
                             ToolItems.HARD_HAMMER_EV, ToolItems.HARD_HAMMER_IV });
+
             // chainsaw
             toolPrefix = OrePrefix.toolHeadChainsaw;
             ModHandler.addShapedRecipe(String.format("chainsaw_head_%s", material),
@@ -327,6 +375,7 @@ public class ToolRecipeHandler {
                     "fR", " h",
                     'R', new UnificationEntry(OrePrefix.stickLong, material));
         }
+
     }
 
     public static void addElectricToolRecipe(OrePrefix toolHead, Material material, IGTTool[] toolItems) {
@@ -389,7 +438,7 @@ public class ToolRecipeHandler {
     public static void registerCustomToolRecipes() {
         registerFlintToolRecipes();
         registerMortarRecipes();
-        registerSoftToolRecipes();
+        if(!isModLoaded(GTQT_CORE))registerSoftToolRecipes();
         registerElectricRecipes();
     }
 

@@ -1,6 +1,7 @@
 package gregtech.api.metatileentity.multiblock;
 
 import gregtech.api.GTValues;
+import gregtech.api.capability.GregtechDataCodes;
 import gregtech.api.capability.IDistinctBusController;
 import gregtech.api.capability.IEnergyContainer;
 import gregtech.api.capability.IMultipleTankHandler;
@@ -23,8 +24,6 @@ import gregtech.api.util.KeyUtil;
 import gregtech.api.util.TextFormattingUtil;
 import gregtech.common.ConfigHolder;
 
-import net.minecraft.client.resources.I18n;
-import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.ResourceLocation;
@@ -34,7 +33,6 @@ import net.minecraft.util.text.Style;
 import net.minecraft.util.text.TextComponentTranslation;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.World;
-import net.minecraftforge.fluids.IFluidTank;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
 
@@ -56,6 +54,7 @@ public abstract class AdvanceRecipeMapMultiblockController extends RecipeMapMult
 
     public final RecipeMap<?> recipeMap;
     protected ArrayList<MultiblockRecipeLogic> recipeMapWorkable = new ArrayList<>();
+
     protected IItemHandlerModifiable inputInventory;
     protected IItemHandlerModifiable outputInventory;
     protected IMultipleTankHandler inputFluidInventory;
@@ -65,7 +64,7 @@ public abstract class AdvanceRecipeMapMultiblockController extends RecipeMapMult
 
     protected int thread = 1;
 
-    private boolean isDistinct = false;
+    private boolean isDistinct = true;
 
     @Nullable
     private ICleanroomProvider cleanroom;
@@ -73,7 +72,11 @@ public abstract class AdvanceRecipeMapMultiblockController extends RecipeMapMult
     public AdvanceRecipeMapMultiblockController(ResourceLocation metaTileEntityId, RecipeMap<?> recipeMap) {
         super(metaTileEntityId, recipeMap);
         this.recipeMap = recipeMap;
+
+        //随便初始化一个
+        recipeMapWorkable = new ArrayList<>();
         recipeMapWorkable.add(new MultiblockRecipeLogic(this));
+
         this.refreshBeforeConsumptions = new ArrayList<>();
         resetTileAbilities();
     }
@@ -119,22 +122,20 @@ public abstract class AdvanceRecipeMapMultiblockController extends RecipeMapMult
     protected void formStructure(PatternMatchContext context) {
         super.formStructure(context);
         initializeAbilities();
-
-        thread = this.getAbilities(MultiblockAbility.THREAD_HATCH).isEmpty() ? 1 :
-                this.getAbilities(MultiblockAbility.THREAD_HATCH).get(0).getCurrentThread();
-
-        recipeMapWorkable = new ArrayList<>();
-        for (int i = 0; i < thread; i++)
-            recipeMapWorkable.add(new MultiblockRecipeLogic(this));
+        refreshThread(getThread());
     }
 
-    public void refreshThread(int thread) {
-        if (!checkWorkingEnable()) {
+
+    public void refreshThread(int currentThread) {
+        if (currentThread == 0) return;
+        if (!isActive()) {
             recipeMapWorkable = new ArrayList<>();
-            for (int i = 0; i < thread; i++)
+            for (int i = 0; i < currentThread; i++) {
                 recipeMapWorkable.add(new MultiblockRecipeLogic(this));
+            }
         }
     }
+
 
     public int getThread() {
         thread = this.getAbilities(MultiblockAbility.THREAD_HATCH).isEmpty() ? 1 :
@@ -180,17 +181,22 @@ public abstract class AdvanceRecipeMapMultiblockController extends RecipeMapMult
     protected void initializeAbilities() {
         List<IItemHandler> inputItems = new ArrayList<>(this.getAbilities(MultiblockAbility.IMPORT_ITEMS));
         inputItems.addAll(getAbilities(MultiblockAbility.DUAL_IMPORT));
+        inputItems.addAll(getAbilities(MultiblockAbility.COMPLEX_DUAL));
         this.inputInventory = new ItemHandlerList(inputItems);
 
         List<IMultipleTankHandler> inputFluids = new ArrayList<>(getAbilities(MultiblockAbility.DUAL_IMPORT));
         inputFluids.add(new FluidTankList(true, getAbilities(MultiblockAbility.IMPORT_FLUIDS)));
+        inputFluids.addAll(getAbilities(MultiblockAbility.COMPLEX_DUAL));
         this.inputFluidInventory = GTQTUtility.mergeTankHandlers(inputFluids, true);
 
         List<IItemHandler> outputItems = new ArrayList<>(this.getAbilities(MultiblockAbility.EXPORT_ITEMS));
         outputItems.addAll(getAbilities(MultiblockAbility.DUAL_EXPORT));
+        outputItems.addAll(getAbilities(MultiblockAbility.COMPLEX_DUAL));
         this.outputInventory = new ItemHandlerList(outputItems);
+
         List<IMultipleTankHandler> outputFluids = new ArrayList<>(getAbilities(MultiblockAbility.DUAL_EXPORT));
         outputFluids.add(new FluidTankList(false, getAbilities(MultiblockAbility.EXPORT_FLUIDS)));
+        outputFluids.addAll(getAbilities(MultiblockAbility.COMPLEX_DUAL));
         this.outputFluidInventory = GTQTUtility.mergeTankHandlers(outputFluids, false);
 
         List<IEnergyContainer> inputEnergy = new ArrayList<>(getAbilities(MultiblockAbility.INPUT_ENERGY));
@@ -214,55 +220,44 @@ public abstract class AdvanceRecipeMapMultiblockController extends RecipeMapMult
         this.refreshBeforeConsumptions.clear();
     }
 
-    protected IMultipleTankHandler extendedImportFluidList(IMultipleTankHandler fluids) {
-        List<IFluidTank> tanks = new ArrayList<>(fluids.getFluidTanks());
-        // iterate import items to look for and tanks that we might have missed
-        // honestly this might not be worth checking because
-        // it might already be handled in ARL/MRL
-        for (var handler : getAbilities(MultiblockAbility.IMPORT_ITEMS)) {
-            if (handler instanceof IFluidTank tank) {
-                if (!tanks.contains(tank)) tanks.add(tank);
-            } else if (handler instanceof IMultipleTankHandler multipleTankHandler) {
-                for (var tank : multipleTankHandler.getFluidTanks()) {
-                    if (!tanks.contains(tank)) tanks.add(tank);
-                }
-            }
-        }
-        for (var handler : getAbilities(MultiblockAbility.DUAL_IMPORT)) {
-            for (var tank : handler.getFluidTanks()) {
-                if (!tanks.contains(tank)) tanks.add(tank);
-            }
-        }
-
-        return new FluidTankList(allowSameFluidFillForOutputs(), tanks);
-    }
-
-    public boolean allowSameFluidFillForOutputs() {
-        return true;
-    }
-
     @Override
     protected void configureDisplayText(MultiblockUIBuilder builder) {
-        builder.addEnergyUsageLine(this.getEnergyContainer())
-                .addCustom(this::addCustomCapacity)
-                .addCustom((list, syncer) -> {
-                    if (isStructureFormed()) {
-                        list.add(KeyUtil.lang(TextFormatting.GOLD, "总线程数：%s",
-                                syncer.syncInt(recipeMapWorkable.size())));
-                    }
-                });
-        for (MultiblockRecipeLogic recipeMapWorkable : recipeMapWorkable) {
-            builder.addCustom((list, syncer) -> {
-                        if (isStructureFormed()) {
-                            list.add(KeyUtil.lang(TextFormatting.GOLD, ">>线程："));
-                        }
-                    })
-                    .setWorkingStatus(recipeMapWorkable.isWorkingEnabled(), recipeMapWorkable.isActive())
-                    .addEnergyTierLine(GTUtility.getTierByVoltage(recipeMapWorkable.getMaxVoltage()))
-                    .addParallelsLine(recipeMapWorkable.getParallelLimit())
+        if (!isStructureFormed()) return;
+        int syncsParallel = builder.syncsInteger(recipeMapWorkable.size());
+        if (syncsParallel == 1) {
+            builder.setWorkingStatus(recipeMapWorkable.get(0).isWorkingEnabled(), recipeMapWorkable.get(0).isActive())
+                    .addEnergyUsageLine(this.getEnergyContainer())
+                    .addEnergyTierLine(GTUtility.getTierByVoltage(recipeMapWorkable.get(0).getMaxVoltage()))
+                    .addParallelsLine(recipeMapWorkable.get(0).getParallelLimit())
                     .addWorkingStatusLine()
-                    .addProgressLine(recipeMapWorkable.getProgress(), recipeMapWorkable.getMaxProgress())
-                    .addRecipeOutputLine(recipeMapWorkable);
+                    .addProgressLine(recipeMapWorkable.get(0).getProgress(), recipeMapWorkable.get(0).getMaxProgress())
+                    .addRecipeOutputLine(recipeMapWorkable.get(0))
+                    .addCustom(this::addCustomCapacity);
+        } else if (syncsParallel > 1) {
+            builder.addEnergyUsageLine(this.getEnergyContainer())
+                    .addEnergyTierLine(GTUtility.getTierByVoltage(recipeMapWorkable.get(0).getMaxVoltage()))
+                    .addParallelsLine(recipeMapWorkable.get(0).getParallelLimit())
+                    .addCustom(this::addCustomCapacity)
+                    .addCustom((list, syncer) -> {
+                        list.add(KeyUtil.lang(TextFormatting.GOLD, "总线程数：%s",
+                                syncsParallel));
+                    });
+
+            for (int i = 0; i < Math.min(syncsParallel, recipeMapWorkable.size()); i++) {
+                builder.addCustom((list, syncer) -> list.add(KeyUtil.lang(TextFormatting.GOLD, ">>线程：")))
+                        .setWorkingStatus(recipeMapWorkable.get(i).isWorkingEnabled(),
+                                recipeMapWorkable.get(i).isActive())
+                        .addWorkingStatusLine()
+                        .addProgressLine(recipeMapWorkable.get(i).getProgress(),
+                                recipeMapWorkable.get(i).getMaxProgress())
+                        .addEmptyLine();
+            }
+            if(syncsParallel != recipeMapWorkable.size()){
+                if(!isActive())refreshThread(syncsParallel);
+                builder.addCustom((list, syncer) -> list.add(KeyUtil.lang(TextFormatting.RED, "线程服务器同步失败，但不会影响实际使用！")));
+                builder.addCustom((list, syncer) -> list.add(KeyUtil.lang(TextFormatting.RED, "将会在下次待机刷新线程！")));
+            }
+
         }
     }
 
@@ -345,6 +340,7 @@ public abstract class AdvanceRecipeMapMultiblockController extends RecipeMapMult
     public NBTTagCompound writeToNBT(NBTTagCompound data) {
         super.writeToNBT(data);
         data.setBoolean("isDistinct", isDistinct);
+        data.setInteger("thread", thread);
         return data;
     }
 
@@ -352,18 +348,23 @@ public abstract class AdvanceRecipeMapMultiblockController extends RecipeMapMult
     public void readFromNBT(NBTTagCompound data) {
         super.readFromNBT(data);
         isDistinct = data.getBoolean("isDistinct");
+        thread = data.getInteger("thread");
+        refreshThread(thread);
     }
 
     @Override
     public void writeInitialSyncData(PacketBuffer buf) {
         super.writeInitialSyncData(buf);
         buf.writeBoolean(isDistinct);
+        buf.writeInt(thread);
     }
 
     @Override
     public void receiveInitialSyncData(PacketBuffer buf) {
         super.receiveInitialSyncData(buf);
         isDistinct = buf.readBoolean();
+        thread = buf.readInt();
+        refreshThread(thread);
     }
 
     @Override
@@ -472,11 +473,77 @@ public abstract class AdvanceRecipeMapMultiblockController extends RecipeMapMult
     }
 
     @Override
-    public void addInformation(ItemStack stack, @Nullable World world, @NotNull List<String> tooltip,
-                               boolean advanced) {
-        super.addInformation(stack, world, tooltip, advanced);
-        tooltip.add(I18n.format("gregtech.machine.thread_multiblock.tooltip.1"));
-        tooltip.add(I18n.format("gregtech.machine.thread_multiblock.tooltip.2"));
-        tooltip.add(I18n.format("gregtech.machine.thread_multiblock.tooltip.3"));
+    public boolean isWorkingEnabled() {
+        for (MultiblockRecipeLogic recipeMapWorkable : recipeMapWorkable)
+            if (recipeMapWorkable.isWorkingEnabled())
+                return true;
+        return false;
+    }
+
+    @Override
+    public void setWorkingEnabled(boolean isWorkingAllowed) {
+        for (MultiblockRecipeLogic recipeMapWorkable : recipeMapWorkable)
+            recipeMapWorkable.setWorkingEnabled(isWorkingAllowed);
+    }
+
+    @Override
+    public boolean isBatchAllowed() {
+        return true;
+    }
+
+    @Override
+    public boolean isBatchEnable() {
+        for (MultiblockRecipeLogic recipeMapWorkable : recipeMapWorkable)
+            if (recipeMapWorkable.isBatchEnable())
+                return true;
+        return false;
+    }
+
+    @Override
+    public void setBatchEnable(boolean enable) {
+        for (MultiblockRecipeLogic recipeMapWorkable : recipeMapWorkable)
+            recipeMapWorkable.setBatchEnable(enable);
+    }
+
+    /// /////////////////////////////////////////////////////////////////
+    @Override
+    public void doStructureCheck() {
+        // 如果是首次tick，直接进行检测
+        if (isFirstTick()) {
+            checkStructurePattern();
+            return;
+        }
+
+        long timer = getOffsetTimer();
+
+        // 根据多方块是否工作采用不同的检测策略
+        if (checkActive()) {
+            // 工作状态：
+            if (ConfigHolder.machines.delayStructureCheckSwitch && shouldDelayCheck()) {
+                // 延迟检测模式：使用配置的检测间隔
+                if (timer % ConfigHolder.machines.delayStructureCheckTick == 0) {
+                    checkStructurePattern();
+                }
+            } else if (timer % 20 == 0) {
+                // 正常检测模式：每20tick检测一次
+                checkStructurePattern();
+            }
+        } else {
+            // 待机状态
+            if (ConfigHolder.machines.delayStructureCheckStandbySwitch && shouldDelayCheck()) {
+                // 启用待机延迟检测时，使用待机检测间隔
+                if (timer % ConfigHolder.machines.delayStructureCheckStandby == 0) {
+                    checkStructurePattern();
+                }
+            } else if (ConfigHolder.machines.delayStructureCheckSwitch && shouldDelayCheck()) {
+                // 未启用待机延迟检测但启用主延迟检测时，使用工作延迟检测间隔
+                if (timer % ConfigHolder.machines.delayStructureCheckTick == 0) {
+                    checkStructurePattern();
+                }
+            } else if (timer % 20 == 0) {
+                // 未启用任何延迟检测时，使用默认的20tick检测间隔
+                checkStructurePattern();
+            }
+        }
     }
 }

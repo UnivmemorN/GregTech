@@ -5,9 +5,11 @@ import gregtech.api.GregTechAPI;
 import gregtech.api.modules.ModuleContainerRegistryEvent;
 import gregtech.api.persistence.PersistentData;
 import gregtech.client.utils.BloomEffectUtil;
+import gregtech.common.ConfigHolder;
 import gregtech.modules.GregTechModules;
 import gregtech.modules.ModuleManager;
 
+import gtqt.common.Difficulty;
 import gtqt.common.GTQTCommonProxy;
 
 import net.minecraftforge.common.MinecraftForge;
@@ -28,6 +30,11 @@ import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import net.minecraftforge.fml.common.event.FMLServerStoppedEvent;
 import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import static gtqt.common.Difficulty.fromLevel;
+
 @Mod(modid = GTValues.MODID,
      name = GTValues.MOD_NAME,
      acceptedMinecraftVersions = "[1.12.2,1.13)",
@@ -43,6 +50,8 @@ public class GregTechMod {
     // Hold this so that we can reference non-interface methods without
     // letting the GregTechAPI object see them as immediately.
     private ModuleManager moduleManager;
+    public static final Logger LOGGER = LogManager.getLogger(GTValues.MODID);
+    private final Difficulty difficulty;
 
     public GregTechMod() {
         GregTechAPI.instance = this;
@@ -50,6 +59,8 @@ public class GregTechMod {
         if (FMLCommonHandler.instance().getSide().isClient()) {
             BloomEffectUtil.init();
         }
+        difficulty = fromLevel(ConfigHolder.difficultyMode.difficultyMode);
+        System.out.println("Difficulty: " + difficulty.getDisplayName());
     }
 
     @EventHandler
@@ -112,5 +123,9 @@ public class GregTechMod {
     @EventHandler
     public void respondIMC(FMLInterModComms.IMCEvent event) {
         moduleManager.processIMC(event.getMessages());
+    }
+
+    public Difficulty getDifficulty() {
+        return difficulty;
     }
 }

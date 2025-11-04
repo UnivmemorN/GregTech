@@ -246,7 +246,7 @@ public class GTGuiTextures {
 
     public static final UITexture[] FLUID_TRANSFER_MODE_OVERLAY = slice(
             "textures/gui/overlay/fluid_transfer_mode_overlay.png",
-            18, 18 * 3, 18, 18, true);
+            18, 18 * 4, 18, 18, true);
 
     public static final UITexture[] DISTRIBUTION_MODE_OVERLAY = slice(
             "textures/gui/widget/button_distribution_mode.png",
@@ -265,7 +265,7 @@ public class GTGuiTextures {
             18, 36, 18, 18, true);
 
     public static final UITexture MENU_OVERLAY = fullImage("textures/gui/overlay/menu_overlay.png");
-
+    public static final UITexture BUTTON_EXPORT_FACE = fullImage("textures/gui/overlay/button_export_face.png");
     public static final UITexture RECIPE_LOCK = fullImage("textures/gui/widget/lock.png");
     public static final UITexture PRIMITIVE_FURNACE_OVERLAY = fullImage(
             "textures/gui/primitive/overlay_primitive_furnace.png");
@@ -282,7 +282,9 @@ public class GTGuiTextures {
             "textures/gui/primitive/primitive_large_fluid_tank_overlay.png");
     public static final UITexture PRIMITIVE_BLAST_FURNACE_PROGRESS_BAR = fullImage(
             "textures/gui/primitive/progress_bar_primitive_blast_furnace.png");
-
+    public static final UITexture FLUID_VOID_OVERLAY = fullImage("textures/gui/widget/button_fluid_void.png", true);
+    public static final UITexture ITEM_VOID_OVERLAY = fullImage("textures/gui/widget/button_item_void.png", true);
+    public static final UITexture FLUID_LOCK_OVERLAY = fullImage("textures/gui/widget/button_lock.png", true);
     // todo bronze/steel/primitive fluid slots?
 
     // SLOT OVERLAYS
@@ -326,6 +328,7 @@ public class GTGuiTextures {
     public static final UITexture CUTTER_OVERLAY = fullImage("textures/gui/overlay/cutter_overlay.png", true);
     public static final UITexture DARK_CANISTER_OVERLAY = fullImage("textures/gui/overlay/dark_canister_overlay.png",
             true);
+    public static final UITexture DISH_OVERLAY = fullImage("textures/gui/overlay/dish_overlay.png", true);
     public static final UITexture DUST_OVERLAY = fullImage("textures/gui/overlay/dust_overlay.png", true);
     public static final UITexture DUST_OVERLAY_BRONZE = fullImage("textures/gui/overlay/dust_overlay_bronze.png");
     public static final UITexture DUST_OVERLAY_STEEL = fullImage("textures/gui/overlay/dust_overlay_steel.png");
@@ -377,6 +380,7 @@ public class GTGuiTextures {
     public static final UITexture SAWBLADE_OVERLAY = fullImage("textures/gui/overlay/sawblade_overlay.png", true);
     public static final UITexture SOLIDIFIER_OVERLAY = fullImage("textures/gui/overlay/solidifier_overlay.png", true);
     public static final UITexture STRING_SLOT_OVERLAY = fullImage("textures/gui/overlay/string_slot_overlay.png", true);
+    public static final UITexture STRING_SLOT_OVERLAY_2 = fullImage("textures/gui/overlay/string_slot_overlay_2.png");
     public static final UITexture TOOL_SLOT_OVERLAY = fullImage("textures/gui/overlay/tool_slot_overlay.png", true);
     public static final UITexture TURBINE_OVERLAY = fullImage("textures/gui/overlay/turbine_overlay.png", true);
     public static final UITexture VIAL_OVERLAY_1 = fullImage("textures/gui/overlay/vial_overlay_1.png", true);
@@ -393,6 +397,7 @@ public class GTGuiTextures {
             "textures/gui/overlay/research_station_overlay.png", true);
 
     // BUTTONS
+    public static final UITexture PROXY_OVERLAY = fullImage("textures/gui/widget/proxy_overlay.png");
     public static final UITexture EXPORT_OVERLAY = fullImage("textures/gui/widget/pattern_export.png");
     public static final UITexture BUTTON_DUAL_OUTPUT = fullImage("textures/gui/widget/button_dual_output_overlay.png");
     public static final UITexture BUTTON_DUAL_COLLAPSE = fullImage("textures/gui/widget/button_dual_collapse_overlay.png");
@@ -489,6 +494,22 @@ public class GTGuiTextures {
      */
     public static final UITexture[] OVERLAY_DISTINCT_BUSES = slice("textures/gui/widget/button_distinct_buses.png",
             18, 36, 18, 18, false);
+
+    public static final UITexture[] OVERLAY_ITEM_EXPORT = slice("textures/gui/widget/button_item_export.png",
+            18, 36, 18, 18, false);
+
+    public static final UITexture[] OVERLAY_FLUID_EXPORT = slice("textures/gui/widget/button_fluid_export.png",
+            18, 36, 18, 18, false);
+
+    public static final UITexture[] OVERLAY_ITEM_EXPORT_IMPORT = slice("textures/gui/widget/overlay_item_export_import.png",
+            18, 36, 18, 18, false);
+
+    public static final UITexture[] OVERLAY_FLUID_EXPORT_IMPORT = slice("textures/gui/widget/overlay_fluid_export_import.png",
+            18, 36, 18, 18, false);
+
+    public static final UITexture[] OVERLAY_BATCH = slice("textures/gui/widget/button_batch.png",
+            18, 36, 18, 18, false);
+    public static final UITexture BUTTON_STRUCTURE = fullImage("textures/gui/widget/button_structure.png", false);
 
     public static final UITexture OVERLAY_NO_FLEX = fullImage("textures/gui/widget/button_no_flex.png", false);
     public static final UITexture BUTTON_MULTI_MAP = fullImage("textures/gui/widget/button_multi_map.png", true);
@@ -645,7 +666,7 @@ public class GTGuiTextures {
             "textures/gui/progress_bar/progress_bar_fluid_rig_depletion.png", 190, 14);
 
     // MISC
-
+    public static final UITexture RGB_GRADIENT = fullImage("textures/gui/widget/rgb_gradient.png");
     public static void init() {/**/}
 
     private static UITexture fullImage(String path) {

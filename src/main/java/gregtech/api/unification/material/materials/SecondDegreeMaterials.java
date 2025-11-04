@@ -455,6 +455,7 @@ public class SecondDegreeMaterials {
                 .flags(DISABLE_DECOMPOSITION)
                 .components(Palladium, 1, Ammonia, 1)
                 .build();
+        PalladiumRaw.setFormula("PdCl2?");
 
         RarestMetalMixture = new Material.Builder(2059, gregtechId("rarest_metal_mixture"))
                 .dust()
@@ -462,6 +463,7 @@ public class SecondDegreeMaterials {
                 .flags(DISABLE_DECOMPOSITION)
                 .components(Iridium, 1, Osmium, 1, Oxygen, 4, Water, 1)
                 .build();
+        RarestMetalMixture.setFormula("Ir2O2(SiO2)2Au3?");
 
         AmmoniumChloride = new Material.Builder(2060, gregtechId("ammonium_chloride"))
                 .dust()
@@ -476,6 +478,7 @@ public class SecondDegreeMaterials {
                 .flags(DISABLE_DECOMPOSITION)
                 .components(Osmium, 1, Oxygen, 4, Water, 1, HydrochloricAcid, 1)
                 .build();
+        AcidicOsmiumSolution.setFormula("OsO4(H2O)(HCl)");
 
         RhodiumPlatedPalladium = new Material.Builder(2062, gregtechId("rhodium_plated_palladium"))
                 .ingot().fluid()
@@ -492,6 +495,7 @@ public class SecondDegreeMaterials {
 
         Clay = new Material.Builder(2063, gregtechId("clay"))
                 .dust(1)
+                .ingot()
                 .color(0xC8C8DC).iconSet(ROUGH)
                 .flags(MORTAR_GRINDABLE, EXCLUDE_BLOCK_CRAFTING_BY_HAND_RECIPES)
                 .components(Sodium, 2, Lithium, 1, Aluminium, 2, Silicon, 2, Water, 6)
@@ -504,6 +508,13 @@ public class SecondDegreeMaterials {
                 .flags(GENERATE_PLATE, NO_SMASHING, NO_SMELTING, EXCLUDE_BLOCK_CRAFTING_BY_HAND_RECIPES,
                         EXCLUDE_PLATE_COMPRESSOR_RECIPE, DECOMPOSITION_BY_CENTRIFUGING)
                 .components(Silicon, 1, Pyrite, 5, Ruby, 1, Mercury, 3)
+                .build();
+
+
+        ChromiumDopedMolybdenite = new Material.Builder(2065, gregtechId("chromium_doped_molybdenite"))
+                .dust().color(0x9C5fB5)
+                .flags(DISABLE_DECOMPOSITION)
+                .components(Chrome, 1, Molybdenite, 1)
                 .build();
     }
 }
