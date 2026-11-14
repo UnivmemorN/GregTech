@@ -1,5 +1,6 @@
 package gregtech.common.items.armor;
 
+import gregtech.api.GTValues;
 import gregtech.api.items.armor.ArmorMetaItem;
 import gregtech.common.ConfigHolder;
 import gregtech.common.items.MetaItems;
@@ -24,6 +25,20 @@ public class MetaArmor extends ArmorMetaItem<ArmorMetaItem<?>.ArmorMetaValueItem
                         6_400_000L * (long) Math.max(1, Math.pow(4, ConfigHolder.tools.voltageTierAdvImpeller - 4)),
                         ConfigHolder.tools.voltageTierAdvImpeller))
                 .setRarity(EnumRarity.RARE);
+
+        MetaItems.HAZMAT_HELMET = addItem(5, "hazmat.helmet")
+                .setArmorLogic(new HazmatSuit(EntityEquipmentSlot.HEAD, 165));
+        MetaItems.HAZMAT_CHESTPLATE = addItem(6, "hazmat.chestplate")
+                .setArmorLogic(new HazmatSuit(EntityEquipmentSlot.CHEST, 240));
+        MetaItems.HAZMAT_LEGGINGS = addItem(7, "hazmat.leggings")
+                .setArmorLogic(new HazmatSuit(EntityEquipmentSlot.LEGS, 225));
+        MetaItems.HAZMAT_BOOTS = addItem(8, "hazmat.boots")
+                .setArmorLogic(new HazmatSuit(EntityEquipmentSlot.FEET, 195));
+
+        MetaItems.PISTON_BOOTS = addItem(9, "piston_boots")
+                .setArmorLogic(new PistonBoots(EntityEquipmentSlot.FEET, 100, 100_000L, GTValues.LV));
+
+        MetaItems.COAL_JETPACK = addItem(10, "coal_jetpack").setArmorLogic(new CoalJetpack());
 
         int energyPerUse = 512;
         int tier = ConfigHolder.tools.voltageTierNanoSuit;
@@ -67,5 +82,35 @@ public class MetaArmor extends ArmorMetaItem<ArmorMetaItem<?>.ArmorMetaValueItem
                                 (long) Math.max(1, Math.pow(4, ConfigHolder.tools.voltageTierAdvQuarkTech - 6)),
                         ConfigHolder.tools.voltageTierAdvQuarkTech))
                 .setRarity(EnumRarity.EPIC);
+
+        MetaItems.SIMPLE_GAS_MASK = addItem(60, "simple_gas_mask")
+                .setArmorLogic(new SimpleGasMask());
+
+        MetaItems.GAS_MASK = addItem(61, "gas_mask")
+                .setArmorLogic(new BreathingApparatus(EntityEquipmentSlot.HEAD, 300, 0));
+        MetaItems.GAS_TANK = addItem(62, "gas_tank")
+                .setArmorLogic(new BreathingApparatus(EntityEquipmentSlot.CHEST, 500, 1200));
+        MetaItems.REBREATHER_TANK = addItem(63, "rebreather_tank")
+                .setArmorLogic(new BreathingApparatus(EntityEquipmentSlot.CHEST, 800, 6000));
+        MetaItems.FILTERED_TANK = addItem(64, "filtered_tank")
+                .setArmorLogic(new BreathingApparatus(EntityEquipmentSlot.CHEST, 1000, 24000));
+        
+        MetaItems.ASBESTOS_MASK = addItem(65, "asbestos.mask")
+                .setArmorLogic(new AsbestosSuit(EntityEquipmentSlot.HEAD, 250));
+        MetaItems.ASBESTOS_CHESTPLATE = addItem(66, "asbestos.chestplate")
+                .setArmorLogic(new AsbestosSuit(EntityEquipmentSlot.CHEST, 400));
+        MetaItems.ASBESTOS_LEGGINGS = addItem(67, "asbestos.leggings")
+                .setArmorLogic(new AsbestosSuit(EntityEquipmentSlot.LEGS, 350));
+        MetaItems.ASBESTOS_BOOTS = addItem(68, "asbestos.boots")
+                .setArmorLogic(new AsbestosSuit(EntityEquipmentSlot.FEET, 300));
+
+        MetaItems.NOMEX_MASK = addItem(69, "nomex.mask")
+                .setArmorLogic(new NomexSuit(EntityEquipmentSlot.HEAD, 700));
+        MetaItems.NOMEX_CHESTPLATE = addItem(70, "nomex.chestplate")
+                .setArmorLogic(new NomexSuit(EntityEquipmentSlot.CHEST, 1000));
+        MetaItems.NOMEX_LEGGINGS = addItem(71, "nomex.leggings")
+                .setArmorLogic(new NomexSuit(EntityEquipmentSlot.LEGS, 900));
+        MetaItems.NOMEX_BOOTS = addItem(72, "nomex.boots")
+                .setArmorLogic(new NomexSuit(EntityEquipmentSlot.FEET, 850));
     }
 }

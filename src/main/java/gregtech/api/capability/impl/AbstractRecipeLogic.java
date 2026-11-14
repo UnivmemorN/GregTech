@@ -12,6 +12,9 @@ import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.metatileentity.multiblock.CleanroomType;
 import gregtech.api.metatileentity.multiblock.ICleanroomProvider;
 import gregtech.api.metatileentity.multiblock.ICleanroomReceiver;
+import gregtech.api.metatileentity.multiblock.MultiblockAbility;
+import gregtech.api.metatileentity.multiblock.MultiblockControllerBase;
+import gregtech.api.metatileentity.multiblock.MultiblockWithDisplayBase;
 import gregtech.api.metatileentity.multiblock.ParallelLogicType;
 import gregtech.api.recipes.Recipe;
 import gregtech.api.recipes.RecipeBuilder;
@@ -27,13 +30,10 @@ import gregtech.api.recipes.properties.RecipePropertyStorage;
 import gregtech.api.recipes.properties.impl.CleanroomProperty;
 import gregtech.api.recipes.properties.impl.DimensionProperty;
 import gregtech.api.util.GTLog;
+import gregtech.api.util.GTQTUtility;
 import gregtech.api.util.GTTransferUtils;
 import gregtech.api.util.GTUtility;
 import gregtech.common.ConfigHolder;
-
-import lombok.Getter;
-
-import lombok.Setter;
 
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -50,11 +50,9 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.MustBeInvokedByOverriders;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import stanhebben.zenscript.annotations.ZenGetter;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.function.Function;
 
@@ -66,26 +64,27 @@ public abstract class AbstractRecipeLogic extends MTETrait
 
     private static final String ALLOW_OVERCLOCKING = "AllowOverclocking";
     private static final String OVERCLOCK_VOLTAGE = "OverclockVoltage";
-
-    public RecipeMap<?> recipeMap;
     private final OCParams ocParams = new OCParams();
     private final OCResult ocResult = new OCResult();
+
+    /**
+     * @return the overclock result object used by this recipe logic
+     */
+    @NotNull
+    protected OCResult getOcResult() {
+        return ocResult;
+    }
+    public RecipeMap<?> recipeMap;
+    public int progressTime;
     protected Recipe previousRecipe;
     protected Recipe showRecipes;
-    protected LinkedList<Recipe> latestRecipes = new LinkedList<>();
     protected int parallelRecipesPerformed;
-    @Getter
-    @Setter
     protected boolean canRecipeProgress = true;
-    public int progressTime;
     protected int maxProgressTime;
-    @Setter
     protected long recipeEUt;
     @NotNull
-    @Setter
     protected List<FluidStack> fluidOutputs = Collections.emptyList();
     @NotNull
-    @Setter
     protected List<ItemStack> itemOutputs = Collections.emptyList();
     protected boolean isActive;
     protected boolean workingEnabled = true;
@@ -94,39 +93,42 @@ public abstract class AbstractRecipeLogic extends MTETrait
     protected boolean isOutputsFull;
     protected boolean invalidInputsForRecipes;
     protected boolean hasPerfectOC;
+    protected String whyFailed = "";
     private double euDiscount = -1;
     private double euEfficiency = 1;
     private double speedBonus = -1;
     private boolean allowOverclocking = true;
-    @Setter @Getter
     private long overclockVoltage;
-
     private boolean enableBatch = false;
+    private boolean lockRecipe = false;
+    private boolean overflowMode = false;
+    private boolean lackEnergyWarning = false;
+
     /**
      * DO NOT use the parallelLimit field directly, EVER use {@link AbstractRecipeLogic#setParallelLimit(int)} instead
      */
     private int parallelLimit = 1;
     /**
+     * DO NOT use the threadLimit field directly, EVER use {@link AbstractRecipeLogic#setThreadLimit(int)} instead
+     */
+    private int threadLimit = 1;
+    /**
      * List of non-chanced item outputs.The actual non-chanced item outputs are taken from the item outputs saved list,
      * taking the first n elements.
      */
-    @Setter
     private int nonChancedItemAmt = 0;
     /**
      * Map of chanced item outputs to their boosted chance, for this recipe.
      */
-    @Setter
     private List<Pair<ItemStack, Integer>> chancedItemOutputs = null;
     /**
      * Number of non-chanced fluid outputs. The actual non-chanced fluid outputs are taken from the fluid outputs saved
      * list, taking the first n elements.
      */
-    @Setter
     private int nonChancedFluidAmt = 0;
     /**
      * Map of chanced item outputs to their boosted chance, for this recipe.
      */
-    @Setter
     private List<Pair<FluidStack, Integer>> chancedFluidOutputs = null;
 
     public AbstractRecipeLogic(MetaTileEntity tileEntity, RecipeMap<?> recipeMap) {
@@ -138,6 +140,62 @@ public abstract class AbstractRecipeLogic extends MTETrait
         super(tileEntity);
         this.recipeMap = recipeMap;
         this.hasPerfectOC = hasPerfectOC;
+    }
+
+    public void setProgressTime(int progressTime) {
+        this.progressTime = progressTime;
+    }
+
+    public boolean isCanRecipeProgress() {
+        return canRecipeProgress;
+    }
+
+    public void setCanRecipeProgress(boolean canRecipeProgress) {
+        this.canRecipeProgress = canRecipeProgress;
+    }
+
+    public void setRecipeEUt(long recipeEUt) {
+        this.recipeEUt = recipeEUt;
+    }
+
+    public void setFluidOutputs(@NotNull List<FluidStack> fluidOutputs) {
+        this.fluidOutputs = fluidOutputs;
+    }
+
+    public void setItemOutputs(@NotNull List<ItemStack> itemOutputs) {
+        this.itemOutputs = itemOutputs;
+    }
+
+    public String getWhyFailed() {
+        return whyFailed;
+    }
+
+    public void setWhyFailed(String whyFailed) {
+        this.whyFailed = whyFailed;
+    }
+
+    public long getOverclockVoltage() {
+        return overclockVoltage;
+    }
+
+    public void setOverclockVoltage(long overclockVoltage) {
+        this.overclockVoltage = overclockVoltage;
+    }
+
+    public void setNonChancedItemAmt(int nonChancedItemAmt) {
+        this.nonChancedItemAmt = nonChancedItemAmt;
+    }
+
+    public void setChancedItemOutputs(List<Pair<ItemStack, Integer>> chancedItemOutputs) {
+        this.chancedItemOutputs = chancedItemOutputs;
+    }
+
+    public void setNonChancedFluidAmt(int nonChancedFluidAmt) {
+        this.nonChancedFluidAmt = nonChancedFluidAmt;
+    }
+
+    public void setChancedFluidOutputs(List<Pair<FluidStack, Integer>> chancedFluidOutputs) {
+        this.chancedFluidOutputs = chancedFluidOutputs;
     }
 
     /**
@@ -249,13 +307,49 @@ public abstract class AbstractRecipeLogic extends MTETrait
      * @return the fluid inventory to input fluids from
      */
     protected IMultipleTankHandler getInputTank() {
+        //检查总成，如果有合并流体
+        if (metaTileEntity instanceof MultiblockControllerBase multiblock) {
+            List<IItemHandlerModifiable> itemHandlers = multiblock.getAbilities(MultiblockAbility.IMPORT_ITEMS);
+            List<IMultipleTankHandler> inputFluids = new ArrayList<>();
+            boolean allowMerge = metaTileEntity.getImportFluids().allowSameFluidFill();
+            inputFluids.add(metaTileEntity.getImportFluids());
+            // 遍历所有物品总线，检查是否是 DualHandler
+            for (IItemHandlerModifiable bus : itemHandlers) {
+                if (bus instanceof IMultipleTankHandler dualHandler) {
+                    // 将 DualHandler 的流体槽添加到总列表中
+                    inputFluids.add(dualHandler);
+                }
+            }
+            return GTQTUtility.mergeTankHandlers(inputFluids, allowMerge);
+        }
+
         return metaTileEntity.getImportFluids();
+    }
+
+    public IMultipleTankHandler inputTank() {
+        return getInputTank();
     }
 
     /**
      * @return the fluid inventory to output fluids to
      */
     protected IMultipleTankHandler getOutputTank() {
+        //检查总成，如果有合并流体
+        if (metaTileEntity instanceof MultiblockControllerBase multiblock) {
+            List<IItemHandlerModifiable> itemHandlers = multiblock.getAbilities(MultiblockAbility.EXPORT_ITEMS);
+            List<IMultipleTankHandler> outputFluids = new ArrayList<>();
+            boolean allowMerge = metaTileEntity.getExportFluids().allowSameFluidFill();
+            outputFluids.add(metaTileEntity.getExportFluids());
+            // 遍历所有物品总线，检查是否是 DualHandler
+            for (IItemHandlerModifiable bus : itemHandlers) {
+                if (bus instanceof IMultipleTankHandler dualHandler) {
+                    // 将 DualHandler 的流体槽添加到总列表中
+                    outputFluids.add(dualHandler);
+                }
+            }
+            return GTQTUtility.mergeTankHandlers(outputFluids, allowMerge);
+        }
+
         return metaTileEntity.getExportFluids();
     }
 
@@ -289,7 +383,7 @@ public abstract class AbstractRecipeLogic extends MTETrait
     public void update() {
         World world = getMetaTileEntity().getWorld();
         if (world != null && !world.isRemote) {
-            if (workingEnabled) {
+            if (shouldWorking()) {
                 if (getMetaTileEntity().getOffsetTimer() % 20 == 0)
                     this.canRecipeProgress = canProgressRecipe();
 
@@ -308,6 +402,10 @@ public abstract class AbstractRecipeLogic extends MTETrait
         }
     }
 
+    public boolean shouldWorking() {
+        return workingEnabled;
+    }
+
     /**
      * DO NOT use the recipeMap field directly, EVER
      * <p>
@@ -320,6 +418,8 @@ public abstract class AbstractRecipeLogic extends MTETrait
     public RecipeMap<?> getRecipeMap() {
         return this.recipeMap;
     }
+
+    public void setRecipeMap(RecipeMap<?> recipeMap) {this.recipeMap = recipeMap;}
 
     /**
      * Can be null if a recipe has not yet been run
@@ -339,7 +439,15 @@ public abstract class AbstractRecipeLogic extends MTETrait
      * @return true if recipes should be searched for
      */
     protected boolean shouldSearchForRecipes() {
-        return canWorkWithInputs() || canFitNewOutputs();
+        // When outputs change (e.g. output bus cleared), reset the input invalidation flag.
+        // This fixes the case where a recipe was found but outputs were full, causing
+        // invalidInputsForRecipes to be set. Without this reset, clearing the output bus
+        // alone would never trigger a new recipe search — the player would have to
+        // also re-insert input items to unblock the search.
+        if (hasNotifiedOutputs()) {
+            this.invalidInputsForRecipes = false;
+        }
+        return canWorkWithInputs() && canFitNewOutputs();
     }
 
     /**
@@ -378,7 +486,9 @@ public abstract class AbstractRecipeLogic extends MTETrait
      */
     protected boolean canWorkWithInputs() {
         // if the inputs were bad last time, check if they've changed before trying to find a new recipe.
-        if (this.invalidInputsForRecipes && !hasNotifiedInputs()) return false;
+        if (this.invalidInputsForRecipes && !hasNotifiedInputs()) {
+            return false;
+        }
 
         // the change in inputs (especially by removal of ingredient by the player) might change the current valid
         // recipe.
@@ -404,6 +514,7 @@ public abstract class AbstractRecipeLogic extends MTETrait
     @Override
     public void invalidateOutputs() {
         this.isOutputsFull = true;
+        whyFailed = "输出仓已满，产物无法继续输出（清空或设置销毁产物）";
     }
 
     public int getParallelRecipesPerformed() {
@@ -440,7 +551,7 @@ public abstract class AbstractRecipeLogic extends MTETrait
             // only set hasNotEnoughEnergy if this recipe is consuming recipe
             // generators always have enough energy
             this.hasNotEnoughEnergy = true;
-            decreaseProgress();
+            decreaseProgress(true);
         }
     }
 
@@ -448,6 +559,34 @@ public abstract class AbstractRecipeLogic extends MTETrait
      * Decrease the recipe progress time in the case that some state was not right, like available EU to drain.
      */
     protected void decreaseProgress() {
+        decreaseProgress(false);
+    }
+
+    /**
+     * Decrease the recipe progress time in the case that some state was not right, like available EU to drain.
+     *
+     * @param energyShortage 进度损失是否由"电量不够"造成（而不是热量/算力等其它资源）
+     */
+    protected void decreaseProgress(boolean energyShortage) {
+        // 是否销毁配方
+        boolean shouldResetRecipe = ConfigHolder.machines.resetRecipeOnPowerLoss;
+        boolean shouldNotify = energyShortage && lackEnergyWarning &&
+                (shouldResetRecipe || metaTileEntity.getOffsetTimer() % 200 == 0);
+
+        if (shouldNotify) {
+            metaTileEntity.noticePlayer(
+                    "[断电提醒]位于" + metaTileEntity.getPos() + "的" + metaTileEntity.getStackForm().getDisplayName() +
+                            "结构发生跳电！！！");
+        }
+
+        if (shouldResetRecipe) {
+            invalidate();
+            return;
+        }
+
+        this.progressTime = 0;
+
+        /*
         // if current progress value is greater than 2, decrement it by 2
         if (progressTime >= 2) {
             if (ConfigHolder.machines.recipeProgressLowEnergy) {
@@ -456,6 +595,7 @@ public abstract class AbstractRecipeLogic extends MTETrait
                 this.progressTime = Math.max(1, progressTime - 2);
             }
         }
+         */
     }
 
     /**
@@ -471,8 +611,6 @@ public abstract class AbstractRecipeLogic extends MTETrait
      */
     public void forceRecipeRecheck() {
         this.previousRecipe = null;
-        this.latestRecipes.clear();
-
         trySearchNewRecipe();
     }
 
@@ -485,51 +623,44 @@ public abstract class AbstractRecipeLogic extends MTETrait
         IItemHandlerModifiable importInventory = getInputInventory();
         IMultipleTankHandler importFluids = getInputTank();
 
-        // see if the last recipe we used still works
-        if (checkPreviousRecipe()) {
-            currentRecipe = this.previousRecipe;
-            // If there is no active recipe, then we need to find one.
-        }
-        // 若无效则遍历历史记录寻找其他有效配方
-        else {
-            for (int i = latestRecipes.size() - 2; i >= 0; i--) { // 从倒数第二个开始
-                Recipe recipe = latestRecipes.get(i);
-                if (recipe == null) continue;
-                if (recipe.getEUt() <= maxVoltage && recipe.matches(false, importInventory, importFluids)) {
-                    currentRecipe = recipe;
-                    break;
-                }
+        // 如果锁定配方且存在上一个配方，则只检查这一个配方
+        if (lockRecipe && previousRecipe != null) {
+            if (previousRecipe.getEUt() <= maxVoltage &&
+                    previousRecipe.matches(false, importInventory, importFluids)) {
+                currentRecipe = previousRecipe;
+            } else {
+                this.invalidInputsForRecipes = true;
+                whyFailed = "无法运行锁定的配方";
+                return;
+            }
+        } else {
+            // 检查上一个配方是否仍然有效
+            if (checkPreviousRecipe()) {
+                currentRecipe = this.previousRecipe;
+            }
+
+            // 如果上一个配方不存在，则尝试从配方列表中寻找
+            if (currentRecipe == null) {
+                currentRecipe = findRecipe(maxVoltage, importInventory, importFluids);
             }
         }
 
-        // 若历史配方均无效则搜索新配方
-        if (currentRecipe == null) {
-            currentRecipe = findRecipe(maxVoltage, importInventory, importFluids);
-        }
         // If a recipe was found, then inputs were valid. Cache found recipe.
         if (currentRecipe != null) {
-            //最临近配方
             this.previousRecipe = currentRecipe;
-            //热点配方
-            addToPreviousRecipes(currentRecipe);
+        } else  {
+            // If no recipe was found, then inputs were invalid.
+            this.invalidInputsForRecipes = true;
+            whyFailed = "NoneRecipes";
+            return;
         }
-        this.invalidInputsForRecipes = (currentRecipe == null);
 
         // proceed if we have a usable recipe.
-        if (currentRecipe != null && checkRecipe(currentRecipe)) {
+        if (checkRecipe(currentRecipe)) {
             prepareRecipe(currentRecipe);
-        }
-    }
-
-
-    protected void addToPreviousRecipes(Recipe recipe) {
-        // 移除已存在的旧记录
-        latestRecipes.removeIf(r -> r.equals(recipe));
-        // 添加到末尾
-        latestRecipes.add(recipe);
-        // 移除超出限制的最旧配方
-        while (latestRecipes.size() > 16) {
-            latestRecipes.remove(0);
+        } else {
+            if(whyFailed.isEmpty())
+                whyFailed = "配方的特殊条件不满足（例如温度，算力等额外条件）";
         }
     }
 
@@ -565,7 +696,10 @@ public abstract class AbstractRecipeLogic extends MTETrait
             if (ConfigHolder.machines.cleanMultiblocks && mte instanceof IMultiblockController) return true;
 
             ICleanroomProvider cleanroomProvider = receiver.getCleanroom();
-            if (cleanroomProvider == null) return false;
+            if (cleanroomProvider == null) {
+                whyFailed = "当前配方需要超净环境！";
+                return false;
+            }
 
             return cleanroomProvider.isClean() && cleanroomProvider.checkCleanroomType(requiredType);
         }
@@ -578,7 +712,11 @@ public abstract class AbstractRecipeLogic extends MTETrait
         if (list == null) {
             return true;
         }
-        return list.checkDimension(this.getMetaTileEntity().getWorld().provider.getDimension());
+        if (list.checkDimension(this.getMetaTileEntity().getWorld().provider.getDimension())) {
+            return true;
+        }
+        whyFailed = "当前配方需要特定的维度!";
+        return false;
     }
 
     /**
@@ -599,9 +737,14 @@ public abstract class AbstractRecipeLogic extends MTETrait
                                  IMultipleTankHandler inputFluidInventory) {
         recipe = Recipe.trimRecipeOutputs(recipe, getRecipeMap(), metaTileEntity.getItemOutputLimit(),
                 metaTileEntity.getFluidOutputLimit());
+        if (recipe == null) {
+            whyFailed = "配方输出数量超过机器限制（物品输出槽:" + metaTileEntity.getItemOutputLimit() +
+                    ", 流体输出槽:" + metaTileEntity.getFluidOutputLimit() + "）";
+            return false;
+        }
 
         // apply EU/speed discount (if any) before parallel
-          if (euDiscount > 0 || speedBonus > 0) { // if-statement to avoid unnecessarily creating RecipeBuilder object
+        if (euDiscount > 0 || speedBonus > 0) { // if-statement to avoid unnecessarily creating RecipeBuilder object
             RecipeBuilder<?> builder = new RecipeBuilder<>(recipe, recipeMap);
             if (euDiscount > 0) {
                 long newEUt = Math.round(recipe.getEUt() * euDiscount);
@@ -618,14 +761,21 @@ public abstract class AbstractRecipeLogic extends MTETrait
         }
 
         // Pass in the trimmed recipe to the parallel logic
-        recipe = findParallelRecipe(
-                recipe,
-                inputInventory,
-                inputFluidInventory,
-                getOutputInventory(),
-                getOutputTank(),
-                getMaxParallelVoltage(),
-                getParallelLimit());
+        if (getParallelLimit() > 1) {
+            Recipe originalRecipe = recipe;
+            recipe = findParallelRecipe(
+                    recipe,
+                    inputInventory,
+                    inputFluidInventory,
+                    getOutputInventory(),
+                    getOutputTank(),
+                    getMaxParallelVoltage(),
+                    getParallelLimit());
+            if (recipe == null) {
+                whyFailed = "无法进行并行处理，按无并行继续流程！";
+                recipe = originalRecipe;
+            }
+        }
 
         if (recipe != null) {
             recipe = setupAndConsumeRecipeInputs(recipe, inputInventory, inputFluidInventory);
@@ -672,6 +822,37 @@ public abstract class AbstractRecipeLogic extends MTETrait
     }
 
     /**
+     * DO NOT use the threadLimit field directly, EVER
+     *
+     * @return the current thread limit of the logic
+     */
+    public int getThreadLimit() {
+        return threadLimit;
+    }
+
+    /**
+     * Set the thread limit
+     *
+     * @param amount the amount to set
+     */
+    public void setThreadLimit(int amount) {
+        threadLimit = Math.max(1, amount);
+    }
+
+    /**
+     * Whether cross-recipe parallel is enabled: the slot count is unbounded and the parallel budget is
+     * distributed elastically between the different recipes according to the available inputs.
+     * <p>
+     * Disabled by default, which caps the machine at a single recipe per thread. Override this in the
+     * machine's own recipe logic to opt in.
+     *
+     * @return true if recipes may share the parallel budget across more slots than the thread limit
+     */
+    public boolean isCrossRecipeParallelEnabled() {
+        return false;
+    }
+
+    /**
      * Sets an EU/t discount to apply to a machine when running recipes.<br> This does NOT affect recipe lookup voltage,
      * even if the discount drops it to a lower voltage tier.<br> This discount is applied pre-parallel/pre-overclock.
      *
@@ -697,15 +878,8 @@ public abstract class AbstractRecipeLogic extends MTETrait
     }
 
     /**
-     * 设置能源效率值
-     * @param efficiency 能源效率值，用于调整能耗计算
-     */
-    public void setEnergyEfficiency(double efficiency) {
-        euEfficiency = efficiency;
-    }
-
-    /**
      * 获取当前设置的能源效率值
+     *
      * @return 当前能源效率值
      */
     public double getEnergyEfficiency() {
@@ -713,7 +887,17 @@ public abstract class AbstractRecipeLogic extends MTETrait
     }
 
     /**
+     * 设置能源效率值
+     *
+     * @param efficiency 能源效率值，用于调整能耗计算
+     */
+    public void setEnergyEfficiency(double efficiency) {
+        euEfficiency = efficiency;
+    }
+
+    /**
      * 根据能源效率值调整配方的EU能耗
+     *
      * @param recipeEUt 原始配方EU能耗值
      * @return 应用能源效率调整后的EU能耗值
      */
@@ -749,7 +933,7 @@ public abstract class AbstractRecipeLogic extends MTETrait
     @Override
     @NotNull
     public ParallelLogicType getParallelLogicType() {
-        return ParallelLogicType.MULTIPLY;
+        return ParallelLogicType.CROSS_RECIPE;
     }
 
     /**
@@ -764,6 +948,7 @@ public abstract class AbstractRecipeLogic extends MTETrait
     protected Recipe findRecipe(long maxVoltage, IItemHandlerModifiable inputs, IMultipleTankHandler fluidInputs) {
         RecipeMap<?> map = getRecipeMap();
         if (map == null || !isRecipeMapValid(map)) {
+            whyFailed = "非法的配方列表";
             return null;
         }
 
@@ -813,45 +998,45 @@ public abstract class AbstractRecipeLogic extends MTETrait
                                                                  @NotNull IItemHandlerModifiable importInventory,
                                                                  @NotNull IMultipleTankHandler importFluids) {
         calculateOverclock(recipe);
-
-        // Complete time reduction calculation here
         modifyOverclockPost(ocResult, recipe.propertyStorage());
 
-        // Batch processing algorithm
-        boolean batchSuccess = false;
-        if (enableBatch) {
-            // Batch processing and TOC are mutually exclusive due to functional overlap
-            Recipe batchedRecipe = batchProcessing(ocResult, recipe, importInventory, importFluids);
-            if (batchedRecipe != recipe) {
-                // Batch processing was successful and changed the recipe
-                recipe = batchedRecipe;
-                batchSuccess = true;
-            }
-        }
-
-        // TOC algorithm
-        // Only perform TOC algorithm when batch processing is not enabled, or when batch processing is enabled but failed
-        if (ocResult.parallel() > 1 && !(enableBatch && batchSuccess)) {
+        // 执行并行处理（TOC），将单次配方扩展为多次并行执行
+        if (ocResult.parallel() > 1) {
             recipe = subTickOC(ocResult, recipe, importInventory, importFluids);
             if (recipe == null) {
                 invalidateInputs();
+                whyFailed = "并行处理失败，输入材料、输出空间或电压不足，无法执行多次配方";
                 return null;
             }
         }
 
+        // 执行批处理，将配方输入/输出/时长等比缩放，使总耗时趋近128 tick
+        if (enableBatch) {
+            Recipe batchedRecipe = batchProcessing(ocResult, recipe, importInventory, importFluids);
+            if (batchedRecipe != recipe) {
+                recipe = batchedRecipe;
+            }
+        }
+
+        // 检查电力是否满足配方需求
         if (!hasEnoughPower(ocResult.eut(), ocResult.duration())) {
             ocResult.reset();
+            whyFailed = "电力不足，无法满足当前配方的运行需求";
             return null;
         }
 
-        if (checkOutputSpaceItems(recipe, getOutputInventory()) && checkOutputSpaceFluids(recipe, getOutputTank())) {
+        // 验证输出空间并消费输入
+        if (checkOutputSpaceItems(recipe, getOutputInventory()) &&
+                checkOutputSpaceFluids(recipe, getOutputTank())) {
             this.isOutputsFull = false;
             if (recipe.matches(true, importInventory, importFluids)) {
                 this.metaTileEntity.addNotifiedInput(importInventory);
                 return recipe;
+            } else {
+                whyFailed = "配方匹配失败：输入可能被共用仓口的机器取走";
+                return null;
             }
         }
-
         return null;
     }
 
@@ -866,6 +1051,7 @@ public abstract class AbstractRecipeLogic extends MTETrait
         if (!metaTileEntity.canVoidRecipeItemOutputs() &&
                 !GTTransferUtils.addItemsToItemHandler(exportInventory, true, recipe.getAllItemOutputs())) {
             this.isOutputsFull = true;
+            whyFailed = "当前物品输出条件无法满足配方需求";
             return false;
         }
         return true;
@@ -881,10 +1067,12 @@ public abstract class AbstractRecipeLogic extends MTETrait
         if (!metaTileEntity.canVoidRecipeFluidOutputs() &&
                 !GTTransferUtils.addFluidsToFluidHandler(exportFluids, true, recipe.getAllFluidOutputs())) {
             this.isOutputsFull = true;
+            whyFailed = "当前流体输出条件无法满足配方需求";
             return false;
         }
         return true;
     }
+
     /**
      * Batch process a recipe to increase output while keeping duration within 128 ticks.
      *
@@ -902,17 +1090,15 @@ public abstract class AbstractRecipeLogic extends MTETrait
             return recipe;
         }
 
-        // Only process recipes with duration <= 64 ticks for batching
-        if (ocResult.duration() > 64) {
+        int baseDuration = ocResult.duration();
+
+        if (baseDuration > 64) {
             return recipe;
         }
 
-        int baseDuration = ocResult.duration();
-
-        // Calculate maximum possible batch multiplier (not exceeding 128 ticks)
         int maxMultiplier = (int) Math.floor(128.0 / baseDuration);
         int minMultiplier = 1;
-        int bestMultiplier = 1; // Default to original multiplier
+        int bestMultiplier = 1;
 
         // Find the maximum feasible batch multiplier using binary search
         while (minMultiplier <= maxMultiplier) {
@@ -931,21 +1117,24 @@ public abstract class AbstractRecipeLogic extends MTETrait
             }
         }
 
-        // If a feasible batch multiplier is found (greater than 1), apply batch processing
-        if (bestMultiplier > 1) {
-            RecipeBuilder<?> batchBuilder = new RecipeBuilder<>(recipe, map)
-                    .batch(recipe, bestMultiplier, baseDuration);
-            Recipe resultRecipe = batchBuilder.build().getResult();
+        if (bestMultiplier <= 1) {
+            return recipe;
+        }
 
-            if (resultRecipe != null) {
-                // Modify OC result duration
-                ocResult.setDuration(ocResult.duration() * bestMultiplier);
-                return resultRecipe;
-            }
+        // 构建最终批处理配方
+        RecipeBuilder<?> batchBuilder = new RecipeBuilder<>(recipe, map)
+                .batch(recipe, bestMultiplier, baseDuration);
+        Recipe resultRecipe = batchBuilder.build().getResult();
+
+        if (resultRecipe != null) {
+            // Modify OC result duration
+            ocResult.setDuration(ocResult.duration() * bestMultiplier);
+            return resultRecipe;
         }
 
         return recipe;
     }
+
     /**
      * Overclock a recipe beyond a duration of 1 tick using parallelization.
      *
@@ -1147,12 +1336,17 @@ public abstract class AbstractRecipeLogic extends MTETrait
     @MustBeInvokedByOverriders
     protected void setupRecipe(@NotNull Recipe recipe) {
         this.progressTime = 1;
+        whyFailed = "";
         setMaxProgress(ocResult.duration());
         this.recipeEUt = ocResult.eut();
         this.showRecipes = recipe;
 
         int recipeTier = GTUtility.getTierByVoltage(recipe.getEUt());
         int machineTier = getOverclockForTier(getMaximumOverclockVoltage());
+
+        if (metaTileEntity instanceof MultiblockWithDisplayBase multiblockWithDisplayBase) {
+            multiblockWithDisplayBase.setRecoveryItems(recipe.getMufflerDustList());
+        }
 
         RecipeMap<?> map = getRecipeMap();
         if (map != null) {
@@ -1226,8 +1420,7 @@ public abstract class AbstractRecipeLogic extends MTETrait
     }
 
     /**
-     * sets the amount of ticks of running time to finish the recipe
-     * 所有附属设备禁止使用setMaxProgress修改配方时间（有批处理功能的情况下）！！！
+     * sets the amount of ticks of running time to finish the recipe 所有附属设备禁止使用setMaxProgress修改配方时间（有批处理功能的情况下）！！！
      * 请使用modifyOverclockPost方法代替！！！
      *
      * @param maxProgress the amount of ticks to set
@@ -1245,7 +1438,7 @@ public abstract class AbstractRecipeLogic extends MTETrait
     }
 
     /**
-     * @return the current recipe's EU/t for TOP/Waila/Tricorder
+     * @return the current recipe's EU/t for TOP/Tricorder
      */
     public long getInfoProviderEUt() {
         return getRecipeEUt();
@@ -1287,11 +1480,68 @@ public abstract class AbstractRecipeLogic extends MTETrait
     public void setBatchEnable(boolean enable) {
         enableBatch = enable;
         metaTileEntity.markDirty();
-        invalidate();
         World world = metaTileEntity.getWorld();
         if (world != null && !world.isRemote) {
             writeCustomData(GregtechDataCodes.WORKING_BATCH, buf -> buf.writeBoolean(enableBatch));
         }
+    }
+
+    public boolean isRecipeLockEnable() {
+        return lockRecipe;
+    }
+
+    public void setRecipeLockEnable(boolean enable) {
+        lockRecipe = enable;
+        metaTileEntity.markDirty();
+        World world = metaTileEntity.getWorld();
+        if (world != null && !world.isRemote) {
+            writeCustomData(GregtechDataCodes.WORKING_RECIPE_LOCK, buf -> buf.writeBoolean(lockRecipe));
+        }
+    }
+
+    public boolean isOverflowMode() {
+        return overflowMode;
+    }
+
+    public void setOverflowMode(boolean enable) {
+        overflowMode = enable;
+        metaTileEntity.markDirty();
+        World world = metaTileEntity.getWorld();
+        if (world != null && !world.isRemote) {
+            writeCustomData(GregtechDataCodes.OVERFLOW_MODE, buf -> buf.writeBoolean(overflowMode));
+        }
+    }
+
+    public boolean isEnergyLackWarningEnable() {
+        return lackEnergyWarning;
+    }
+
+    public void setEnergyLackWarningEnable(boolean enable) {
+        lackEnergyWarning = enable;
+        metaTileEntity.markDirty();
+        World world = metaTileEntity.getWorld();
+        if (world != null && !world.isRemote) {
+            writeCustomData(GregtechDataCodes.LACK_ENERGY_WARNING, buf -> buf.writeBoolean(lackEnergyWarning));
+        }
+    }
+
+    /**
+     * Copies the player-configured toggles from another logic instance, leaving recipe progress untouched. Any code
+     * that hands this logic's role to a freshly created instance must call this, otherwise the swap silently resets
+     * batch mode, recipe lock and the other button states back to their defaults.
+     *
+     * @param other the logic whose configuration is kept
+     */
+    public void copyUserSettingsFrom(@NotNull AbstractRecipeLogic other) {
+        if (other == this) return;
+        this.workingEnabled = other.workingEnabled;
+        this.enableBatch = other.enableBatch;
+        this.lockRecipe = other.lockRecipe;
+        this.overflowMode = other.overflowMode;
+        this.lackEnergyWarning = other.lackEnergyWarning;
+        // Assigned directly rather than through setAllowOverclocking, which would also rewrite overclockVoltage.
+        this.allowOverclocking = other.allowOverclocking;
+        metaTileEntity.markDirty();
     }
 
     @Override
@@ -1405,6 +1655,12 @@ public abstract class AbstractRecipeLogic extends MTETrait
         setActive(false); // this marks dirty for us
     }
 
+    /*
+      From <a href=
+      "https://github.com/Nomi-CEu/Nomi-Labs/blob/main/src/main/java/com/nomiceu/nomilabs/mixin/gregtech/AbstractRecipeLogicMixin.java">NomiLabs</a>.
+     */
+    //
+
     @Override
     public void receiveCustomData(int dataId, @NotNull PacketBuffer buf) {
         if (dataId == GregtechDataCodes.WORKABLE_ACTIVE) {
@@ -1416,20 +1672,22 @@ public abstract class AbstractRecipeLogic extends MTETrait
         } else if (dataId == GregtechDataCodes.WORKING_BATCH) {
             this.enableBatch = buf.readBoolean();
             getMetaTileEntity().scheduleRenderUpdate();
+        } else if (dataId == GregtechDataCodes.WORKING_RECIPE_LOCK) {
+            this.lockRecipe = buf.readBoolean();
+            getMetaTileEntity().scheduleRenderUpdate();
+        } else if (dataId == GregtechDataCodes.OVERFLOW_MODE) {
+            this.overflowMode = buf.readBoolean();
+            getMetaTileEntity().scheduleRenderUpdate();
         }
     }
-
-    /*
-      From <a href=
-      "https://github.com/Nomi-CEu/Nomi-Labs/blob/main/src/main/java/com/nomiceu/nomilabs/mixin/gregtech/AbstractRecipeLogicMixin.java">NomiLabs</a>.
-     */
-    //
 
     @Override
     public void writeInitialSyncData(@NotNull PacketBuffer buf) {
         buf.writeBoolean(this.isActive);
         buf.writeBoolean(this.workingEnabled);
         buf.writeBoolean(this.enableBatch);
+        buf.writeBoolean(this.lockRecipe);
+        buf.writeBoolean(this.overflowMode);
     }
 
     @Override
@@ -1437,6 +1695,8 @@ public abstract class AbstractRecipeLogic extends MTETrait
         this.isActive = buf.readBoolean();
         this.workingEnabled = buf.readBoolean();
         this.enableBatch = buf.readBoolean();
+        this.lockRecipe = buf.readBoolean();
+        this.overflowMode = buf.readBoolean();
     }
 
     @NotNull
@@ -1446,6 +1706,9 @@ public abstract class AbstractRecipeLogic extends MTETrait
         //compound.setInteger("parallelRecipesPerformed",this.parallelRecipesPerformed);
         //compound.setInteger("parallelLimit",this.parallelLimit);
         compound.setBoolean("Batch", enableBatch);
+        compound.setBoolean("LockRecipe", lockRecipe);
+        compound.setBoolean("overflowMode", overflowMode);
+        compound.setBoolean("lackEnergyWarning", lackEnergyWarning);
         compound.setBoolean("WorkEnabled", workingEnabled);
         compound.setBoolean("CanRecipeProgress", canRecipeProgress);
         compound.setBoolean(ALLOW_OVERCLOCKING, allowOverclocking);
@@ -1481,6 +1744,9 @@ public abstract class AbstractRecipeLogic extends MTETrait
         //this.parallelRecipesPerformed = compound.getInteger("parallelRecipesPerformed");
         //this.parallelLimit = compound.getInteger("parallelLimit");
         this.enableBatch = compound.getBoolean("Batch");
+        this.lockRecipe = compound.getBoolean("LockRecipe");
+        this.overflowMode = compound.getBoolean("overflowMode");
+        this.lackEnergyWarning = compound.getBoolean("lackEnergyWarning");
         this.workingEnabled = compound.getBoolean("WorkEnabled");
         this.canRecipeProgress = compound.getBoolean("CanRecipeProgress");
         this.progressTime = compound.getInteger("Progress");
@@ -1586,7 +1852,4 @@ public abstract class AbstractRecipeLogic extends MTETrait
         nbt.setTag(key, entries);
     }
 
-    public void setRecipeMap(RecipeMap<?> recipeMap) {this.recipeMap = recipeMap;}
-
-    public void setProgressTime(int progressTime) {this.progressTime = progressTime;}
 }

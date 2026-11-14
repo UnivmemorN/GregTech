@@ -1,27 +1,33 @@
 package gregtech.client.renderer.handler;
 
-import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.metatileentity.multiblock.MultiblockControllerBase;
+import gregtech.api.pattern.PieceTemplate;
+import gregtech.api.pattern.MultiPiecePattern;
+import gregtech.api.pattern.MultiPiecePreviewAssembler;
 import gregtech.api.pattern.MultiblockShapeInfo;
+import gregtech.api.pattern.StructureOrientation;
+import gregtech.api.pattern.StructurePiece;
+import gregtech.api.pattern.casing.GTStructureChannels;
 import gregtech.api.util.BlockInfo;
+import gregtech.api.util.RelativeDirection;
+import gregtech.client.renderer.godforge.util.FaceCulledRenderBlocks;
+import gregtech.client.renderer.godforge.util.FaceVisibility;
 import gregtech.client.utils.TrackedDummyWorld;
 
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.*;
+import net.minecraft.client.renderer.BufferBuilder;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.OpenGlHelper;
+import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import net.minecraft.client.renderer.vertex.VertexBuffer;
 import net.minecraft.entity.Entity;
 import net.minecraft.init.Blocks;
-import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.BlockRenderLayer;
-import net.minecraft.util.EnumFacing;
-import net.minecraft.util.Rotation;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.IBlockAccess;
-import net.minecraft.world.WorldType;
-import net.minecraft.world.biome.Biome;
 import net.minecraftforge.client.ForgeHooksClient;
 import net.minecraftforge.client.MinecraftForgeClient;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
@@ -30,30 +36,53 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 
 import org.lwjgl.opengl.GL11;
 
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 @SideOnly(Side.CLIENT)
 public class MultiblockPreviewRenderer {
 
+    // Preview block scale factor and centering offset
+    private static final float BLOCK_SCALE = 1.0F;
+    private static final float BLOCK_OFFSET = 0.0F;
+    private static final FaceVisibility FULL_BLOCK_VISIBILITY = new FaceVisibility();
+    // Minimum interval between VBO rebuilds to prevent stutter from rapid right-clicks
+    private static final long REBUILD_COOLDOWN_MS = 500L;
+
     private static BlockPos mbpPos;
     private static long mbpEndTime;
-    private static int opList = -1;
+    private static long lastBuildTime;
     private static int layer;
-    private static int tier;
+    private static boolean compareMode = false;
+    @Nullable
+    private static Map<String, Integer> channelValues = null;
+
+    // VBO storage: one VBO per BlockRenderLayer
+    private static final VertexBuffer[] vbos = new VertexBuffer[BlockRenderLayer.values().length];
+    private static boolean vboBuilt = false;
+
+    // Comparison mode data: world positions of missing/wrong blocks for overlay rendering
+    private static final List<BlockPos> missingPositions = new ArrayList<>();
+    private static final List<BlockPos> wrongPositions = new ArrayList<>();
 
     public static void renderWorldLastEvent(RenderWorldLastEvent event) {
         if (mbpPos != null) {
             Minecraft mc = Minecraft.getMinecraft();
             long time = System.currentTimeMillis();
-            if (opList == -1 || time > mbpEndTime || !(mc.world.getTileEntity(mbpPos) instanceof IGregTechTileEntity)) {
+            Entity entity = mc.getRenderViewEntity();
+            if (entity == null) entity = mc.player;
+            if (!vboBuilt || time > mbpEndTime
+                    || !(mc.world.getTileEntity(mbpPos) instanceof IGregTechTileEntity)
+                    || entity.getDistanceSq(mbpPos) > 1024) {
                 resetMultiblockRender();
                 layer = 0;
                 return;
             }
-            Entity entity = mc.getRenderViewEntity();
-            if (entity == null) entity = mc.player;
             float partialTicks = event.getPartialTicks();
             double tx = entity.lastTickPosX + ((entity.posX - entity.lastTickPosX) * partialTicks);
             double ty = entity.lastTickPosY + ((entity.posY - entity.lastTickPosY) * partialTicks);
@@ -63,82 +92,248 @@ public class MultiblockPreviewRenderer {
             GlStateManager.color(1F, 1F, 1F, 1F);
             GlStateManager.pushMatrix();
             GlStateManager.translate(-tx, -ty, -tz);
-            GlStateManager.enableBlend();
 
-            GlStateManager.callList(opList);
+            // Disable lightmap texture unit so block brightness is not affected by
+            // per-vertex lightmap UVs (consistent with WorldSceneRenderer approach).
+            mc.entityRenderer.disableLightmap();
+
+            // Render VBOs for each layer (fully opaque, no blending)
+            renderVBOs();
+
+            // Render comparison overlay (colored outlines for missing/wrong blocks)
+            if (compareMode && (!missingPositions.isEmpty() || !wrongPositions.isEmpty())) {
+                GlStateManager.enableBlend();
+                PreviewRenderUtils.renderComparisonOverlay(missingPositions, wrongPositions);
+                GlStateManager.disableBlend();
+            }
 
             GlStateManager.enableLighting();
+            mc.entityRenderer.enableLightmap();
             GlStateManager.popMatrix();
             GlStateManager.color(1F, 1F, 1F, 1F);
 
         }
     }
 
+    /**
+     * Render the built VBOs. Uses the same vertex attribute setup as StructureVBO.
+     */
+    private static void renderVBOs() {
+        BlockRenderLayer oldRenderLayer = MinecraftForgeClient.getRenderLayer();
+        try {
+            for (BlockRenderLayer renderLayer : BlockRenderLayer.values()) {
+                VertexBuffer vbo = vbos[renderLayer.ordinal()];
+                if (vbo == null) continue;
+
+                ForgeHooksClient.setRenderLayer(renderLayer);
+
+                vbo.bindBuffer();
+                GlStateManager.glEnableClientState(GL11.GL_VERTEX_ARRAY);
+                OpenGlHelper.setClientActiveTexture(OpenGlHelper.defaultTexUnit);
+                GlStateManager.glEnableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
+                OpenGlHelper.setClientActiveTexture(OpenGlHelper.lightmapTexUnit);
+                GlStateManager.glEnableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
+                OpenGlHelper.setClientActiveTexture(OpenGlHelper.defaultTexUnit);
+                GlStateManager.glEnableClientState(GL11.GL_COLOR_ARRAY);
+
+                // BLOCK format: stride=28 bytes
+                // pos(3 float)=0, color(4 ubyte)=12, uv(2 float)=16, lightmap(2 short)=24
+                GlStateManager.glVertexPointer(3, GL11.GL_FLOAT, 28, 0);
+                GlStateManager.glColorPointer(4, GL11.GL_UNSIGNED_BYTE, 28, 12);
+                GlStateManager.glTexCoordPointer(2, GL11.GL_FLOAT, 28, 16);
+                OpenGlHelper.setClientActiveTexture(OpenGlHelper.lightmapTexUnit);
+                GlStateManager.glTexCoordPointer(2, GL11.GL_SHORT, 28, 24);
+                OpenGlHelper.setClientActiveTexture(OpenGlHelper.defaultTexUnit);
+
+                vbo.drawArrays(GL11.GL_QUADS);
+
+                GlStateManager.glDisableClientState(GL11.GL_COLOR_ARRAY);
+                OpenGlHelper.setClientActiveTexture(OpenGlHelper.lightmapTexUnit);
+                GlStateManager.glDisableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
+                OpenGlHelper.setClientActiveTexture(OpenGlHelper.defaultTexUnit);
+                GlStateManager.glDisableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
+                GlStateManager.glDisableClientState(GL11.GL_VERTEX_ARRAY);
+                vbo.unbindBuffer();
+            }
+        } finally {
+            ForgeHooksClient.setRenderLayer(oldRenderLayer);
+        }
+    }
+
     public static void renderMultiBlockPreview(MultiblockControllerBase controller, long durTimeMillis) {
+        long now = System.currentTimeMillis();
         if (!controller.getPos().equals(mbpPos)) {
             layer = 0;
-            tier = 0;
         } else {
-            if (mbpEndTime - System.currentTimeMillis() < 200) return;
+            // Throttle: skip rebuild if last build was too recent (prevents stutter on rapid clicks)
+            if (now - lastBuildTime < REBUILD_COOLDOWN_MS) {
+                mbpEndTime = now + durTimeMillis;
+                return;
+            }
+            layer++;
+        }
+        rebuildMultiblockPreview(controller, durTimeMillis);
+    }
+
+    public static void refreshCurrentPreview(MultiblockControllerBase controller) {
+        long remainingTime = mbpEndTime - System.currentTimeMillis();
+        if (controller == null || mbpPos == null || !vboBuilt || remainingTime <= 0 ||
+                !controller.getPos().equals(mbpPos)) {
+            return;
+        }
+        rebuildMultiblockPreview(controller, remainingTime);
+    }
+
+    private static void rebuildMultiblockPreview(MultiblockControllerBase controller, long durTimeMillis) {
+        resetMultiblockRender();
+        // Cancel any active ghost block preview (mutual exclusion)
+        GhostBlockRenderer.resetGhostRender();
+        mbpPos = controller.getPos();
+        mbpEndTime = System.currentTimeMillis() + durTimeMillis;
+        lastBuildTime = System.currentTimeMillis();
+
+        // Check if a specific piece is requested via STRUCTURE_PIECE channel
+        int pieceIndex = channelValues != null
+                ? channelValues.getOrDefault(GTStructureChannels.STRUCTURE_PIECE.getName(), 0)
+                : 0;
+
+        if (pieceIndex > 0) {
+            // Build VBO for a specific piece from the MultiPiecePattern
+            buildPieceVBO(controller, pieceIndex);
+        } else {
+            // Build the main pattern when no piece channel is selected.
+            List<MultiblockShapeInfo> shapes = channelValues != null
+                    ? controller.getMatchingShapes(channelValues)
+                    : controller.getMatchingShapes();
+            if (!shapes.isEmpty()) {
+                buildControllerVBO(controller, shapes.get(0), layer);
+                // Compute comparison data if compare mode is active
+                if (compareMode) {
+                    PreviewRenderUtils.computeComparisonFromController(
+                            controller, shapes.get(0), missingPositions, wrongPositions);
+                }
+            }
+        }
+    }
+
+    public static void renderMultiBlockPreview(MultiblockControllerBase controller, BlockPos pos, long durTimeMillis) {
+        long now = System.currentTimeMillis();
+        if (!controller.getPos().equals(mbpPos)) {
+            layer = 0;
+        } else {
+            if (now - lastBuildTime < REBUILD_COOLDOWN_MS) {
+                mbpEndTime = now + durTimeMillis;
+                return;
+            }
             layer++;
         }
         resetMultiblockRender();
         mbpPos = controller.getPos();
         mbpEndTime = System.currentTimeMillis() + durTimeMillis;
-        opList = GLAllocation.generateDisplayLists(1); // allocate op list
-        GlStateManager.glNewList(opList, GL11.GL_COMPILE);
-        if (tier != controller.getStructureTier()) {
-            tier = controller.getStructureTier();
-            controller.reinitializeStructurePattern();
-        }
-        List<MultiblockShapeInfo> shapes = controller.getMatchingShapes();
-        if (!shapes.isEmpty()) {
-            renderControllerInList(controller, shapes.get(0), layer);
-        }
-        GlStateManager.glEndList();
+        List<MultiblockShapeInfo> shapes = channelValues != null
+                ? controller.getMatchingShapes(channelValues)
+                : controller.getMatchingShapes();
+        if (!shapes.isEmpty()) buildControllerVBO(controller, shapes.get(0), layer, pos);
     }
-    public static void renderMultiBlockPreview(MultiblockControllerBase controller,BlockPos pos ,long durTimeMillis) {
-        if (!controller.getPos().equals(mbpPos)) {
-            layer = 0;
-        } else {
-            if (mbpEndTime - System.currentTimeMillis() < 200) return;
-            layer++;
-        }
+
+    public static void renderMultiBlockPreview(MultiblockControllerBase controller, BlockPos pos, int layer,
+                                               long durTimeMillis) {
         resetMultiblockRender();
         mbpPos = controller.getPos();
         mbpEndTime = System.currentTimeMillis() + durTimeMillis;
-        opList = GLAllocation.generateDisplayLists(1); // allocate op list
-        GlStateManager.glNewList(opList, GL11.GL_COMPILE);
-        List<MultiblockShapeInfo> shapes = controller.getMatchingShapes();
-        if (!shapes.isEmpty()) renderControllerInList(controller, shapes.get(0), layer, pos);
-        GlStateManager.glEndList();
+        List<MultiblockShapeInfo> shapes = channelValues != null
+                ? controller.getMatchingShapes(channelValues)
+                : controller.getMatchingShapes();
+        if (!shapes.isEmpty()) buildControllerVBO(controller, shapes.get(0), layer, pos);
     }
-    public static void renderMultiBlockPreview(MultiblockControllerBase controller,BlockPos pos,int layer,long durTimeMillis) {
-        resetMultiblockRender();
-        mbpPos = controller.getPos();
-        mbpEndTime = System.currentTimeMillis() + durTimeMillis;
-        opList = GLAllocation.generateDisplayLists(1); // allocate op list
-        GlStateManager.glNewList(opList, GL11.GL_COMPILE);
-        List<MultiblockShapeInfo> shapes = controller.getMatchingShapes();
-        if (!shapes.isEmpty()) renderControllerInList(controller, shapes.get(0), layer, pos);
-        GlStateManager.glEndList();
-    }
+
     public static void resetMultiblockRender() {
         mbpPos = null;
         mbpEndTime = 0;
-        if (opList != -1) {
-            GlStateManager.glDeleteLists(opList, 1);
-            opList = -1;
-        }
+        deleteVBOs();
+        missingPositions.clear();
+        wrongPositions.clear();
     }
 
-    public static void renderControllerInList(MultiblockControllerBase controllerBase, MultiblockShapeInfo shapeInfo,
-                                              int layer) {
-        BlockPos mbpPos = controllerBase.getPos();
-        EnumFacing frontFacing, previewFacing;
-        previewFacing = controllerBase.getFrontFacing();
-        BlockPos controllerPos = BlockPos.ORIGIN;
-        MultiblockControllerBase mte = null;
+    private static void deleteVBOs() {
+        for (int i = 0; i < vbos.length; i++) {
+            if (vbos[i] != null) {
+                vbos[i].deleteGlBuffers();
+                vbos[i] = null;
+            }
+        }
+        vboBuilt = false;
+    }
+
+    /**
+     * Enable or disable comparison mode.
+     * In comparison mode, only missing and incorrect blocks are rendered with color tinting.
+     * Correctly placed blocks are skipped.
+     */
+    public static void setCompareMode(boolean enabled) {
+        compareMode = enabled;
+    }
+
+    /**
+     * Set the channel values to use when rendering the next multiblock preview.
+     * These values are passed to {@code getMatchingShapes(channelValues)} to determine
+     * which tier/size variant to preview.
+     *
+     * @param values the channel values map (null = use default/all variants)
+     */
+    public static void setChannelValues(@Nullable Map<String, Integer> values) {
+        channelValues = values != null && !values.isEmpty() ? new HashMap<>(values) : null;
+    }
+
+    public static boolean isCompareMode() {
+        return compareMode;
+    }
+
+    /**
+     * Compute comparison data by comparing expected structure against real world blocks.
+     * <p>
+     * Delegates to {@link PreviewRenderUtils#computeComparisonData} with this renderer's
+     * comparison lists.
+     *
+     * @param expectedBlocks map of world positions -> expected block states
+     * @param world          the real world to compare against
+     */
+    public static void computeComparisonData(Map<BlockPos, IBlockState> expectedBlocks,
+                                             net.minecraft.world.World world) {
+        if (!compareMode) {
+            missingPositions.clear();
+            wrongPositions.clear();
+            return;
+        }
+        PreviewRenderUtils.computeComparisonData(expectedBlocks, world, missingPositions, wrongPositions);
+    }
+
+    // ========== VBO Build Methods ==========
+
+    /**
+     * Build VBO for a specific piece from the MultiPiecePattern at its world-space offset position.
+     */
+    private static void buildPieceVBO(MultiblockControllerBase controller, int pieceIndex) {
+        MultiPiecePreviewAssembler.PieceResult piecePreview =
+                controller.getMatchingPreviewPiece(pieceIndex, channelValues);
+        if (piecePreview == null) return;
+        MultiblockShapeInfo shapeInfo = piecePreview.getShape();
+
+        MultiPiecePattern multiPiece = controller.getStructureDefinition().getCompiledPattern();
+        if (multiPiece == null) return;
+
+        StructurePiece piece = multiPiece.getToolingPiece(pieceIndex);
+        if (piece == null) return;
+
+        // Compute the piece's center position in world space
+        BlockPos pieceCenterPos = MultiPiecePreviewAssembler.resolveWorldPieceCenter(
+                multiPiece,
+                pieceIndex,
+                piecePreview.getPrior(),
+                controller.getPos(),
+                StructureOrientation.fromController(controller),
+                controller);
+
         BlockInfo[][][] blocks = shapeInfo.getBlocks();
         Map<BlockPos, BlockInfo> blockMap = new HashMap<>();
         int maxY = 0;
@@ -149,92 +344,93 @@ public class MultiblockPreviewRenderer {
                 BlockInfo[] column = aisle[y];
                 for (int z = 0; z < column.length; z++) {
                     blockMap.put(new BlockPos(x, y, z), column[z]);
-                    MetaTileEntity metaTE = column[z].getTileEntity() instanceof IGregTechTileEntity ?
-                            ((IGregTechTileEntity) column[z].getTileEntity()).getMetaTileEntity() : null;
-                    if (metaTE instanceof MultiblockControllerBase &&
-                            metaTE.metaTileEntityId.equals(controllerBase.metaTileEntityId)) {
-                        controllerPos = new BlockPos(x, y, z);
-                        previewFacing = metaTE.getFrontFacing();
-                        mte = (MultiblockControllerBase) metaTE;
-                    }
                 }
             }
         }
+
         TrackedDummyWorld world = new TrackedDummyWorld();
         world.addBlocks(blockMap);
         int finalMaxY = layer % (maxY + 1);
-        world.setRenderFilter(pos -> pos.getY() + 1 == finalMaxY || finalMaxY == 0);
+        Predicate<BlockPos> renderFilter = pos -> finalMaxY == 0 || pos.getY() + 1 == finalMaxY;
+        world.setRenderFilter(renderFilter);
 
-        EnumFacing facing = controllerBase.getFrontFacing();
-        EnumFacing upwardsFacing = controllerBase.getUpwardsFacing();
+        // Use the piece's own template for coordinate transformation
+        gregtech.api.pattern.PieceTemplate pieceTemplate = piece.getTemplate();
+        RelativeDirection[] structureDir = pieceTemplate.getStructureDir();
+        BlockPos pieceCenterInLocal = piecePreview.getCenter();
+        StructureOrientation orientation = StructureOrientation.fromController(controller);
 
-        frontFacing = facing.getYOffset() == 0 ? facing :
-                facing.getYOffset() < 0 ? upwardsFacing : upwardsFacing.getOpposite();
-        Rotation rotatePreviewBy = Rotation
-                .values()[(4 + frontFacing.getHorizontalIndex() - previewFacing.getHorizontalIndex()) % 4];
-
-        Minecraft mc = Minecraft.getMinecraft();
-        BlockRendererDispatcher brd = mc.getBlockRendererDispatcher();
-        Tessellator tes = Tessellator.getInstance();
-        BufferBuilder buff = tes.getBuffer();
-        GlStateManager.pushMatrix();
-        GlStateManager.translate(mbpPos.getX(), mbpPos.getY(), mbpPos.getZ());
-        GlStateManager.translate(0.5, 0, 0.5);
-        GlStateManager.rotate(rotatePreviewBy.ordinal() * 90, 0, -1, 0);
-        GlStateManager.translate(-0.5, 0, -0.5);
-
-        if (facing == EnumFacing.UP) {
-            GlStateManager.translate(0.5, 0.5, 0.5);
-            GlStateManager.rotate(90, -previewFacing.getZOffset(), 0, previewFacing.getXOffset());
-            GlStateManager.translate(-0.5, -0.5, -0.5);
-        } else if (facing == EnumFacing.DOWN) {
-            GlStateManager.translate(0.5, 0.5, 0.5);
-            GlStateManager.rotate(90, previewFacing.getZOffset(), 0, -previewFacing.getXOffset());
-            GlStateManager.translate(-0.5, -0.5, -0.5);
-        } else {
-            int degree = 90 * (upwardsFacing == EnumFacing.EAST ? -1 :
-                    upwardsFacing == EnumFacing.SOUTH ? 2 : upwardsFacing == EnumFacing.WEST ? 1 : 0);
-            GlStateManager.translate(0.5, 0.5, 0.5);
-            GlStateManager.rotate(degree, previewFacing.getXOffset(), 0, previewFacing.getZOffset());
-            GlStateManager.translate(-0.5, -0.5, -0.5);
-        }
-
-        if (mte != null) {
-            mte.checkStructurePattern();
-        }
-
+        FaceCulledRenderBlocks renderer = new FaceCulledRenderBlocks(world);
+        PreviewRenderUtils.OffsetBlockAccess mteAccess = new PreviewRenderUtils.OffsetBlockAccess(world);
         BlockRenderLayer oldLayer = MinecraftForgeClient.getRenderLayer();
 
-        TargetBlockAccess targetBA = new TargetBlockAccess(world, BlockPos.ORIGIN);
-        for (BlockPos pos : blockMap.keySet()) {
-            targetBA.setPos(pos);
-            GlStateManager.pushMatrix();
-            BlockPos.MutableBlockPos tPos = new BlockPos.MutableBlockPos(pos.subtract(controllerPos));
-            GlStateManager.translate(tPos.getX(), tPos.getY(), tPos.getZ());
-            GlStateManager.translate(0.125, 0.125, 0.125);
-            GlStateManager.scale(0.75, 0.75, 0.75);
+        try {
+            for (BlockRenderLayer renderLayer : BlockRenderLayer.values()) {
+                ForgeHooksClient.setRenderLayer(renderLayer);
 
-            buff.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
-            IBlockState state = world.getBlockState(pos);
-            for (BlockRenderLayer brl : BlockRenderLayer.values()) {
-                if (state.getBlock().canRenderInLayer(state, brl)) {
-                    ForgeHooksClient.setRenderLayer(brl);
-                    brd.renderBlock(state, BlockPos.ORIGIN, targetBA, buff);
+                BufferBuilder buffer = Tessellator.getInstance().getBuffer();
+                boolean drawing = false;
+                try {
+                    buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
+                    drawing = true;
+
+                    for (BlockPos pos : blockMap.keySet()) {
+                        if (!renderFilter.test(pos)) continue;
+                        IBlockState state = world.getBlockState(pos);
+                        if (state.getBlock() == Blocks.AIR) continue;
+                        if (!state.getBlock().canRenderInLayer(state, renderLayer)) continue;
+
+                        // Compute world-space position for this block
+                        BlockPos tPos = PreviewRenderUtils.transformPieceOffset(
+                                pos.subtract(pieceCenterInLocal), structureDir,
+                                orientation.getStructureFront(), orientation.getUp(),
+                                orientation.isFlipped());
+                        BlockPos worldPos = pieceCenterPos.add(tPos);
+
+                        renderPreviewBlock(renderer, mteAccess, state, pos, worldPos, buffer);
+                    }
+
+                    buffer.finishDrawing();
+                    drawing = false;
+                    VertexBuffer vbo = new VertexBuffer(DefaultVertexFormats.BLOCK);
+                    vbo.bufferData(buffer.getByteBuffer());
+                    vbos[renderLayer.ordinal()] = vbo;
+                } finally {
+                    if (drawing) {
+                        finishDrawingQuietly(buffer);
+                    }
+                    buffer.reset();
                 }
             }
-            tes.draw();
-            GlStateManager.popMatrix();
+        } finally {
+            ForgeHooksClient.setRenderLayer(oldLayer);
         }
-        ForgeHooksClient.setRenderLayer(oldLayer);
 
-        GlStateManager.popMatrix();
+        vboBuilt = true;
     }
-    public static void renderControllerInList(MultiblockControllerBase controllerBase, MultiblockShapeInfo shapeInfo,
-                                              int layer , BlockPos targetPos) {
-        EnumFacing frontFacing, previewFacing;
-        previewFacing = controllerBase.getFrontFacing();
-        BlockPos controllerPos = BlockPos.ORIGIN;
-        MultiblockControllerBase mte = null;
+
+    /**
+     * Build VBO for the main controller pattern preview.
+     */
+    private static void buildControllerVBO(MultiblockControllerBase controllerBase, MultiblockShapeInfo shapeInfo,
+                                           int layer) {
+        buildControllerVBO(controllerBase, shapeInfo, layer, controllerBase.getPos());
+    }
+
+    /**
+     * Build VBO for the main controller pattern preview at a specific target position.
+     * <p>
+     * The merged preview array produced by
+     * {@link MultiblockControllerBase#buildMultiPieceShapes} is laid out in world
+     * coordinates: each piece's local y (string index) is offset by the cumulative
+     * aisle depth of all preceding pieces, so the merged y already encodes the
+     * world-space vertical position of every block. The blockMap / dummy world use
+     * these merged world coordinates so neighbor lookups and block-state lookups
+     * remain correct, and {@link PreviewRenderUtils#transformPreviewOffset} reads
+     * the merged y directly when producing the world-space offset.
+     */
+    private static void buildControllerVBO(MultiblockControllerBase controllerBase, MultiblockShapeInfo shapeInfo,
+                                           int layer, BlockPos targetPos) {
         BlockInfo[][][] blocks = shapeInfo.getBlocks();
         Map<BlockPos, BlockInfo> blockMap = new HashMap<>();
         int maxY = 0;
@@ -245,140 +441,90 @@ public class MultiblockPreviewRenderer {
                 BlockInfo[] column = aisle[y];
                 for (int z = 0; z < column.length; z++) {
                     blockMap.put(new BlockPos(x, y, z), column[z]);
-                    MetaTileEntity metaTE = column[z].getTileEntity() instanceof IGregTechTileEntity ?
-                            ((IGregTechTileEntity) column[z].getTileEntity()).getMetaTileEntity() : null;
-                    if (metaTE instanceof MultiblockControllerBase &&
-                            metaTE.metaTileEntityId.equals(controllerBase.metaTileEntityId)) {
-                        controllerPos = new BlockPos(x, y, z);
-                        previewFacing = metaTE.getFrontFacing();
-                        mte = (MultiblockControllerBase) metaTE;
-                        break;
-                    }
                 }
             }
         }
+
+        BlockPos controllerPos = PreviewRenderUtils.findControllerInPreview(blocks, controllerBase);
+        if (controllerPos == null) return;
         TrackedDummyWorld world = new TrackedDummyWorld();
         world.addBlocks(blockMap);
         int finalMaxY = layer % (maxY + 1);
-        world.setRenderFilter(pos -> pos.getY() + 1 == finalMaxY || finalMaxY == 0);
+        Predicate<BlockPos> renderFilter = pos -> finalMaxY == 0 || pos.getY() + 1 == finalMaxY;
+        world.setRenderFilter(renderFilter);
 
-        EnumFacing facing = controllerBase.getFrontFacing();
-        EnumFacing upwardsFacing = controllerBase.getUpwardsFacing();
-
-        frontFacing = facing.getYOffset() == 0 ? facing :
-                facing.getYOffset() < 0 ? upwardsFacing : upwardsFacing.getOpposite();
-        Rotation rotatePreviewBy = Rotation
-                .values()[(4 + frontFacing.getHorizontalIndex() - previewFacing.getHorizontalIndex()) % 4];
-
-        Minecraft mc = Minecraft.getMinecraft();
-        BlockRendererDispatcher brd = mc.getBlockRendererDispatcher();
-        Tessellator tes = Tessellator.getInstance();
-        BufferBuilder buff = tes.getBuffer();
-        GlStateManager.pushMatrix();
-        GlStateManager.translate(targetPos.getX(), targetPos.getY(), targetPos.getZ());
-        GlStateManager.translate(0.5, 0, 0.5);
-        GlStateManager.rotate(rotatePreviewBy.ordinal() * 90, 0, -1, 0);
-        GlStateManager.translate(-0.5, 0, -0.5);
-
-        if (facing == EnumFacing.UP) {
-            GlStateManager.translate(0.5, 0.5, 0.5);
-            GlStateManager.rotate(90, -previewFacing.getZOffset(), 0, previewFacing.getXOffset());
-            GlStateManager.translate(-0.5, -0.5, -0.5);
-        } else if (facing == EnumFacing.DOWN) {
-            GlStateManager.translate(0.5, 0.5, 0.5);
-            GlStateManager.rotate(90, previewFacing.getZOffset(), 0, -previewFacing.getXOffset());
-            GlStateManager.translate(-0.5, -0.5, -0.5);
-        } else {
-            int degree = 90 * (upwardsFacing == EnumFacing.EAST ? -1 :
-                    upwardsFacing == EnumFacing.SOUTH ? 2 : upwardsFacing == EnumFacing.WEST ? 1 : 0);
-            GlStateManager.translate(0.5, 0.5, 0.5);
-            GlStateManager.rotate(degree, previewFacing.getXOffset(), 0, previewFacing.getZOffset());
-            GlStateManager.translate(-0.5, -0.5, -0.5);
-        }
-
-        if (mte != null) {
-            mte.checkStructurePattern();
-        }
-
+        FaceCulledRenderBlocks renderer = new FaceCulledRenderBlocks(world);
+        PreviewRenderUtils.OffsetBlockAccess mteAccess = new PreviewRenderUtils.OffsetBlockAccess(world);
         BlockRenderLayer oldLayer = MinecraftForgeClient.getRenderLayer();
 
-        TargetBlockAccess targetBA = new TargetBlockAccess(world, BlockPos.ORIGIN);
-        for (BlockPos pos : blockMap.keySet()) {
-            targetBA.setPos(pos);
-            GlStateManager.pushMatrix();
-            BlockPos.MutableBlockPos tPos = new BlockPos.MutableBlockPos(pos.subtract(controllerPos));
-            GlStateManager.translate(tPos.getX(), tPos.getY(), tPos.getZ());
-            GlStateManager.translate(0.125, 0.125, 0.125);
-            GlStateManager.scale(0.75, 0.75, 0.75);
+        try {
+            for (BlockRenderLayer renderLayer : BlockRenderLayer.values()) {
+                ForgeHooksClient.setRenderLayer(renderLayer);
 
-            buff.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
-            IBlockState state = world.getBlockState(pos);
-            for (BlockRenderLayer brl : BlockRenderLayer.values()) {
-                if (state.getBlock().canRenderInLayer(state, brl)) {
-                    ForgeHooksClient.setRenderLayer(brl);
-                    brd.renderBlock(state, BlockPos.ORIGIN, targetBA, buff);
+                BufferBuilder buffer = Tessellator.getInstance().getBuffer();
+                boolean drawing = false;
+                try {
+                    buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
+                    drawing = true;
+
+                    for (BlockPos pos : blockMap.keySet()) {
+                        if (!renderFilter.test(pos)) continue;
+                        if (pos.equals(controllerPos)) continue;
+                        IBlockState state = world.getBlockState(pos);
+                        if (state.getBlock() == Blocks.AIR) continue;
+                        if (!state.getBlock().canRenderInLayer(state, renderLayer)) continue;
+
+                        // Compute world-space position for this block. The merged
+                        // array's y already includes the piece's vertical offset
+                        // from the controller, so transformPreviewOffset can read
+                        // it directly as the world y component.
+                        BlockPos tPos = PreviewRenderUtils.transformPreviewOffset(
+                                controllerBase, pos.subtract(controllerPos));
+                        BlockPos worldPos = targetPos.add(tPos);
+
+                        renderPreviewBlock(renderer, mteAccess, state, pos, worldPos, buffer);
+                    }
+
+                    buffer.finishDrawing();
+                    drawing = false;
+                    VertexBuffer vbo = new VertexBuffer(DefaultVertexFormats.BLOCK);
+                    vbo.bufferData(buffer.getByteBuffer());
+                    vbos[renderLayer.ordinal()] = vbo;
+                } finally {
+                    if (drawing) {
+                        finishDrawingQuietly(buffer);
+                    }
+                    buffer.reset();
                 }
             }
-            tes.draw();
-            GlStateManager.popMatrix();
+        } finally {
+            ForgeHooksClient.setRenderLayer(oldLayer);
         }
-        ForgeHooksClient.setRenderLayer(oldLayer);
 
-        GlStateManager.popMatrix();
+        vboBuilt = true;
     }
-    @SideOnly(Side.CLIENT)
-    private static class TargetBlockAccess implements IBlockAccess {
 
-        private final IBlockAccess delegate;
-        private BlockPos targetPos;
-
-        public TargetBlockAccess(IBlockAccess delegate, BlockPos pos) {
-            this.delegate = delegate;
-            this.targetPos = pos;
+    private static void renderPreviewBlock(FaceCulledRenderBlocks renderer,
+                                           PreviewRenderUtils.OffsetBlockAccess mteAccess,
+                                           IBlockState state,
+                                           BlockPos localPos,
+                                           BlockPos worldPos,
+                                           BufferBuilder buffer) {
+        if (state.getBlock().getRenderType(state) == MetaTileEntityRenderer.BLOCK_RENDER_TYPE) {
+            mteAccess.setPos(localPos, worldPos, true);
+            MetaTileEntityRenderer.INSTANCE.renderBlock(mteAccess, worldPos, state, buffer);
+            return;
         }
 
-        public void setPos(BlockPos pos) {
-            targetPos = pos;
-        }
+        renderer.renderBlockScaled(state, localPos, worldPos, BLOCK_SCALE, BLOCK_OFFSET,
+                FULL_BLOCK_VISIBILITY, buffer);
+    }
 
-        @Override
-        public TileEntity getTileEntity(BlockPos pos) {
-            return pos.equals(BlockPos.ORIGIN) ? delegate.getTileEntity(targetPos) : null;
-        }
-
-        @Override
-        public int getCombinedLight(BlockPos pos, int lightValue) {
-            return 15;
-        }
-
-        @Override
-        public IBlockState getBlockState(BlockPos pos) {
-            return pos.equals(BlockPos.ORIGIN) ? delegate.getBlockState(targetPos) : Blocks.AIR.getDefaultState();
-        }
-
-        @Override
-        public boolean isAirBlock(BlockPos pos) {
-            return !pos.equals(BlockPos.ORIGIN) || delegate.isAirBlock(targetPos);
-        }
-
-        @Override
-        public Biome getBiome(BlockPos pos) {
-            return delegate.getBiome(targetPos);
-        }
-
-        @Override
-        public int getStrongPower(BlockPos pos, EnumFacing direction) {
-            return 0;
-        }
-
-        @Override
-        public WorldType getWorldType() {
-            return delegate.getWorldType();
-        }
-
-        @Override
-        public boolean isSideSolid(BlockPos pos, EnumFacing side, boolean _default) {
-            return pos.equals(BlockPos.ORIGIN) && delegate.isSideSolid(targetPos, side, _default);
+    private static void finishDrawingQuietly(BufferBuilder buffer) {
+        try {
+            buffer.finishDrawing();
+        } catch (IllegalStateException ignored) {
+            // BufferBuilder.reset() does not clear isDrawing in 1.12; finishDrawing does.
         }
     }
 }

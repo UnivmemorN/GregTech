@@ -15,19 +15,23 @@ import gregtech.api.util.GTUtility;
 import gregtech.api.util.TextFormattingUtil;
 import gregtech.client.renderer.texture.Textures;
 import gregtech.client.renderer.texture.custom.QuantumStorageRenderer;
-import gregtech.common.mui.widget.GTItemSlot;
+import gregtech.common.mui.widget.FakeItemSlot;
 
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.I18n;
+import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.init.SoundEvents;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.SoundCategory;
 import net.minecraft.util.math.AxisAlignedBB;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextComponentTranslation;
 import net.minecraft.world.World;
 import net.minecraftforge.common.capabilities.Capability;
@@ -37,6 +41,7 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import net.minecraftforge.items.CapabilityItemHandler;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
+import net.minecraftforge.items.ItemHandlerHelper;
 import net.minecraftforge.items.wrapper.PlayerMainInvWrapper;
 
 import codechicken.lib.raytracer.CuboidRayTraceResult;
@@ -49,8 +54,6 @@ import com.cleanroommc.modularui.network.NetworkUtils;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.SyncHandler;
-import com.cleanroommc.modularui.widgets.slot.ModularSlot;
-import lombok.Getter;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
@@ -62,7 +65,6 @@ import java.util.List;
 
 import static gregtech.api.capability.GregtechDataCodes.UPDATE_ITEM;
 import static gregtech.api.capability.GregtechDataCodes.UPDATE_ITEM_COUNT;
-import static net.minecraftforge.items.ItemHandlerHelper.giveItemToPlayer;
 
 public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IItemHandler>
         implements ITieredMetaTileEntity, IFastRenderMetaTileEntity {
@@ -70,21 +72,17 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
     private static final String NBT_ITEMSTACK = "ItemStack";
     private static final String NBT_PARTIALSTACK = "PartialStack";
     private static final String NBT_ITEMCOUNT = "ItemAmount";
-    @Getter
     protected final long maxStoredItems;
     private final int tier;
     /** The ItemStack that the Quantum Chest is storing */
     protected ItemStack virtualItemStack = ItemStack.EMPTY;
     protected long itemsStoredInside = 0L;
-    @Getter
     protected IItemHandler outputItemInventory;
     protected ItemStack previousStack;
     protected ItemStack lockedStack = ItemStack.EMPTY;
-    @Getter
     protected long previousStackSize;
     protected boolean voiding;
     private ItemHandlerList combinedInventory;
-    @Getter
     private int coolDown = 0;
 
     public MetaTileEntityQuantumChest(ResourceLocation metaTileEntityId, int tier, long maxStoredItems) {
@@ -96,6 +94,22 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
     protected static boolean areItemStackIdentical(ItemStack first, ItemStack second) {
         return ItemStack.areItemsEqual(first, second) &&
                 ItemStack.areItemStackTagsEqual(first, second);
+    }
+
+    public long getMaxStoredItems() {
+        return maxStoredItems;
+    }
+
+    public IItemHandler getOutputItemInventory() {
+        return outputItemInventory;
+    }
+
+    public long getPreviousStackSize() {
+        return previousStackSize;
+    }
+
+    public int getCoolDown() {
+        return coolDown;
     }
 
     @Override
@@ -379,12 +393,12 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
                         () -> virtualItemStack.getDisplayName(),
                         textWidget -> !virtualItemStack.isEmpty(),
                         () -> TextFormattingUtil.formatNumbers(itemsStoredInside)))
-                .child(new GTItemSlot()
+                .child(new FakeItemSlot(true)
                         .showTooltip(true)
                         .showAmount(false)
                         .background(IDrawable.NONE)
-                        .slot(new ModularSlot(itemInventory, 0)
-                                .accessibility(false, false))
+                        .slot(itemInventory, 0)
+                        // TODO: lock from ghost item .receiveItemFromClient(this::setLocked)
                         .pos(148, 41));
     }
 
@@ -446,7 +460,7 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
             return null;
         } else if (capability == CapabilityItemHandler.ITEM_HANDLER_CAPABILITY) {
 
-            // for TOP/Waila
+            // for TOP
             if (side == null) return CapabilityItemHandler.ITEM_HANDLER_CAPABILITY.cast(combinedInventory);
 
             // try fix being able to insert through output hole when input on output is disabled
@@ -476,9 +490,11 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
     @Override
     protected void setLocked(boolean locked) {
         super.setLocked(locked);
-        if (locked && !this.virtualItemStack.isEmpty() && this.lockedStack.isEmpty())
+        if (locked && !this.virtualItemStack.isEmpty() && this.lockedStack.isEmpty()) {
             this.lockedStack = this.virtualItemStack.copy();
-        else if (!locked) this.lockedStack = ItemStack.EMPTY;
+        } else if (!locked) {
+            this.lockedStack = ItemStack.EMPTY;
+        }
     }
 
     protected void setLocked(ItemStack stack) {
@@ -531,7 +547,7 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
     @Override
     public boolean onRightClick(EntityPlayer playerIn, EnumHand hand, EnumFacing facing,
                                 CuboidRayTraceResult hitResult) {
-        if (facing == this.getFrontFacing()) {
+        if (facing == this.getFrontFacing() && getCoverAtSide(facing) == null) {
             if (playerIn.isSneaking() && openGUIOnRightClick()) {
                 if (getWorld() != null && !getWorld().isRemote) {
                     MetaTileEntityUIFactory.INSTANCE.openUI(getHolder(), (EntityPlayerMP) playerIn);
@@ -540,31 +556,28 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
             }
 
             IItemHandler qChestInv = this.getCombinedInventory();
-            //如果没有连续点击：放入手持物品
-            //如果连续点击：放入所有与抽屉内容物相同的物品
+            // 如果没有连续点击：放入手持物品
+            // 如果连续点击：放入所有与抽屉内容物相同的物品
             if (getCoolDown() > 0) {
-                refreshCoolDown();
-
                 ItemStack candidate = qChestInv.extractItem(0, 1, true);
-                if (candidate.isEmpty()) return true;
-
-                //全部转移就是转移玩家背包
-                var playerInv = new PlayerMainInvWrapper(playerIn.inventory);
-                GTTransferUtils.moveInventoryItems(playerInv, qChestInv);
-
-                markDirty();
+                if (!candidate.isEmpty()) {
+                    refreshCoolDown();
+                    // 全部转移就是转移玩家背包
+                    var playerInv = new PlayerMainInvWrapper(playerIn.inventory);
+                    GTTransferUtils.moveInventoryItems(playerInv, qChestInv);
+                    markDirty();
+                }
             } else {
-                refreshCoolDown();
-
                 ItemStack sourceStack = playerIn.getHeldItem(hand);
-
-                ItemStack candidate = qChestInv.insertItem(1, sourceStack, true);
-                if (sourceStack.getCount() == candidate.getCount()) return true;
-
-                ItemStack remining = qChestInv.insertItem(1, sourceStack, false);
-                sourceStack.setCount(remining.getCount());
-
-                markDirty();
+                if (!sourceStack.isEmpty()) {
+                    ItemStack candidate = qChestInv.insertItem(1, sourceStack, true);
+                    if (sourceStack.getCount() != candidate.getCount()) {
+                        refreshCoolDown();
+                        ItemStack remining = qChestInv.insertItem(1, sourceStack, false);
+                        sourceStack.setCount(remining.getCount());
+                        markDirty();
+                    }
+                }
             }
             return true;
         }
@@ -574,19 +587,65 @@ public class MetaTileEntityQuantumChest extends MetaTileEntityQuantumStorage<IIt
 
     @Override
     public void onLeftClick(EntityPlayer player, EnumFacing facing, CuboidRayTraceResult hitResult) {
-
-        if (facing == this.getFrontFacing()) {
+        if (facing == this.getFrontFacing() && getCoverAtSide(facing) == null) {
             ItemStack candidate = getOutputItemInventory().extractItem(0, 1, true);
-            //没有按住shift:取出超级箱的一个物品
-            //按住shift:取出超级箱一组(最大)物品
-            refreshCoolDown();
-            ItemStack stack = getOutputItemInventory().extractItem(0,
-                    player.isSneaking() ? candidate.getMaxStackSize() : 1, false);
-            giveItemToPlayer(player, stack, player.inventory.currentItem);
-            markDirty();
+            // 没有按住shift: 取出超级箱的一个物品
+            // 按住shift: 取出超级箱一组(最大)物品
+            if (!candidate.isEmpty()) {
+                refreshCoolDown();
+                ItemStack stack = getOutputItemInventory().extractItem(0,
+                        player.isSneaking() ? candidate.getMaxStackSize() : 1, false);
+                giveItemToPlayer(player, stack, player.inventory.currentItem,
+                        getPos().offset(getFrontFacing()));
+                markDirty();
+            }
         }
 
         super.onLeftClick(player, facing, hitResult);
+    }
+
+    /**
+     * Gives an ItemStack to the player, preferring the given slot, and drops any remainder
+     * at the specified position with a pickup sound.
+     */
+    private static void giveItemToPlayer(EntityPlayer player, @NotNull ItemStack stack, int preferredSlot,
+                                         BlockPos dropPos) {
+        if (stack.isEmpty()) return;
+        stack.setAnimationsToGo(5);
+
+        var inventory = new PlayerMainInvWrapper(player.inventory);
+        var world = player.world;
+
+        var remainder = stack;
+
+        // Insert into preferred slot first
+        if (preferredSlot >= 0 && preferredSlot < inventory.getSlots()) {
+            remainder = inventory.insertItem(preferredSlot, stack, false);
+        }
+
+        // Then distribute across the inventory
+        if (!remainder.isEmpty()) {
+            remainder = ItemHandlerHelper.insertItemStacked(inventory, remainder, false);
+        }
+
+        double x = dropPos.getX() + 0.5, y = dropPos.getY() + 0.5, z = dropPos.getZ() + 0.5;
+
+        // Play pickup sound if something was picked up
+        if (remainder.isEmpty() || remainder.getCount() != stack.getCount()) {
+            world.playSound(null, x, y, z,
+                    SoundEvents.ENTITY_ITEM_PICKUP, SoundCategory.PLAYERS, 0.2F,
+                    ((world.rand.nextFloat() - world.rand.nextFloat()) * 0.7F + 1.0F) * 2.0F);
+        }
+
+        // Drop remaining items at the chest's front face
+        if (!remainder.isEmpty()) {
+            var entityItem = new EntityItem(world, x, y, z, remainder);
+            entityItem.setPickupDelay(40);
+            entityItem.motionX = 0;
+            entityItem.motionY = 0;
+            entityItem.motionZ = 0;
+            world.spawnEntity(entityItem);
+        }
     }
 
     @Override

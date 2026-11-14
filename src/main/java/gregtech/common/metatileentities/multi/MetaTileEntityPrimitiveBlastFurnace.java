@@ -9,9 +9,9 @@ import gregtech.api.metatileentity.multiblock.ui.MultiblockUIFactory;
 import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuiTheme;
 import gregtech.api.mui.widget.RecipeProgressWidget;
-import gregtech.api.pattern.BlockPattern;
-import gregtech.api.pattern.FactoryBlockPattern;
-import gregtech.api.pattern.TraceabilityPredicate;
+import gregtech.api.pattern.casing.DeclarativePatternBuilder;
+import gregtech.api.pattern.element.Elements;
+import gregtech.api.pattern.element.StructureDefinition;
 import gregtech.api.recipes.RecipeMaps;
 import gregtech.api.util.GTUtility;
 import gregtech.client.particle.VanillaParticleEffects;
@@ -24,6 +24,7 @@ import gregtech.client.utils.BloomEffectUtil;
 import gregtech.common.ConfigHolder;
 import gregtech.common.blocks.BlockMetalCasing;
 import gregtech.common.blocks.MetaBlocks;
+import gregtech.common.metatileentities.MetaTileEntities;
 
 import net.minecraft.block.SoundType;
 import net.minecraft.block.state.IBlockState;
@@ -47,8 +48,8 @@ import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.drawable.UITexture;
 import com.cleanroommc.modularui.value.sync.DoubleSyncValue;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.ProgressWidget;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.cleanroommc.modularui.widgets.slot.SlotGroup;
 import org.apache.commons.lang3.ArrayUtils;
@@ -56,8 +57,20 @@ import org.jetbrains.annotations.NotNull;
 
 public class MetaTileEntityPrimitiveBlastFurnace extends RecipeMapPrimitiveMultiblockController {
 
-    private static final TraceabilityPredicate SNOW_PREDICATE = new TraceabilityPredicate(
-            bws -> GTUtility.isBlockSnow(bws.getBlockState()));
+    private static final StructureDefinition<?> STRUCTURE_DEFINITION = StructureDefinition.getOrBuild(
+            "gregtech:primitive_blast_furnace.bronze", () -> DeclarativePatternBuilder.start()
+                    .aisle("XXX", "XXX", "XXX", "XXX")
+                    .aisle("XXX", "X&X", "X#X", "X#X")
+                    .aisle("XXX", "XYX", "XXX", "XXX")
+                    .self('Y', MetaTileEntityPrimitiveBlastFurnace.class)
+                    .air('#')
+                    .where('&', Elements.chain(Elements.air(), Elements.blockPredicate(GTUtility::isBlockSnow)))
+                    .casing('X',
+                            getCasingState())
+                    .custom(
+                            Elements.metaTileEntities(0, 3,
+                                    MetaTileEntities.PRIMITIVE_BLAST_FURNACE_HATCH), 3)
+                    .buildStructureDefinition());
     UITexture[] importOverlays = {
             GTGuiTextures.PRIMITIVE_INGOT_OVERLAY,
             GTGuiTextures.PRIMITIVE_DUST_OVERLAY,
@@ -73,6 +86,10 @@ public class MetaTileEntityPrimitiveBlastFurnace extends RecipeMapPrimitiveMulti
         super(metaTileEntityId, RecipeMaps.PRIMITIVE_BLAST_FURNACE_RECIPES);
     }
 
+    public static IBlockState getCasingState() {
+        return MetaBlocks.METAL_CASING.getState(BlockMetalCasing.MetalCasingType.PRIMITIVE_BRICKS);
+    }
+
     @Override
     public MetaTileEntity createMetaTileEntity(IGregTechTileEntity tileEntity) {
         return new MetaTileEntityPrimitiveBlastFurnace(metaTileEntityId);
@@ -80,17 +97,8 @@ public class MetaTileEntityPrimitiveBlastFurnace extends RecipeMapPrimitiveMulti
 
     @NotNull
     @Override
-    protected BlockPattern createStructurePattern() {
-        return FactoryBlockPattern.start()
-                .aisle("XXX", "XXX", "XXX", "XXX")
-                .aisle("XXX", "X&X", "X#X", "X#X")
-                .aisle("XXX", "XYX", "XXX", "XXX")
-                .where('X', states(MetaBlocks.METAL_CASING.getState(BlockMetalCasing.MetalCasingType.PRIMITIVE_BRICKS)))
-                .where('#', air())
-                .where('&', air().or(SNOW_PREDICATE)) // this won't stay in the structure, and will be broken while
-                // running
-                .where('Y', selfPredicate())
-                .build();
+    protected StructureDefinition<?> createStructureDefinition() {
+        return STRUCTURE_DEFINITION;
     }
 
     @SideOnly(Side.CLIENT)
@@ -167,7 +175,7 @@ public class MetaTileEntityPrimitiveBlastFurnace extends RecipeMapPrimitiveMulti
             EnumFacing back = getFrontFacing().getOpposite();
             Matrix4 offset = translation.copy().translate(back.getXOffset(), -0.3, back.getZOffset());
             CubeRendererState op = Textures.RENDER_STATE.get();
-            Textures.RENDER_STATE.set(new CubeRendererState(op.layer, CubeRendererState.PASS_MASK, op.world));
+            Textures.RENDER_STATE.set(new CubeRendererState(op.layer, CubeRendererState.PASS_MASK, op.world, op.pos));
             Textures.renderFace(renderState, offset,
                     ArrayUtils.addAll(pipeline, new LightMapOperation(240, 240), new ColourOperation(0xFFFFFFFF)),
                     EnumFacing.UP, Cuboid6.full, TextureUtils.getBlockTexture("lava_still"),
@@ -197,6 +205,7 @@ public class MetaTileEntityPrimitiveBlastFurnace extends RecipeMapPrimitiveMulti
                 VanillaParticleEffects.PBF_SMOKE.runEffect(this);
             } else {
                 damageEntitiesAndBreakSnow();
+                pollution(this.getPollutionAmount(), this.getPollutionTicks());
             }
         }
     }
@@ -227,10 +236,14 @@ public class MetaTileEntityPrimitiveBlastFurnace extends RecipeMapPrimitiveMulti
         }
     }
 
-
     @NotNull
     @Override
     public SoundType getSoundType() {
         return SoundType.STONE;
+    }
+
+    @Override
+    public double getPollutionAmount() {
+        return 0.005;
     }
 }

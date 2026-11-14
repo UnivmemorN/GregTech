@@ -8,15 +8,18 @@ import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.metatileentity.multiblock.IMultiblockPart;
 import gregtech.api.metatileentity.multiblock.MultiblockAbility;
 import gregtech.api.metatileentity.multiblock.RecipeMapMultiblockController;
-import gregtech.api.pattern.BlockPattern;
-import gregtech.api.pattern.FactoryBlockPattern;
-import gregtech.api.pattern.TraceabilityPredicate;
+import gregtech.api.pattern.casing.DeclarativePatternBuilder;
+import gregtech.api.pattern.casing.GTStructureChannels;
+import gregtech.api.pattern.element.Elements;
+import gregtech.api.pattern.element.IStructureElement;
+import gregtech.api.pattern.element.StructureDefinition;
 import gregtech.api.recipes.Recipe;
 import gregtech.api.recipes.RecipeMaps;
 import gregtech.api.recipes.ingredients.GTRecipeInput;
 import gregtech.api.recipes.properties.impl.ResearchProperty;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.RelativeDirection;
+import gregtech.api.util.tooltips.TooltipBuilder;
 import gregtech.client.particle.GTLaserBeamParticle;
 import gregtech.client.particle.GTParticleManager;
 import gregtech.client.renderer.ICubeRenderer;
@@ -39,6 +42,7 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.SoundEvent;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.IFluidTank;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
@@ -58,6 +62,37 @@ import static gregtech.api.util.RelativeDirection.*;
 
 public class MetaTileEntityAssemblyLine extends RecipeMapMultiblockController {
 
+    private static final StructureDefinition<?> STRUCTURE_DEFINITION = StructureDefinition.getOrBuild(
+            "gregtech:assembly_line", () -> DeclarativePatternBuilder.start(BACK, UP, RIGHT)
+                    .piece("start")
+                    .aisle("FIF", "RTR", "SAG", " Y ")
+                    .repeatablePiece("body", 3, 15)
+                    .aisle("FIF", "RTR", "DAG", " Y ")
+                    .withAisleChannel(GTStructureChannels.STRUCTURE_LENGTH.getName())
+                    .piece("end")
+                    .aisle("FOF", "RTR", "DAG", " Y ")
+                    .self('S', MetaTileEntityAssemblyLine.class)
+                    .where('O', Elements.withTooltips(Elements.abilities(MultiblockAbility.EXPORT_ITEMS),
+                            "gregtech.multiblock.pattern.location_end"))
+                    .metaTileEntities('I', MetaTileEntities.ITEM_IMPORT_BUS[GTValues.ULV])
+                    .block('G', getGrateState())
+                    .block('A', MetaBlocks.MULTIBLOCK_CASING
+                            .getState(BlockMultiblockCasing.MultiblockCasingType.ASSEMBLY_CONTROL))
+                    .block('R', MetaBlocks.TRANSPARENT_CASING.getState(BlockGlassCasing.CasingType.LAMINATED_GLASS))
+                    .block('T', MetaBlocks.MULTIBLOCK_CASING
+                            .getState(BlockMultiblockCasing.MultiblockCasingType.ASSEMBLY_LINE_CASING))
+                    .where('D', dataHatchElement())
+                    .abilityGroup(MultiblockAbility.DATA_ACCESS_HATCH, 0, 1,
+                            MultiblockAbility.DATA_ACCESS_HATCH,
+                            MultiblockAbility.OPTICAL_DATA_RECEPTION)
+                    .any(' ')
+                    .casing('F', getCasingState())
+                    .maintenance()
+                    .custom(fluidInputElement(), 4)
+                    .casing('Y', getCasingState())
+                    .energyInput(1, 3)
+                    .buildStructureDefinition());
+
     private static final ResourceLocation LASER_LOCATION = GTUtility.gregtechId("textures/fx/laser/laser.png");
     private static final ResourceLocation LASER_HEAD_LOCATION = GTUtility
             .gregtechId("textures/fx/laser/laser_start.png");
@@ -71,45 +106,17 @@ public class MetaTileEntityAssemblyLine extends RecipeMapMultiblockController {
         super(metaTileEntityId, RecipeMaps.ASSEMBLY_LINE_RECIPES);
     }
 
-    @Override
-    public MetaTileEntity createMetaTileEntity(IGregTechTileEntity tileEntity) {
-        return new MetaTileEntityAssemblyLine(metaTileEntityId);
-    }
-
     @NotNull
-    @Override
-    protected BlockPattern createStructurePattern() {
-        FactoryBlockPattern pattern = FactoryBlockPattern.start(FRONT, UP, RIGHT)
-                .aisle("FIF", "RTR", "SAG", " Y ")
-                .aisle("FIF", "RTR", "DAG", " Y ").setRepeatable(3, 15)
-                .aisle("FOF", "RTR", "DAG", " Y ")
-                .where('S', selfPredicate())
-                .where('F', states(getCasingState())
-                        .or(autoAbilities(false, true, false, false, false, false, false))
-                        .or(fluidInputPredicate()))
-                .where('O', abilities(MultiblockAbility.EXPORT_ITEMS)
-                        .addTooltips("gregtech.multiblock.pattern.location_end"))
-                .where('Y', states(getCasingState())
-                        .or(abilities(MultiblockAbility.INPUT_ENERGY)
-                                .setMinGlobalLimited(1)
-                                .setMaxGlobalLimited(3)))
-                .where('I', metaTileEntities(MetaTileEntities.ITEM_IMPORT_BUS[GTValues.ULV]))
-                .where('G', states(getGrateState()))
-                .where('A',
-                        states(MetaBlocks.MULTIBLOCK_CASING
-                                .getState(BlockMultiblockCasing.MultiblockCasingType.ASSEMBLY_CONTROL)))
-                .where('R', states(MetaBlocks.TRANSPARENT_CASING.getState(BlockGlassCasing.CasingType.LAMINATED_GLASS)))
-                .where('T',
-                        states(MetaBlocks.MULTIBLOCK_CASING
-                                .getState(BlockMultiblockCasing.MultiblockCasingType.ASSEMBLY_LINE_CASING)))
-                .where('D', dataHatchPredicate())
-                .where(' ', any());
-        return pattern.build();
-    }
-
-    @NotNull
-    protected static IBlockState getCasingState() {
+    public static IBlockState getCasingState() {
         return MetaBlocks.METAL_CASING.getState(BlockMetalCasing.MetalCasingType.STEEL_SOLID);
+    }
+
+    @Override
+    public IBlockState getCasingBlock(@Nullable IMultiblockPart sourcePart) {
+        if (sourcePart instanceof IDataAccessHatch) {
+            return getGrateState();
+        }
+        return getCasingState();
     }
 
     @NotNull
@@ -118,26 +125,62 @@ public class MetaTileEntityAssemblyLine extends RecipeMapMultiblockController {
     }
 
     @NotNull
-    protected static TraceabilityPredicate fluidInputPredicate() {
+    protected static IStructureElement<?> fluidInputElement() {
         // block multi-fluid hatches if ordered fluids is enabled
         if (ConfigHolder.machines.orderedFluidAssembly) {
-            return metaTileEntities(MultiblockAbility.REGISTRY.get(MultiblockAbility.IMPORT_FLUIDS).stream()
-                    .filter(mte -> !(mte instanceof MetaTileEntityMultiFluidHatch))
-                    .toArray(MetaTileEntity[]::new))
-                            .setMaxGlobalLimited(4);
+            return Elements.metaTileEntities(0, 4,
+                    MultiblockAbility.REGISTRY.get(MultiblockAbility.IMPORT_FLUIDS).stream()
+                            .filter(mte -> !(mte instanceof MetaTileEntityMultiFluidHatch))
+                            .toArray(MetaTileEntity[]::new));
         }
-        return abilities(MultiblockAbility.IMPORT_FLUIDS);
+        return Elements.abilities(MultiblockAbility.IMPORT_FLUIDS);
     }
 
     @NotNull
-    protected static TraceabilityPredicate dataHatchPredicate() {
+    protected static IStructureElement<?> dataHatchElement() {
         // if research is enabled, require the data hatch, otherwise use a grate instead
         if (ConfigHolder.machines.enableResearch) {
-            return abilities(MultiblockAbility.DATA_ACCESS_HATCH, MultiblockAbility.OPTICAL_DATA_RECEPTION)
-                    .setExactLimit(1)
-                    .or(states(getGrateState()));
+            return Elements.chain(
+                    Elements.abilities(1, 1,
+                            MultiblockAbility.DATA_ACCESS_HATCH, MultiblockAbility.OPTICAL_DATA_RECEPTION),
+                    Elements.block(getGrateState()));
         }
-        return states(getGrateState());
+        return Elements.block(getGrateState());
+    }
+
+    private static boolean isRecipeAvailable(@NotNull Iterable<? extends IDataAccessHatch> hatches,
+                                             @NotNull Recipe recipe) {
+        for (IDataAccessHatch hatch : hatches) {
+            // creative hatches do not need to check, they always have the recipe
+            if (hatch.isCreative()) return true;
+
+            // hatches need to have the recipe available
+            if (hatch.isRecipeAvailable(recipe)) return true;
+        }
+        return false;
+    }
+
+    @Override
+    public MetaTileEntity createMetaTileEntity(IGregTechTileEntity tileEntity) {
+        return new MetaTileEntityAssemblyLine(metaTileEntityId);
+    }
+
+    @Override
+    @NotNull
+    public EnumFacing getPreviewFrontFacing() {
+        return EnumFacing.SOUTH;
+    }
+
+    @NotNull
+    @Override
+    // Migrated to createStructureDefinition(): structure is split into three
+    // named pieces ("start" with the controller, "body" with the repeatable
+    // slice, "end" with the export bus) so each section can be checked
+    // independently by the sharded checker. Cached via
+    // StructureDefinition.getOrBuild() since the structure has no
+    // runtime-editable dimensions.
+    protected StructureDefinition<?> createStructureDefinition() {
+        return STRUCTURE_DEFINITION;
     }
 
     @Override
@@ -330,13 +373,17 @@ public class MetaTileEntityAssemblyLine extends RecipeMapMultiblockController {
     @Override
     public boolean checkRecipe(@NotNull Recipe recipe, boolean consumeIfSuccess) {
         if (consumeIfSuccess) return true; // don't check twice
-        // check ordered items
+
+        // 有序装配检查
         if (ConfigHolder.machines.orderedAssembly) {
             List<GTRecipeInput> inputs = recipe.getInputs();
             List<IItemHandlerModifiable> itemInputInventory = getAbilities(MultiblockAbility.IMPORT_ITEMS);
 
-            // slot count is not enough, so don't try to match it
-            if (itemInputInventory.size() < inputs.size()) return false;
+            // 物品槽位数量不足
+            if (itemInputInventory.size() < inputs.size()) {
+                recipeMapWorkable.setWhyFailed("有序装配失败：物品输入槽位数量不足");
+                return false;
+            }
 
             int itemIndex = 0;
             for (GTRecipeInput input : inputs) {
@@ -344,50 +391,56 @@ public class MetaTileEntityAssemblyLine extends RecipeMapMultiblockController {
                         itemInputInventory.get(itemIndex).getStackInSlot(0).isEmpty()) {
                     itemIndex++;
                 }
-                if (itemIndex >= itemInputInventory.size()) return false;
-                if (!input.acceptsStack(itemInputInventory.get(itemIndex).getStackInSlot(0))) return false;
+                if (itemIndex >= itemInputInventory.size()) {
+                    recipeMapWorkable.setWhyFailed("有序装配失败：物品输入缺失");
+                    return false;
+                }
+                if (!input.acceptsStack(itemInputInventory.get(itemIndex).getStackInSlot(0))) {
+                    recipeMapWorkable.setWhyFailed("有序装配失败：物品类型不匹配");
+                    return false;
+                }
                 itemIndex++;
             }
 
-            // check ordered fluids
+            // 有序流体装配检查
             if (ConfigHolder.machines.orderedFluidAssembly) {
-                inputs = recipe.getFluidInputs();
+                List<GTRecipeInput> fluidInputs = recipe.getFluidInputs();
                 List<IFluidTank> fluidInputInventory = getAbilities(MultiblockAbility.IMPORT_FLUIDS);
 
-                // slot count is not enough, so don't try to match it
-                if (fluidInputInventory.size() < inputs.size()) return false;
+                if (fluidInputInventory.size() < fluidInputs.size()) {
+                    recipeMapWorkable.setWhyFailed("有序流体装配失败：流体输入槽位数量不足");
+                    return false;
+                }
 
-                for (int i = 0; i < inputs.size(); i++) {
-                    if (!inputs.get(i).acceptsFluid(fluidInputInventory.get(i).getFluid())) {
+                for (int i = 0; i < fluidInputs.size(); i++) {
+                    FluidStack tankFluid = fluidInputInventory.get(i).getFluid();
+                    if (tankFluid == null || !fluidInputs.get(i).acceptsFluid(tankFluid)) {
+                        recipeMapWorkable.setWhyFailed("有序流体装配失败：流体类型不匹配");
                         return false;
                     }
                 }
             }
         }
 
-        if (!ConfigHolder.machines.enableResearch || !recipe.hasProperty(ResearchProperty.getInstance())) {
-            return super.checkRecipe(recipe, consumeIfSuccess);
+        // 研究配方检查
+        if (ConfigHolder.machines.enableResearch && recipe.hasProperty(ResearchProperty.getInstance())) {
+            boolean available = isRecipeAvailable(getAbilities(MultiblockAbility.DATA_ACCESS_HATCH), recipe) ||
+                    isRecipeAvailable(getAbilities(MultiblockAbility.OPTICAL_DATA_RECEPTION), recipe);
+
+            if (!available) {
+                recipeMapWorkable.setWhyFailed("研究配方未解锁或缺少数据接口");
+                return false;
+            }
         }
 
-        return isRecipeAvailable(getAbilities(MultiblockAbility.DATA_ACCESS_HATCH), recipe) ||
-                isRecipeAvailable(getAbilities(MultiblockAbility.OPTICAL_DATA_RECEPTION), recipe);
-    }
-
-    private static boolean isRecipeAvailable(@NotNull Iterable<? extends IDataAccessHatch> hatches,
-                                             @NotNull Recipe recipe) {
-        for (IDataAccessHatch hatch : hatches) {
-            // creative hatches do not need to check, they always have the recipe
-            if (hatch.isCreative()) return true;
-
-            // hatches need to have the recipe available
-            if (hatch.isRecipeAvailable(recipe)) return true;
-        }
-        return false;
+        return true;
     }
 
     @Override
     public void addInformation(ItemStack stack, @Nullable World world, @NotNull List<String> tooltip,
                                boolean advanced) {
+        super.addInformation(stack, world, tooltip, advanced);
+        TooltipBuilder.create().addSpecialLogic().build(this, tooltip);
         if (ConfigHolder.machines.orderedAssembly && ConfigHolder.machines.orderedFluidAssembly) {
             tooltip.add(I18n.format("gregtech.machine.assembly_line.tooltip_ordered_both"));
         } else if (ConfigHolder.machines.orderedAssembly) {

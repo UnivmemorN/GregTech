@@ -8,18 +8,14 @@
     "maxShiftBy": 10
   },
   "mixins": [
-    "BiomeDecoratorMixin",
     "BlockConcretePowderMixin",
     "BlockRenderLayerMixin",
     "ContainerMixin",
     "DamageSourceMixin",
     "EnchantmentCanApplyMixin",
     "MinecraftMixin",
-    "MixinBlockChest",
-    "MixinEntity",
-    "MixinEntityAnimal",
-    "MixinEntityBat",
-    "WorldEntitySpawnerMixin"
+    "RecipeRepairItemMixin",
+    "WorldBlockStateMixin"
   ],
   "client": [
     "BlockFluidBaseMixin",
@@ -27,13 +23,11 @@
     "EntityRendererMixin",
     "LayerArmorBaseMixin",
     "LayerCustomHeadMixin",
-    "QuitMixin",
-    "RecipeRepairItemMixin",
+    "PlayerControllerMPMixin",
     "RegionRenderCacheBuilderMixin",
     "RenderChunkMixin",
     "RenderGlobalMixin",
-    "RenderItemMixin",
-    "ItemMixin"
+    "RenderItemMixin"
   ],
   "server": []
 }

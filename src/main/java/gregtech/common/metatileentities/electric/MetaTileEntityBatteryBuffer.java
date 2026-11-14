@@ -6,7 +6,10 @@ import gregtech.api.capability.GregtechTileCapabilities;
 import gregtech.api.capability.IControllable;
 import gregtech.api.capability.IElectricItem;
 import gregtech.api.capability.impl.EnergyContainerBatteryBuffer;
-import gregtech.api.metatileentity.*;
+import gregtech.api.metatileentity.IDataInfoProvider;
+import gregtech.api.metatileentity.MTETrait;
+import gregtech.api.metatileentity.MetaTileEntity;
+import gregtech.api.metatileentity.TieredMetaTileEntity;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuis;
@@ -38,11 +41,12 @@ import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.SyncHandlers;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.layout.Grid;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -92,14 +96,14 @@ public class MetaTileEntityBatteryBuffer extends TieredMetaTileEntity implements
     }
 
     @Override
-    protected boolean shouldUpdate(MTETrait trait) {
-        return !(trait instanceof EnergyContainerBatteryBuffer) || allowEnergyOutput;
-    }
-
-    @Override
     public void setWorkingEnabled(boolean isActivationAllowed) {
         this.allowEnergyOutput = isActivationAllowed;
         notifyBlockUpdate();
+    }
+
+    @Override
+    protected boolean shouldUpdate(MTETrait trait) {
+        return !(trait instanceof EnergyContainerBatteryBuffer) || allowEnergyOutput;
     }
 
     @Override
@@ -148,7 +152,7 @@ public class MetaTileEntityBatteryBuffer extends TieredMetaTileEntity implements
     }
 
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
         int rowSize = (int) Math.sqrt(inventorySize);
         int colSize = rowSize;
         if (inventorySize == 8) {
@@ -163,8 +167,8 @@ public class MetaTileEntityBatteryBuffer extends TieredMetaTileEntity implements
         for (int y = 0; y < colSize; y++) {
             widgets.add(new ArrayList<>());
             for (int x = 0; x < rowSize; x++) {
-                widgets.get(y).add(new ItemSlot().slot(SyncHandlers.itemSlot(this.importItems, index++)
-                        .slotGroup("item_inv"))
+                widgets.get(y).add(new ItemSlot().slot(new ModularSlot(this.importItems, index++)
+                                .slotGroup("item_inv"))
                         .background(GTGuiTextures.SLOT, GTGuiTextures.BATTERY_OVERLAY));
             }
         }
@@ -172,7 +176,7 @@ public class MetaTileEntityBatteryBuffer extends TieredMetaTileEntity implements
         // TODO: Change the position of the name when it's standardized.
         return GTGuis.createPanel(this, 176, 18 + 18 * colSize + 94)
                 .child(IKey.lang(getMetaFullName()).asWidget().pos(5, 5))
-                .child(SlotGroupWidget.playerInventory().left(7).bottom(7))
+                .child(SlotGroupWidget.playerInventory(false).left(7).bottom(7))
                 .child(new Grid()
                         .top(18).height(colSize * 18).width(rowSize * 18)
                         .minElementMargin(0, 0)

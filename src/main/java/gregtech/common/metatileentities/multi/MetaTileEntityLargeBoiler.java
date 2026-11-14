@@ -1,6 +1,7 @@
 package gregtech.common.metatileentities.multi;
 
 import gregtech.api.capability.IControllable;
+import gregtech.api.capability.ISteamMachine;
 import gregtech.api.capability.impl.BoilerRecipeLogic;
 import gregtech.api.capability.impl.CommonFluidFilters;
 import gregtech.api.capability.impl.FluidTankList;
@@ -8,7 +9,10 @@ import gregtech.api.capability.impl.ItemHandlerList;
 import gregtech.api.metatileentity.MTETrait;
 import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
-import gregtech.api.metatileentity.multiblock.*;
+import gregtech.api.metatileentity.multiblock.IMultiblockPart;
+import gregtech.api.metatileentity.multiblock.MultiblockAbility;
+import gregtech.api.metatileentity.multiblock.MultiblockWithDisplayBase;
+import gregtech.api.metatileentity.multiblock.ProgressBarMultiblock;
 import gregtech.api.metatileentity.multiblock.ui.KeyManager;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIBuilder;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIFactory;
@@ -17,15 +21,20 @@ import gregtech.api.metatileentity.multiblock.ui.UISyncer;
 import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuiTheme;
 import gregtech.api.mui.GTGuis;
-import gregtech.api.pattern.BlockPattern;
-import gregtech.api.pattern.FactoryBlockPattern;
-import gregtech.api.pattern.PatternMatchContext;
+import gregtech.api.pattern.FormedStructureView;
+import gregtech.api.pattern.casing.DeclarativePatternBuilder;
+import gregtech.api.pattern.element.Elements;
+import gregtech.api.pattern.element.StructureDefinition;
 import gregtech.api.util.KeyUtil;
 import gregtech.api.util.TextFormattingUtil;
+import gregtech.api.util.tooltips.AbstractTooltipComponent;
+import gregtech.api.util.tooltips.TooltipBuilder;
+import gregtech.client.particle.VanillaParticleEffects;
 import gregtech.client.renderer.ICubeRenderer;
 import gregtech.client.utils.TooltipHelper;
 import gregtech.core.sound.GTSoundEvents;
 
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -61,25 +70,46 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.UnaryOperator;
 
 public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase implements ProgressBarMultiblock,
-                                                                                    IControllable {
+                                                                                    IControllable, ISteamMachine {
 
-    public final BoilerType boilerType;
+    private static final String STRUCTURE_POOL_KEY = "gregtech:large_boiler";
+
+    public final IBoilerType boilerType;
     protected BoilerRecipeLogic recipeLogic;
     private FluidTankList fluidImportInventory;
     private ItemHandlerList itemImportInventory;
     private FluidTankList steamOutputTank;
-
     private int throttlePercentage = 100;
 
-    public MetaTileEntityLargeBoiler(ResourceLocation metaTileEntityId, BoilerType boilerType) {
+    public MetaTileEntityLargeBoiler(ResourceLocation metaTileEntityId, IBoilerType boilerType) {
         super(metaTileEntityId);
         this.boilerType = boilerType;
         this.recipeLogic = new BoilerRecipeLogic(this);
         resetTileAbilities();
+    }
+
+    private static StructureDefinition<?> buildStructureDefinition(IBoilerType boilerType,
+                                                                    ResourceLocation controllerId) {
+        return DeclarativePatternBuilder.start()
+                .aisle("XXX", "CCC", "CCC", "CCC")
+                .aisle("XXX", "CPC", "CPC", "CCC")
+                .aisle("XXX", "CSC", "CCC", "CCC")
+                .where('S', Elements.self(MetaTileEntityLargeBoiler.class, controllerId))
+                .block('P', boilerType.getPipeState())
+                .casing('X', boilerType.getFireboxState())
+                .optionalEnergyInput(2)
+                .optionalItemInput(2)
+                .muffler()
+                .maintenance()
+                .casing('C', boilerType.getCasingState())
+                .itemOutput(1, 4)
+                .buildStructureDefinition();
     }
 
     @Override
@@ -88,8 +118,8 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
     }
 
     @Override
-    protected void formStructure(PatternMatchContext context) {
-        super.formStructure(context);
+    protected void formStructure(@NotNull FormedStructureView formed) {
+        formStructureWithDisplay(formed);
         initializeAbilities();
     }
 
@@ -126,6 +156,24 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
     }
 
     @Override
+    public void update() {
+        super.update();
+
+        if (this.isActive()) {
+            if (getWorld().isRemote) {
+                VanillaParticleEffects.PBF_SMOKE.runEffect(this);
+            } else {
+                pollution(this.getPollutionAmount(), this.getPollutionTicks());
+            }
+        }
+    }
+
+    @Override
+    public double getPollutionAmount() {
+        return boilerType.getPollutionAmount();
+    }
+
+    @Override
     protected void configureDisplayText(MultiblockUIBuilder builder) {
         builder.setWorkingStatus(recipeLogic.isWorkingEnabled(), recipeLogic.isActive())
                 .addCustom(this::addCustomData)
@@ -147,18 +195,14 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
 
     @Override
     public GTGuiTheme getUITheme() {
-        return switch (this.boilerType) {
-            case BRONZE -> GTGuiTheme.BRONZE;
-            case STEEL -> GTGuiTheme.STEEL;
-            default -> super.getUITheme();
-        };
+        return boilerType.getUITheme();
     }
 
     @Override
     protected MultiblockUIFactory createUIFactory() {
         return super.createUIFactory()
                 .createFlexButton((guiData, syncManager) -> {
-                    var throttle = syncManager.panel("throttle_panel", this::makeThrottlePanel, true);
+                    var throttle = syncManager.syncedPanel("throttle_panel", true, this::makeThrottlePanel);
 
                     return new ButtonWidget<>()
                             .size(18)
@@ -210,7 +254,7 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
                     str = str.substring(0, str.length() - 1);
                 }
 
-                this.throttlePercentage = Integer.parseInt(str);
+                setThrottlePercentage(Integer.parseInt(str));
             } catch (NumberFormatException ignored) {
 
             }
@@ -236,7 +280,7 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
                         .margin(4, 0)
                         .coverChildrenHeight()
                         .child(new SliderWidget()
-                                .background(new Rectangle().setColor(Color.BLACK.brighter(2)).asIcon()
+                                .background(new Rectangle().color(Color.BLACK.brighter(2)).asIcon()
                                         .height(8))
                                 .bounds(0.2, 1)
                                 .setAxis(GuiAxis.X)
@@ -267,12 +311,16 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
                                 .background(GTGuiTextures.DISPLAY)));
     }
 
-    private void setThrottlePercentage(int amount) {
-        this.throttlePercentage = Math.max(20, Math.min(amount, 100));
-    }
-
     private int getThrottlePercentage() {
         return this.throttlePercentage;
+    }
+
+    private void setThrottlePercentage(int amount) {
+        int clamped = Math.max(20, Math.min(amount, 100));
+        if (this.throttlePercentage != clamped) {
+            this.throttlePercentage = clamped;
+            notifyStructureConfigChanged();
+        }
     }
 
     @Override
@@ -280,22 +328,11 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
         return super.isActive() && recipeLogic.isActive() && recipeLogic.isWorkingEnabled();
     }
 
+    @NotNull
     @Override
-    protected BlockPattern createStructurePattern() {
-        return FactoryBlockPattern.start()
-                .aisle("XXX", "CCC", "CCC", "CCC")
-                .aisle("XXX", "CPC", "CPC", "CCC")
-                .aisle("XXX", "CSC", "CCC", "CCC")
-                .where('S', selfPredicate())
-                .where('P', states(boilerType.pipeState))
-                .where('X', states(boilerType.fireboxState).setMinGlobalLimited(4)
-                        .or(abilities(MultiblockAbility.IMPORT_FLUIDS).setMinGlobalLimited(1, 1))
-                        // setting this to max 2 makes the import fluids max 2 for some reason
-                        .or(abilities(MultiblockAbility.IMPORT_ITEMS).setMaxGlobalLimited(2, 1))
-                        .or(autoAbilities())) // muffler, maintenance
-                .where('C', states(boilerType.casingState).setMinGlobalLimited(20)
-                        .or(abilities(MultiblockAbility.EXPORT_FLUIDS).setMinGlobalLimited(1)))
-                .build();
+    protected StructureDefinition<?> createStructureDefinition() {
+        return StructureDefinition.getOrBuild(STRUCTURE_POOL_KEY, boilerType.getName(),
+                () -> buildStructureDefinition(boilerType, metaTileEntityId));
     }
 
     @Override
@@ -307,13 +344,7 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
     public void addInformation(ItemStack stack, @Nullable World player, @NotNull List<String> tooltip,
                                boolean advanced) {
         super.addInformation(stack, player, tooltip, advanced);
-        tooltip.add(I18n.format("gregtech.multiblock.large_boiler.rate_tooltip",
-                TextFormattingUtil
-                        .formatNumbers((int) (boilerType.steamPerTick() * 20 * boilerType.runtimeBoost(200) / 20.0))));
-        tooltip.add(
-                I18n.format("gregtech.multiblock.large_boiler.heat_time_tooltip", boilerType.getTicksToBoiling() / 20));
-        tooltip.add(I18n.format("gregtech.universal.tooltip.base_production_fluid", boilerType.steamPerTick()));
-        tooltip.add(TooltipHelper.BLINKING_RED + I18n.format("gregtech.multiblock.large_boiler.explosion_tooltip"));
+        TooltipBuilder.create().add(new BoilerInformation()).build(this, tooltip);
     }
 
     @Override
@@ -327,7 +358,25 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
     @NotNull
     @Override
     protected ICubeRenderer getFrontOverlay() {
-        return boilerType.frontOverlay;
+        return boilerType.getFrontOverlay();
+    }
+
+    @Override
+    public IBlockState getCasingBlock() {
+        return boilerType.getCasingState();
+    }
+
+    @Override
+    public IBlockState getCasingBlock(@Nullable IMultiblockPart sourcePart) {
+        if (sourcePart != null && isFireboxPart(sourcePart)) {
+            return boilerType.getFireboxState();
+        }
+        return boilerType.getCasingState();
+    }
+
+    @Override
+    public boolean hasMaintenanceMechanics() {
+        return false;
     }
 
     private boolean isFireboxPart(IMultiblockPart sourcePart) {
@@ -338,9 +387,9 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
     @Override
     public ICubeRenderer getBaseTexture(IMultiblockPart sourcePart) {
         if (sourcePart != null && isFireboxPart(sourcePart)) {
-            return isActive() ? boilerType.fireboxActiveRenderer : boilerType.fireboxIdleRenderer;
+            return isActive() ? boilerType.getFireboxActiveRenderer() : boilerType.getFireboxIdleRenderer();
         }
-        return boilerType.casingRenderer;
+        return boilerType.getCasingRenderer();
     }
 
     @Override
@@ -384,6 +433,17 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
 
     public int getThrottle() {
         return throttlePercentage;
+    }
+
+    @NotNull
+    @Override
+    @SuppressWarnings("unchecked")
+    protected Object getStructureConfigDependencyValue() {
+        Map<String, Object> values = new LinkedHashMap<>(
+                (Map<String, Object>) super.getStructureConfigDependencyValue());
+        values.put("boilerType", boilerType == null ? null : boilerType.getName());
+        values.put("throttlePercentage", throttlePercentage);
+        return values;
     }
 
     @Override
@@ -480,6 +540,26 @@ public class MetaTileEntityLargeBoiler extends MultiblockWithDisplayBase impleme
 
     @Override
     public void setWorkingEnabled(boolean isWorkingAllowed) {
+        boolean changed = recipeLogic.isWorkingEnabled() != isWorkingAllowed;
         recipeLogic.setWorkingEnabled(isWorkingAllowed);
+        if (changed) {
+            notifyStructureControllerModeChanged();
+        }
+    }
+
+    public class BoilerInformation extends AbstractTooltipComponent {
+
+        @Override
+        public void addInformation(MetaTileEntity metaTileEntity, List<String> tooltip) {
+            tooltip.add(I18n.format("gregtech.multiblock.large_boiler.rate_tooltip",
+                    TextFormattingUtil
+                            .formatNumbers(
+                                    (int) (boilerType.steamPerTick() * 20 * boilerType.runtimeBoost(200) / 20.0))));
+            tooltip.add(
+                    I18n.format("gregtech.multiblock.large_boiler.heat_time_tooltip",
+                            boilerType.getTicksToBoiling() / 20));
+            tooltip.add(I18n.format("gregtech.universal.tooltip.base_production_fluid", boilerType.steamPerTick()));
+            tooltip.add(TooltipHelper.BLINKING_RED + I18n.format("gregtech.multiblock.large_boiler.explosion_tooltip"));
+        }
     }
 }

@@ -33,9 +33,11 @@ import codechicken.lib.render.pipeline.IVertexOperation;
 import codechicken.lib.vec.Cuboid6;
 import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.drawable.IKey;
+import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.drawable.Rectangle;
 import com.cleanroommc.modularui.factory.SidedPosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.utils.Color;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
@@ -67,6 +69,11 @@ public class CoverFluidFilter extends CoverBase implements CoverWithUI {
         this.texture = texture;
     }
 
+    public void setFilterMode(FluidFilterMode filterMode) {
+        this.filterMode = filterMode;
+        this.getCoverableView().markDirty();
+    }
+
     @Override
     public void onAttachment(@NotNull CoverableView coverableView, @NotNull EnumFacing side,
                              @Nullable EntityPlayer player, @NotNull ItemStack itemStack) {
@@ -83,6 +90,7 @@ public class CoverFluidFilter extends CoverBase implements CoverWithUI {
     @Override
     public void writeInitialSyncData(@NotNull PacketBuffer packetBuffer) {
         packetBuffer.writeByte(this.filterMode.ordinal());
+        packetBuffer.writeBoolean(this.allowFlow);
         packetBuffer.writeBoolean(this.fluidFilterContainer.hasFilter());
         if (this.fluidFilterContainer.hasFilter()) {
             packetBuffer.writeItemStack(this.fluidFilterContainer.getFilterStack());
@@ -92,6 +100,7 @@ public class CoverFluidFilter extends CoverBase implements CoverWithUI {
     @Override
     public void readInitialSyncData(@NotNull PacketBuffer packetBuffer) {
         this.filterMode = FluidFilterMode.VALUES[packetBuffer.readByte()];
+        this.allowFlow = packetBuffer.readBoolean();
         if (!packetBuffer.readBoolean()) return;
         try {
             this.fluidFilterContainer.setFilterStack(packetBuffer.readItemStack());
@@ -102,11 +111,6 @@ public class CoverFluidFilter extends CoverBase implements CoverWithUI {
 
     public FluidFilterMode getFilterMode() {
         return filterMode;
-    }
-
-    public void setFilterMode(FluidFilterMode filterMode) {
-        this.filterMode = filterMode;
-        this.getCoverableView().markDirty();
     }
 
     public @NotNull BaseFilter getFilter() {
@@ -139,21 +143,25 @@ public class CoverFluidFilter extends CoverBase implements CoverWithUI {
     }
 
     @Override
-    public boolean usesMui2() {
-        return true;
+    public ModularPanel buildUI(SidedPosGuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
+        return getFilter().createPanel(guiSyncManager)
+                .size(176, 212).padding(7)
+                .child(buildContent(guiSyncManager))
+                .child(SlotGroupWidget.playerInventory(false).bottom(7).left(7));
     }
 
-    @Override
-    public ModularPanel buildUI(SidedPosGuiData guiData, PanelSyncManager guiSyncManager) {
+    /**
+     * 面板内容：主界面与侧边浮动子面板共用，两者的控件与同步值完全一致。
+     */
+    private @NotNull IWidget buildContent(@NotNull PanelSyncManager guiSyncManager) {
         var filteringMode = new EnumSyncValue<>(FluidFilterMode.class, this::getFilterMode, this::setFilterMode);
 
         guiSyncManager.syncValue("filtering_mode", filteringMode);
         this.fluidFilterContainer.setMaxTransferSize(1);
 
-        return getFilter().createPanel(guiSyncManager)
-                .size(176, 212).padding(7)
+        return Flow.column()
                 .child(CoverWithUI.createTitleRow(getFilterContainer().getFilterStack()))
-                .child(Flow.column().widthRel(1f).align(Alignment.TopLeft).top(22).coverChildrenHeight()
+                .child(Flow.column().widthRel(1f).posRel(Alignment.TopLeft).top(22).coverChildrenHeight()
                         .child(new EnumRowBuilder<>(FluidFilterMode.class)
                                 .value(filteringMode)
                                 .lang("cover.filter.mode.title")
@@ -165,10 +173,9 @@ public class CoverFluidFilter extends CoverBase implements CoverWithUI {
                                 .coverChildrenHeight()
                                 .setEnabledIf(b -> getFilterMode() != FluidFilterMode.FILTER_BOTH)
                                 .child(new ToggleButton()
-                                        .overlay(IKey.dynamic(() -> IKey.lang(allowFlow ?
-                                                        "cover.generic.enabled" :
-                                                        "cover.generic.disabled").get())
-                                                .color(Color.WHITE.main).shadow(false))
+                                        .overlay(createEnabledKey("cover.generic", () -> this.allowFlow)
+                                                .color(Color.WHITE.main)
+                                                .shadow(false))
                                         .tooltip(tooltip -> tooltip
                                                 .addLine(IKey.lang("cover.filter.allow_flow.tooltip")))
                                         .size(72, 18)
@@ -176,11 +183,10 @@ public class CoverFluidFilter extends CoverBase implements CoverWithUI {
                                 .child(IKey.lang("cover.filter.allow_flow.label")
                                         .asWidget()
                                         .height(18)
-                                        .alignX(1f)))
-                        .child(new Rectangle().setColor(UI_TEXT_COLOR).asWidget()
+                                        .leftRel(1f).anchorLeft(1f)))
+                        .child(new Rectangle().color(UI_TEXT_COLOR).asWidget()
                                 .height(1).widthRel(0.95f).margin(0, 4))
-                        .child(getFilter().createWidgets(guiSyncManager)))
-                .child(SlotGroupWidget.playerInventory().bottom(7).left(7));
+                        .child(getFilter().createWidgets(guiSyncManager)));
     }
 
     @Override
@@ -208,6 +214,7 @@ public class CoverFluidFilter extends CoverBase implements CoverWithUI {
         super.writeToNBT(tagCompound);
         tagCompound.setInteger("FilterMode", this.filterMode.ordinal());
         tagCompound.setTag("Filter", this.fluidFilterContainer.serializeNBT());
+        tagCompound.setBoolean("allowFlow", this.allowFlow);
     }
 
     @Override
@@ -221,6 +228,7 @@ public class CoverFluidFilter extends CoverBase implements CoverWithUI {
         } else {
             this.fluidFilterContainer.deserializeNBT(tagCompound.getCompoundTag("Filter"));
         }
+        this.allowFlow = tagCompound.getBoolean("allowFlow");
     }
 
     private class FluidHandlerFiltered extends FluidHandlerDelegate {

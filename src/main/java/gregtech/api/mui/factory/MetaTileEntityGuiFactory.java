@@ -13,6 +13,9 @@ import com.cleanroommc.modularui.api.IGuiHolder;
 import com.cleanroommc.modularui.factory.AbstractUIFactory;
 import com.cleanroommc.modularui.factory.GuiManager;
 import com.cleanroommc.modularui.factory.PosGuiData;
+import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
+import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
@@ -37,6 +40,18 @@ public class MetaTileEntityGuiFactory extends AbstractUIFactory<PosGuiData> {
         BlockPos pos = mte.getPos();
         PosGuiData data = new PosGuiData(player, pos.getX(), pos.getY(), pos.getZ());
         GuiManager.open(INSTANCE, data, (EntityPlayerMP) player);
+    }
+
+    @Override
+    public ModularPanel createPanel(PosGuiData guiData, PanelSyncManager syncManager, UISettings settings) {
+        ModularPanel panel = super.createPanel(guiData, syncManager, settings);
+        IGuiHolder<PosGuiData> holder = getGuiHolder(guiData);
+        if (holder instanceof MetaTileEntity mte && panel != null) {
+            // 先把机器原本的界面包进页签，再挂侧边栏，避免侧栏被一起搬进页 0。
+            mte.attachTabs(panel, guiData, syncManager);
+            mte.initSidePanel(guiData, syncManager, panel);
+        }
+        return panel;
     }
 
     @Override

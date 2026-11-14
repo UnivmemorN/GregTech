@@ -2,15 +2,25 @@ package gregtech.common.metatileentities.multi.multiblockpart;
 
 import gregtech.api.metatileentity.ITieredMetaTileEntity;
 import gregtech.api.metatileentity.MetaTileEntity;
+import gregtech.api.metatileentity.multiblock.IColorChannelPart;
 import gregtech.api.metatileentity.multiblock.IMultiblockPart;
 import gregtech.api.metatileentity.multiblock.MultiblockControllerBase;
+import gregtech.api.metatileentity.multiblock.RecipeMapMultiblockController;
+import gregtech.api.mui.factory.MetaTileEntityGuiFactory;
+import gregtech.api.mui.widget.SidePanel;
 import gregtech.api.util.GTUtility;
 import gregtech.client.renderer.ICubeRenderer;
 import gregtech.client.renderer.texture.Textures;
 import gregtech.client.renderer.texture.cube.SimpleOrientedCubeRenderer;
+import gregtech.client.renderer.texture.cube.VisualStateRenderer;
 import gregtech.client.renderer.texture.custom.FireboxActiveRenderer;
+import gregtech.client.utils.RenderUtil;
+import gregtech.common.creativetab.GTCreativeTabs;
 
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
@@ -22,18 +32,30 @@ import codechicken.lib.render.CCRenderState;
 import codechicken.lib.render.pipeline.ColourMultiplier;
 import codechicken.lib.render.pipeline.IVertexOperation;
 import codechicken.lib.vec.Matrix4;
+import com.cleanroommc.modularui.api.drawable.IKey;
+import com.cleanroommc.modularui.drawable.ItemDrawable;
+import com.cleanroommc.modularui.value.sync.PanelSyncManager;
+import com.cleanroommc.modularui.widgets.ButtonWidget;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import static gregtech.api.capability.GregtechDataCodes.SYNC_CONTROLLER;
 
 public abstract class MetaTileEntityMultiblockPart extends MetaTileEntity
-                                                   implements IMultiblockPart, ITieredMetaTileEntity {
+        implements IMultiblockPart, ITieredMetaTileEntity {
 
     private final int tier;
+    protected ICubeRenderer hatchTexture = null;
     private BlockPos controllerPos;
     private MultiblockControllerBase controllerTile;
-    protected ICubeRenderer hatchTexture = null;
+
+    // Move multiblock parts from the generic machines tab into their own tab
+    {
+        creativeTabs.add(GTCreativeTabs.TAB_GREGTECH_MULTIBLOCK_PARTS);
+        creativeTabs.remove(GTCreativeTabs.TAB_GREGTECH_MACHINES);
+    }
 
     public MetaTileEntityMultiblockPart(ResourceLocation metaTileEntityId, int tier) {
         super(metaTileEntityId);
@@ -50,14 +72,33 @@ public abstract class MetaTileEntityMultiblockPart extends MetaTileEntity
     @Override
     public void renderMetaTileEntity(CCRenderState renderState, Matrix4 translation, IVertexOperation[] pipeline) {
         ICubeRenderer baseTexture = getBaseTexture();
-        pipeline = ArrayUtils.add(pipeline,
-                new ColourMultiplier(GTUtility.convertRGBtoOpaqueRGBA_CL(getPaintingColorForRendering())));
+        IVertexOperation[] basePipeline = pipeline;
+
+        boolean colorChannelPart = this instanceof IColorChannelPart part && part.showColorChannelPatch();
+        if (!colorChannelPart) {
+            pipeline = ArrayUtils.add(pipeline,
+                    new ColourMultiplier(GTUtility.convertRGBtoOpaqueRGBA_CL(getPaintingColorForRendering())));
+        }
 
         if (baseTexture instanceof FireboxActiveRenderer || baseTexture instanceof SimpleOrientedCubeRenderer) {
             baseTexture.renderOriented(renderState, translation, pipeline, getFrontFacing());
         } else {
             baseTexture.render(renderState, translation, pipeline);
         }
+
+        if (colorChannelPart && isPainted()) {
+            renderColorChannelIndicator(renderState, translation, basePipeline);
+        }
+    }
+
+    @SideOnly(Side.CLIENT)
+    protected void renderColorChannelIndicator(CCRenderState renderState, Matrix4 translation,
+                                               IVertexOperation[] pipeline) {
+        IVertexOperation[] ops = ArrayUtils.add(pipeline,
+                new ColourMultiplier(GTUtility.convertRGBtoOpaqueRGBA_CL(getPaintingColorForRendering())));
+        Textures.COLOR_CHANNEL_INDICATOR_COLORED.renderSided(getFrontFacing(), renderState,
+                RenderUtil.adjustTrans(translation, getFrontFacing(), 1), ops);
+        Textures.COLOR_CHANNEL_INDICATOR_FRAME.renderSided(getFrontFacing(), renderState, translation, pipeline);
     }
 
     public int getTier() {
@@ -81,11 +122,68 @@ public abstract class MetaTileEntityMultiblockPart extends MetaTileEntity
         return controllerTile;
     }
 
+    /**
+     * 侧边栏加一颗“打开控制器”的按钮：只要这个仓还挂在某个成型多方块上，就可以一键跳回控制器界面。
+     */
+    @Override
+    protected void registerSidePanelButtons(@NotNull SidePanel sidePanel) {
+        super.registerSidePanelButtons(sidePanel);
+
+        MultiblockControllerBase controller = getController();
+        if (controller == null) return;
+
+        PanelSyncManager syncManager = sidePanel.getSyncManager();
+        syncManager.registerSyncedAction("open_controller", false, true, buffer -> {
+            EntityPlayer player = syncManager.getPlayer();
+            MultiblockControllerBase current = getController();
+            if (player == null || current == null || !current.isValid()) return;
+            if (player.world != current.getWorld()) return;
+            MetaTileEntityGuiFactory.open(player, current);
+        });
+
+        sidePanel.add(new ButtonWidget<>()
+                .name("open_controller")
+                .size(18)
+                .overlay(new ItemDrawable(controller.getStackForm()).asIcon().size(16))
+                .addTooltipLine(IKey.lang("gregtech.mui.multiblock_part.open_controller"))
+                .onMousePressed(button -> {
+                    if (button != 0) return false;
+                    syncManager.callSyncedAction("open_controller");
+                    return true;
+                }));
+    }
+
+    private void setController(MultiblockControllerBase controller1) {
+        this.controllerTile = controller1;
+        if (!getWorld().isRemote) {
+            writeCustomData(SYNC_CONTROLLER, writer -> {
+                writer.writeBoolean(controllerTile != null);
+                if (controllerTile != null) {
+                    writer.writeBlockPos(controllerTile.getPos());
+                }
+            });
+        }
+    }
+
+    @SideOnly(Side.CLIENT)
+    @Override
+    public IBlockState getCasingBlock() {
+        MultiblockControllerBase controller = getController();
+        if (controller != null) {
+            return controller.getCasingBlock(this);
+        }
+        return null;
+    }
+
     public ICubeRenderer getBaseTexture() {
         MultiblockControllerBase controller = getController();
         if (controller != null) {
+            IBlockState casing = controller.getCasingBlock(this);
+            if (casing != null) return this.hatchTexture = new VisualStateRenderer(casing);
             return this.hatchTexture = controller.getBaseTexture(this);
-        } else if (this.hatchTexture != null) {
+        } else if (this.hatchTexture != null && !(this.hatchTexture instanceof VisualStateRenderer)) {
+            // 结构失效：VisualStateRenderer 绑定 casing 外观与 SOLID 渲染层，
+            // 失效后 MTE 改在 CUTOUT_MIPPED 层渲染，继续复用会导致面丢失（透明），必须回退。
             if (hatchTexture != Textures.getInactiveTexture(hatchTexture)) {
                 return this.hatchTexture = Textures.getInactiveTexture(hatchTexture);
             }
@@ -103,6 +201,39 @@ public abstract class MetaTileEntityMultiblockPart extends MetaTileEntity
     @Override
     public boolean isValidFrontFacing(EnumFacing facing) {
         return true;
+    }
+
+    @Override
+    public void setPaintingColor(int paintingColor, @Nullable EnumFacing side) {
+        super.setPaintingColor(paintingColor, side);
+        // 染色变化影响颜色通道分组,立即通知控制器重查配方(喷涂本身不触发仓输入通知)
+        if (getWorld() != null && !getWorld().isRemote) {
+            MultiblockControllerBase controller = getController();
+            if (controller instanceof RecipeMapMultiblockController recipeMapController) {
+                recipeMapController.getRecipeMapWorkable().forceRecipeRecheck();
+            }
+        }
+    }
+
+    /**
+     * 染色随物品保留。物品栏渲染走 {@link MetaTileEntity#getPaintingColorForRendering()},
+     * 其在 world 为 null 时改读渲染上下文栈上的 {@code PaintingColor},故颜色也能正确显示。
+     */
+    @Override
+    public void writeItemStackData(NBTTagCompound itemStack) {
+        super.writeItemStackData(itemStack);
+        if (isPainted()) {
+            itemStack.setInteger(TAG_KEY_PAINTING_COLOR, getPaintingColor());
+        }
+    }
+
+    @Override
+    public void initFromItemStackData(NBTTagCompound itemStack) {
+        super.initFromItemStackData(itemStack);
+        if (itemStack.hasKey(TAG_KEY_PAINTING_COLOR)) {
+            // 走 setPaintingColor 以同步客户端,否则颜色通道指示器要等下一次区块同步才显示
+            setPaintingColor(itemStack.getInteger(TAG_KEY_PAINTING_COLOR));
+        }
     }
 
     @Override
@@ -136,18 +267,6 @@ public abstract class MetaTileEntityMultiblockPart extends MetaTileEntity
                 this.controllerTile = null;
             }
             scheduleRenderUpdate();
-        }
-    }
-
-    private void setController(MultiblockControllerBase controller1) {
-        this.controllerTile = controller1;
-        if (!getWorld().isRemote) {
-            writeCustomData(SYNC_CONTROLLER, writer -> {
-                writer.writeBoolean(controllerTile != null);
-                if (controllerTile != null) {
-                    writer.writeBlockPos(controllerTile.getPos());
-                }
-            });
         }
     }
 

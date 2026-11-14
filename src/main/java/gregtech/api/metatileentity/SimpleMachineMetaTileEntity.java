@@ -1,7 +1,5 @@
 package gregtech.api.metatileentity;
 
-import com.cleanroommc.modularui.factory.SidedPosGuiData;
-
 import gregtech.api.GTValues;
 import gregtech.api.capability.GregtechTileCapabilities;
 import gregtech.api.capability.IActiveOutputSide;
@@ -14,18 +12,18 @@ import gregtech.api.capability.impl.ItemHandlerList;
 import gregtech.api.capability.impl.ItemHandlerProxy;
 import gregtech.api.cover.Cover;
 import gregtech.api.gui.GuiTextures;
-import gregtech.api.gui.ModularUI;
 import gregtech.api.gui.resources.TextureArea;
-import gregtech.api.gui.widgets.GhostCircuitSlotWidget;
-import gregtech.api.gui.widgets.ImageWidget;
-import gregtech.api.gui.widgets.LabelWidget;
 import gregtech.api.gui.widgets.SlotWidget;
-import gregtech.api.gui.widgets.ToggleButtonWidget;
 import gregtech.api.items.itemhandlers.GTItemStackHandler;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuis;
+import gregtech.api.mui.widget.GhostCircuitSlotWidget;
+import gregtech.api.mui.widget.SidePanel;
 import gregtech.api.recipes.RecipeMap;
+import gregtech.api.unification.OreDictUnifier;
+import gregtech.api.unification.material.Materials;
+import gregtech.api.unification.ore.OrePrefix;
 import gregtech.api.util.GTTransferUtils;
 import gregtech.api.util.GTUtility;
 import gregtech.client.particle.IMachineParticleEffect;
@@ -61,18 +59,20 @@ import codechicken.lib.render.CCRenderState;
 import codechicken.lib.render.pipeline.IVertexOperation;
 import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.IPanelHandler;
+import com.cleanroommc.modularui.api.drawable.IDrawable;
 import com.cleanroommc.modularui.api.drawable.IKey;
-import com.cleanroommc.modularui.drawable.ItemDrawable;
+import com.cleanroommc.modularui.drawable.DynamicDrawable;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.SyncHandlers;
-import com.cleanroommc.modularui.widget.Widget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
-import com.cleanroommc.modularui.widgets.ItemSlot;
+import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.ToggleButton;
 import com.cleanroommc.modularui.widgets.layout.Flow;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -84,10 +84,11 @@ import java.util.function.Function;
 import static gregtech.api.capability.GregtechDataCodes.*;
 
 public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
-        implements IActiveOutputSide, IGhostSlotConfigurable {
+        implements IActiveOutputSide, IGhostSlotConfigurable, IUpgradeSlots {
 
-    private static final int FONT_HEIGHT = 9; // Minecraft's FontRenderer FONT_HEIGHT value
     protected final GTItemStackHandler chargerInventory;
+    /** 升级插件槽位；界面入口由 {@link MetaTileEntity#createUpgradeSlotsButton} 挂到侧边栏上。 */
+    protected final GTItemStackHandler upgradeInventory;
     @Nullable // particle run every tick when the machine is active
     protected final IMachineParticleEffect tickingParticle;
     @Nullable // particle run in randomDisplayTick() when the machine is active
@@ -103,6 +104,7 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
     private boolean autoOutputFluids;
     private boolean allowInputFromOutputSideItems = false;
     private boolean allowInputFromOutputSideFluids = false;
+    private boolean disallowSameItemInsert = false;
     private IItemHandlerModifiable actualImportItems;
 
     public SimpleMachineMetaTileEntity(ResourceLocation metaTileEntityId, RecipeMap<?> recipeMap,
@@ -124,6 +126,7 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
         super(metaTileEntityId, recipeMap, renderer, tier, tankScalingFunction);
         this.hasFrontFacing = hasFrontFacing;
         this.chargerInventory = new GTItemStackHandler(this, 1);
+        this.upgradeInventory = new GTItemStackHandler(this, IUpgradeSlots.UPGRADE_SLOT_COUNT);
         this.tickingParticle = tickingParticle;
         this.randomParticle = randomParticle;
     }
@@ -141,10 +144,14 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
         this.outputFluidInventory = new FluidHandlerProxy(new FluidTankList(false), exportFluids);
         if (this.hasGhostCircuitInventory()) {
             this.circuitInventory = new GhostCircuitItemStackHandler(this);
-            this.circuitInventory.addNotifiableMetaTileEntity(this);
         }
 
         this.actualImportItems = null;
+
+        // 初始化是否允许输入相同物品的状态
+        if (super.getImportItems() instanceof GTItemStackHandler handler) {
+            handler.setAllowSameItemInsert(!disallowSameItemInsert);
+        }
     }
 
     @Override
@@ -155,6 +162,11 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
                     new ItemHandlerList(Arrays.asList(super.getImportItems(), this.circuitInventory));
         }
         return this.actualImportItems;
+    }
+
+    @Override
+    public @NotNull IItemHandlerModifiable getUpgradeInventory() {
+        return this.upgradeInventory;
     }
 
     @Override
@@ -217,8 +229,13 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
     public void update() {
         super.update();
         if (!getWorld().isRemote) {
-            ((EnergyContainerHandler) this.energyContainer).dischargeOrRechargeEnergyContainers(chargerInventory, 0);
-
+            ItemStack stack = chargerInventory.getStackInSlot(0);
+            if (!stack.isEmpty() && energyContainer.getEnergyStored() < energyContainer.getEnergyCapacity()) {
+                if (stack.isItemEqual(OreDictUnifier.get(OrePrefix.dust, Materials.Redstone))) {
+                    stack.shrink(1);
+                    energyContainer.addEnergy(1920);
+                } else ((EnergyContainerHandler) this.energyContainer).dischargeOrRechargeEnergyContainers(stack);
+            }
             if (getOffsetTimer() % 5 == 0) {
                 if (isAutoOutputFluids()) {
                     pushFluidsIntoNearbyHandlers(getOutputFacingFluids());
@@ -288,6 +305,7 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
     public NBTTagCompound writeToNBT(NBTTagCompound data) {
         super.writeToNBT(data);
         data.setTag("ChargerInventory", chargerInventory.serializeNBT());
+        data.setTag("UpgradeInventory", upgradeInventory.serializeNBT());
         if (this.circuitInventory != null) {
             this.circuitInventory.write(data);
         }
@@ -297,6 +315,7 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
         data.setBoolean("AutoOutputFluids", autoOutputFluids);
         data.setBoolean("AllowInputFromOutputSide", allowInputFromOutputSideItems);
         data.setBoolean("AllowInputFromOutputSideF", allowInputFromOutputSideFluids);
+        data.setBoolean("DisallowSameItemInsert", disallowSameItemInsert);
         return data;
     }
 
@@ -304,6 +323,7 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
     public void readFromNBT(NBTTagCompound data) {
         super.readFromNBT(data);
         this.chargerInventory.deserializeNBT(data.getCompoundTag("ChargerInventory"));
+        this.upgradeInventory.deserializeNBT(data.getCompoundTag("UpgradeInventory"));
         if (this.circuitInventory != null) {
             if (data.hasKey("CircuitInventory", Constants.NBT.TAG_COMPOUND)) {
                 // legacy save support - move items in circuit inventory to importItems inventory, if possible
@@ -326,6 +346,11 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
         this.autoOutputFluids = data.getBoolean("AutoOutputFluids");
         this.allowInputFromOutputSideItems = data.getBoolean("AllowInputFromOutputSide");
         this.allowInputFromOutputSideFluids = data.getBoolean("AllowInputFromOutputSideF");
+        this.disallowSameItemInsert = data.getBoolean("DisallowSameItemInsert");
+        // 同步更新底层 GTItemStackHandler 的状态
+        if (super.getImportItems() instanceof GTItemStackHandler handler) {
+            handler.setAllowSameItemInsert(!disallowSameItemInsert);
+        }
     }
 
     @Override
@@ -335,6 +360,7 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
         buf.writeByte(getOutputFacingFluids().getIndex());
         buf.writeBoolean(autoOutputItems);
         buf.writeBoolean(autoOutputFluids);
+        buf.writeBoolean(disallowSameItemInsert);
     }
 
     @Override
@@ -344,6 +370,7 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
         this.outputFacingFluids = EnumFacing.VALUES[buf.readByte()];
         this.autoOutputItems = buf.readBoolean();
         this.autoOutputFluids = buf.readBoolean();
+        this.disallowSameItemInsert = buf.readBoolean();
     }
 
     @Override
@@ -359,6 +386,8 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
         } else if (dataId == UPDATE_AUTO_OUTPUT_FLUIDS) {
             this.autoOutputFluids = buf.readBoolean();
             scheduleRenderUpdate();
+        } else if (dataId == UPDATE_DISALLOW_SAME_ITEM) {
+            this.disallowSameItemInsert = buf.readBoolean();
         }
     }
 
@@ -370,11 +399,30 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
     }
 
     @Override
+    public int getGhostCircuitConfig() {
+        if (this.circuitInventory == null) {
+            return 0;
+        }
+        return this.circuitInventory.getCircuitValue();
+    }
+
+    @Override
     public void setGhostCircuitConfig(int config) {
         if (this.circuitInventory == null || this.circuitInventory.getCircuitValue() == config) {
             return;
         }
         this.circuitInventory.setCircuitValue(config);
+        if (!getWorld().isRemote) {
+            markDirty();
+        }
+    }
+
+    @Override
+    public void setGhostCustomStack(@NotNull ItemStack stack) {
+        if (this.circuitInventory == null) {
+            return;
+        }
+        this.circuitInventory.setCustomStack(stack);
         if (!getWorld().isRemote) {
             markDirty();
         }
@@ -485,10 +533,34 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
         }
     }
 
+    public boolean isDisallowSameItemInsert() {
+        return disallowSameItemInsert;
+    }
+
+    public void setDisallowSameItemInsert(boolean disallowSameItemInsert) {
+        this.disallowSameItemInsert = disallowSameItemInsert;
+        if (!getWorld().isRemote) {
+            // 同步更新底层 GTItemStackHandler 的状态，穿透 ItemHandlerList 代理
+            IItemHandlerModifiable handler = getImportItems();
+            if (handler instanceof ItemHandlerList list) {
+                for (IItemHandler h : list.getBackingHandlers()) {
+                    if (h instanceof GTItemStackHandler gtHandler) {
+                        gtHandler.setAllowSameItemInsert(!disallowSameItemInsert);
+                    }
+                }
+            } else if (handler instanceof GTItemStackHandler gtHandler) {
+                gtHandler.setAllowSameItemInsert(!disallowSameItemInsert);
+            }
+            writeCustomData(UPDATE_DISALLOW_SAME_ITEM, buf -> buf.writeBoolean(disallowSameItemInsert));
+            markDirty();
+        }
+    }
+
     @Override
     public void clearMachineInventory(@NotNull List<@NotNull ItemStack> itemBuffer) {
         super.clearMachineInventory(itemBuffer);
         clearInventory(itemBuffer, chargerInventory);
+        clearInventory(itemBuffer, upgradeInventory);
     }
 
     @Override
@@ -498,92 +570,103 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
     }
 
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager panelSyncManager, UISettings settings) {
         RecipeMap<?> workableRecipeMap = Objects.requireNonNull(workable.getRecipeMap(), "recipe map is null");
-        int yOffset = 0;
-        if (workableRecipeMap.getMaxInputs() >= 6 || workableRecipeMap.getMaxFluidInputs() >= 6 ||
-                workableRecipeMap.getMaxOutputs() >= 6 || workableRecipeMap.getMaxFluidOutputs() >= 6) {
-            yOffset = FONT_HEIGHT;
-        }
 
-        ModularPanel panel = GTGuis.createPanel(this, 176, 166 + yOffset);
-        Widget<?> widget = workableRecipeMap.getRecipeMapUI().buildWidget(workable::getProgressPercent, importItems,
-                exportItems, importFluids, exportFluids, yOffset, guiSyncManager);
+        panelSyncManager.syncedPanel("mte_setting", true, this::makeThrottlePanel);
+        panelSyncManager.syncedPanel("mte_io_settings", true, this::makeIoPanel);
 
-        BooleanSyncValue hasEnergy = new BooleanSyncValue(workable::isHasNotEnoughEnergy);
-        guiSyncManager.syncValue("has_energy", hasEnergy);
-        panel.child(widget)
+        BooleanSyncValue hasNoEnergy = new BooleanSyncValue(workable::isHasNotEnoughEnergy);
+        panelSyncManager.syncValue("has_energy", hasNoEnergy);
+
+        int panelHeight = 170;
+
+        ModularPanel panel = workableRecipeMap.getRecipeMapUI()
+                .constructPanel(this, builder -> builder
+                        .calculateOffset()
+                        .setMaxSize(176, panelHeight)
+                        .setInputs(importItems, importFluids)
+                        .setOutputs(exportItems, exportFluids)
+                        .inventorySlotGroups()
+                        .progressWidget(workable::getProgressPercent, widget -> widget
+                                // todo add tooltip for no energy?
+                                .overlay(new DynamicDrawable(() -> hasNoEnergy.getBoolValue() ?
+                                        GTGuiTextures.INDICATOR_NO_ENERGY : IDrawable.NONE)
+                                        .asIcon().size(18).marginTop(50))))
                 .child(IKey.lang(getMetaFullName()).asWidget().pos(5, 5))
-                .child(new ItemSlot()
-                        .slot(SyncHandlers.itemSlot(chargerInventory, 0))
-                        .pos(79, 62 + yOffset)
-                        .background(GTGuiTextures.SLOT, GTGuiTextures.CHARGER_OVERLAY)
-                        .addTooltipLine(IKey.lang("gregtech.gui.charger_slot.tooltip",
-                                GTValues.VNF[getTier()], GTValues.VNF[getTier()])))
-                .child(new Widget<>()
-                        .size(18, 18)
-                        .pos(79, 42 + yOffset)
-                        .background(GTGuiTextures.INDICATOR_NO_ENERGY)
-                        .setEnabledIf($ -> hasEnergy.getBoolValue()))
-                .bindPlayerInventory();
-
-        int leftButtonStartX = 7;
-
-        if (exportItems.getSlots() > 0) {
-
-            panel.child(new ToggleButton()
-                    .pos(leftButtonStartX, 62 + yOffset)
-                    .overlay(GTGuiTextures.BUTTON_ITEM_OUTPUT)
-                    .value(new BooleanSyncValue(() -> autoOutputItems, val -> autoOutputItems = val))
-                    .addTooltip(true, IKey.lang("gregtech.gui.item_auto_output.tooltip.enabled"))
-                    .addTooltip(false, IKey.lang("gregtech.gui.item_auto_output.tooltip.disabled")));
-
-            leftButtonStartX += 18;
-        }
-
-        if (exportFluids.getTanks() > 0) {
-
-            panel.child(new ToggleButton()
-                    .pos(leftButtonStartX, 62 + yOffset)
-                    .overlay(GTGuiTextures.BUTTON_FLUID_OUTPUT)
-                    .value(new BooleanSyncValue(() -> autoOutputFluids, val -> autoOutputFluids = val))
-                    .addTooltip(true, IKey.lang("gregtech.gui.fluid_auto_output.tooltip.enabled"))
-                    .addTooltip(false, IKey.lang("gregtech.gui.fluid_auto_output.tooltip.disabled")));
-
-            leftButtonStartX += 18;
-        }
-
-        if (exportItems.getSlots() + exportFluids.getTanks() <= 9) {
-            panel.child(new Widget<>()
-                    .size(17)
-                    .pos(152, 63 + yOffset)
-                    .background(GTGuiTextures.getLogo(getUITheme())));
-
-            if (hasGhostCircuitInventory() && circuitInventory != null) {
-                panel.child(new gregtech.api.mui.widget.GhostCircuitSlotWidget()
-                        .pos(124, 62 + yOffset)
-                        .slot(SyncHandlers.itemSlot(circuitInventory, 0))
-                        .background(GTGuiTextures.SLOT, GTGuiTextures.INT_CIRCUIT_OVERLAY));
-            }
-        }
-        var throttle = guiSyncManager.panel("io_setting", this::makeThrottlePanel, true);
-
-        panel.child(new ButtonWidget<>()
-                .size(18)
-                .pos(leftButtonStartX, 62 + yOffset)
-                .overlay(GTGuiTextures.BUTTON_EXPORT_FACE)
-                .addTooltipLine("IO设置")
-                .onMousePressed(i -> {
-                    if (throttle.isPanelOpen()) {
-                        throttle.closePanel();
-                    } else {
-                        throttle.openPanel();
-                    }
-                    return true;
-                })
-        );
+                .child(SlotGroupWidget.playerInventory(true).left(7))
+                .child(createPlayerInventoryLogo(17));
 
         return panel;
+    }
+
+    /**
+     * 单方块机器自己的侧边栏按钮：电源开关、设备设置、IO 设置、电路槽、充电槽。
+     *
+     * <p>
+     * 这些按钮以前挤在主面板右侧的一列里，现在改为挂在侧边栏最上方；
+     * 世界预览、升级插件、覆盖板仍由 {@code super} 追加在下面。
+     */
+    @Override
+    protected void registerSidePanelButtons(@NotNull SidePanel sidePanel) {
+        // 电源开关
+        sidePanel.add(new ToggleButton()
+                .size(18)
+                .overlay(true, GTGuiTextures.BUTTON_POWER[1])
+                .overlay(false, GTGuiTextures.BUTTON_POWER[0])
+                .value(new BooleanSyncValue(
+                        workable::isWorkingEnabled,
+                        val -> {
+                            if (!getWorld().isRemote) {
+                                workable.setWorkingEnabled(val);
+                            }
+                        }))
+                .addTooltipLine("电源开关"));
+
+        // 设备设置
+        addPanelButton(sidePanel, "mte_setting", GTGuiTextures.FILTER_SETTINGS_OVERLAY, "设备设置");
+        // IO 设置
+        addPanelButton(sidePanel, "mte_io_settings", GTGuiTextures.BUTTON_EXPORT_FACE, "IO 设置");
+
+        // 电路
+        if (hasGhostCircuitInventory() && circuitInventory != null) {
+            sidePanel.add(new GhostCircuitSlotWidget()
+                    .slot(circuitInventory, 0)
+                    .background(GTGuiTextures.SLOT, GTGuiTextures.INT_CIRCUIT_OVERLAY));
+        }
+
+        // 充电槽
+        sidePanel.add(new ItemSlot()
+                .name("charger.slot")
+                .slot(new ModularSlot(chargerInventory, 0))
+                .background(GTGuiTextures.SLOT, GTGuiTextures.CHARGER_OVERLAY)
+                .addTooltipLine(IKey.lang("gregtech.gui.charger_slot.tooltip",
+                        GTValues.VNF[getTier()], GTValues.VNF[getTier()])));
+
+        super.registerSidePanelButtons(sidePanel);
+    }
+
+    /**
+     * 侧边栏上打开/关闭某个子面板的按钮。
+     */
+    private void addPanelButton(@NotNull SidePanel sidePanel, @NotNull String panelName,
+            @NotNull IDrawable icon, @NotNull String tooltip) {
+        IPanelHandler handler = sidePanel.getSyncManager().findPanelHandlerNullable(panelName);
+        if (handler == null) {
+            return;
+        }
+        sidePanel.add(new ButtonWidget<>()
+                .size(18)
+                .overlay(icon.asIcon().size(16))
+                .addTooltipLine(tooltip)
+                .onMousePressed(i -> {
+                    if (handler.isPanelOpen()) {
+                        handler.closePanel();
+                    } else {
+                        handler.openPanel();
+                    }
+                    return true;
+                }));
     }
 
     public String getEnumFacingName(EnumFacing facing) {
@@ -596,25 +679,34 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
         return block.getLocalizedName();
     }
 
-    private ModularPanel makeThrottlePanel(PanelSyncManager syncManager, IPanelHandler syncHandler) {
-        return GTGuis.createPopupPanel("io_setting", 180, 95)
+    /**
+     * IO 设置面板：物品/流体自动输出，以及六个面的 IO 配置。
+     */
+    private ModularPanel makeIoPanel(PanelSyncManager syncManager, IPanelHandler syncHandler) {
+        return GTGuis.createPopupPanel("mte_io_settings", 180, 115)
+                .child(GTGuis.popupTitle(getStackForm(), "IO 设置"))
                 .child(Flow.row()
-                        .pos(4, 4)
-                        .height(16)
-                        .coverChildrenWidth()
-                        .child(new ItemDrawable(getStackForm())
-                                .asWidget()
-                                .size(16)
-                                .marginRight(4))
-                        .child(IKey.lang("IO设置")
-                                .asWidget()
-                                .heightRel(1.0f)))
-                .child(Flow.row()
+                        /// ///////////////////////////////////////////////////////////////////////
+                        // 物品 / 流体自动输出
+                        .childIf(exportItems.getSlots() > 0, () -> new ToggleButton()
+                                .pos(20, 25)
+                                .overlay(GTGuiTextures.BUTTON_ITEM_OUTPUT)
+                                .value(new BooleanSyncValue(() -> autoOutputItems, val -> autoOutputItems = val))
+                                .addTooltip(true, IKey.lang("gregtech.gui.item_auto_output.tooltip.enabled"))
+                                .addTooltip(false, IKey.lang("gregtech.gui.item_auto_output.tooltip.disabled")))
+                        .childIf(exportFluids.getTanks() > 0, () -> new ToggleButton()
+                                .pos(40, 25)
+                                .overlay(GTGuiTextures.BUTTON_FLUID_OUTPUT)
+                                .value(new BooleanSyncValue(() -> autoOutputFluids, val -> autoOutputFluids = val))
+                                .addTooltip(true, IKey.lang("gregtech.gui.fluid_auto_output.tooltip.enabled"))
+                                .addTooltip(false, IKey.lang("gregtech.gui.fluid_auto_output.tooltip.disabled")))
+                        .child(IKey.lang("自动输出").asWidget().pos(62, 30))
+
+                        /// ///////////////////////////////////////////////////////////////////////
                         // 顶部IO按钮
                         .child(new ToggleButton()
-                                .pos(40, 25)
-                                .overlay(true, GTGuiTextures.OVERLAY_ITEM_EXPORT[1])
-                                .overlay(false, GTGuiTextures.OVERLAY_ITEM_EXPORT[0])
+                                .pos(40, 45)
+                                .overlay(GTGuiTextures.ITEM_SIDE_SELECTION_UP)
                                 .value(new BooleanSyncValue(
                                         () -> outputFacingItems == EnumFacing.UP,
                                         val -> {
@@ -628,9 +720,8 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
 
                         // 正面IO按钮
                         .child(new ToggleButton()
-                                .pos(40, 45)
-                                .overlay(true, GTGuiTextures.OVERLAY_ITEM_EXPORT[1])
-                                .overlay(false, GTGuiTextures.OVERLAY_ITEM_EXPORT[0])
+                                .pos(40, 65)
+                                .overlay(GTGuiTextures.OVERLAY_ITEM_EXPORT[1])
                                 .value(new BooleanSyncValue(
                                         () -> outputFacingItems == frontFacing,
                                         val -> {
@@ -644,9 +735,8 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
 
                         // 左面IO按钮
                         .child(new ToggleButton()
-                                .pos(20, 45)
-                                .overlay(true, GTGuiTextures.OVERLAY_ITEM_EXPORT[1])
-                                .overlay(false, GTGuiTextures.OVERLAY_ITEM_EXPORT[0])
+                                .pos(20, 65)
+                                .overlay(GTGuiTextures.ITEM_SIDE_SELECTION_LEFT)
                                 .value(new BooleanSyncValue(
                                         () -> outputFacingItems == frontFacing.rotateY(),
                                         val -> {
@@ -660,9 +750,8 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
 
                         // 右面IO按钮
                         .child(new ToggleButton()
-                                .pos(60, 45)
-                                .overlay(true, GTGuiTextures.OVERLAY_ITEM_EXPORT[1])
-                                .overlay(false, GTGuiTextures.OVERLAY_ITEM_EXPORT[0])
+                                .pos(60, 65)
+                                .overlay(GTGuiTextures.ITEM_SIDE_SELECTION_RIGHT)
                                 .value(new BooleanSyncValue(
                                         () -> outputFacingItems == frontFacing.getOpposite().rotateY(),
                                         val -> {
@@ -676,9 +765,8 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
 
                         // 底部IO按钮
                         .child(new ToggleButton()
-                                .pos(40, 65)
-                                .overlay(true, GTGuiTextures.OVERLAY_ITEM_EXPORT[1])
-                                .overlay(false, GTGuiTextures.OVERLAY_ITEM_EXPORT[0])
+                                .pos(40, 85)
+                                .overlay(GTGuiTextures.ITEM_SIDE_SELECTION_DOWN)
                                 .value(new BooleanSyncValue(
                                         () -> outputFacingItems == EnumFacing.DOWN,
                                         val -> {
@@ -692,9 +780,8 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
 
                         // 背面IO按钮
                         .child(new ToggleButton()
-                                .pos(20, 65)
-                                .overlay(true, GTGuiTextures.OVERLAY_ITEM_EXPORT[1])
-                                .overlay(false, GTGuiTextures.OVERLAY_ITEM_EXPORT[0])
+                                .pos(20, 85)
+                                .overlay(GTGuiTextures.ITEM_SIDE_SELECTION_BACK)
                                 .value(new BooleanSyncValue(
                                         () -> outputFacingItems == frontFacing.getOpposite(),
                                         val -> {
@@ -709,9 +796,8 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
                         /// ///////////////////////////////////////////////////////////////////////
                         // 顶部IO按钮
                         .child(new ToggleButton()
-                                .pos(120, 25)
-                                .overlay(true, GTGuiTextures.OVERLAY_FLUID_EXPORT[1])
-                                .overlay(false, GTGuiTextures.OVERLAY_FLUID_EXPORT[0])
+                                .pos(120, 45)
+                                .overlay(GTGuiTextures.FLUID_SIDE_SELECTION_UP)
                                 .value(new BooleanSyncValue(
                                         () -> outputFacingFluids == EnumFacing.UP,
                                         val -> {
@@ -725,9 +811,8 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
 
                         // 正面IO按钮
                         .child(new ToggleButton()
-                                .pos(120, 45)
-                                .overlay(true, GTGuiTextures.OVERLAY_FLUID_EXPORT[1])
-                                .overlay(false, GTGuiTextures.OVERLAY_FLUID_EXPORT[0])
+                                .pos(120, 65)
+                                .overlay(GTGuiTextures.OVERLAY_FLUID_EXPORT[1])
                                 .value(new BooleanSyncValue(
                                         () -> outputFacingFluids == frontFacing,
                                         val -> {
@@ -741,9 +826,8 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
 
                         // 左面IO按钮
                         .child(new ToggleButton()
-                                .pos(100, 45)
-                                .overlay(true, GTGuiTextures.OVERLAY_FLUID_EXPORT[1])
-                                .overlay(false, GTGuiTextures.OVERLAY_FLUID_EXPORT[0])
+                                .pos(100, 65)
+                                .overlay(GTGuiTextures.FLUID_SIDE_SELECTION_LEFT)
                                 .value(new BooleanSyncValue(
                                         () -> outputFacingFluids == frontFacing.rotateY(),
                                         val -> {
@@ -757,9 +841,8 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
 
                         // 右面IO按钮
                         .child(new ToggleButton()
-                                .pos(140, 45)
-                                .overlay(true, GTGuiTextures.OVERLAY_FLUID_EXPORT[1])
-                                .overlay(false, GTGuiTextures.OVERLAY_FLUID_EXPORT[0])
+                                .pos(140, 65)
+                                .overlay(GTGuiTextures.FLUID_SIDE_SELECTION_RIGHT)
                                 .value(new BooleanSyncValue(
                                         () -> outputFacingFluids == frontFacing.getOpposite().rotateY(),
                                         val -> {
@@ -773,9 +856,8 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
 
                         // 底部IO按钮
                         .child(new ToggleButton()
-                                .pos(120, 65)
-                                .overlay(true, GTGuiTextures.OVERLAY_FLUID_EXPORT[1])
-                                .overlay(false, GTGuiTextures.OVERLAY_FLUID_EXPORT[0])
+                                .pos(120, 85)
+                                .overlay(GTGuiTextures.FLUID_SIDE_SELECTION_DOWN)
                                 .value(new BooleanSyncValue(
                                         () -> outputFacingFluids == EnumFacing.DOWN,
                                         val -> {
@@ -789,9 +871,8 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
 
                         // 背面IO按钮
                         .child(new ToggleButton()
-                                .pos(100, 65)
-                                .overlay(true, GTGuiTextures.OVERLAY_FLUID_EXPORT[1])
-                                .overlay(false, GTGuiTextures.OVERLAY_FLUID_EXPORT[0])
+                                .pos(100, 85)
+                                .overlay(GTGuiTextures.FLUID_SIDE_SELECTION_BACK)
                                 .value(new BooleanSyncValue(
                                         () -> outputFacingFluids == frontFacing.getOpposite(),
                                         val -> {
@@ -805,80 +886,83 @@ public class SimpleMachineMetaTileEntity extends WorkableTieredMetaTileEntity
 
                         //允许从输出口输入
                         .child(new ToggleButton()
-                                .pos(60, 65)
+                                .pos(60, 85)
                                 .overlay(true, GTGuiTextures.OVERLAY_ITEM_EXPORT_IMPORT[1])
                                 .overlay(false, GTGuiTextures.OVERLAY_ITEM_EXPORT_IMPORT[0])
-                                .value(new BooleanSyncValue(this::isAllowInputFromOutputSideItems, this::setAllowInputFromOutputSideItems))
+                                .value(new BooleanSyncValue(this::isAllowInputFromOutputSideItems,
+                                        this::setAllowInputFromOutputSideItems))
                                 .addTooltip(true, IKey.lang("允许从物品输出口输入物品"))
                                 .addTooltip(false, IKey.lang("禁止从物品输出口输入物品"))
                         )
 
                         .child(new ToggleButton()
-                                .pos(140, 65)
+                                .pos(140, 85)
                                 .overlay(true, GTGuiTextures.OVERLAY_FLUID_EXPORT_IMPORT[1])
                                 .overlay(false, GTGuiTextures.OVERLAY_FLUID_EXPORT_IMPORT[0])
-                                .value(new BooleanSyncValue(this::isAllowInputFromOutputSideFluids, this::setAllowInputFromOutputSideFluids))
+                                .value(new BooleanSyncValue(this::isAllowInputFromOutputSideFluids,
+                                        this::setAllowInputFromOutputSideFluids))
                                 .addTooltip(true, IKey.lang("允许从流体输出口输入物品"))
                                 .addTooltip(false, IKey.lang("禁止从流体输出口输入物品"))
                         )
                 );
     }
 
-    @Override
-    protected ModularUI createUI(EntityPlayer entityPlayer) {
-        return createGuiTemplate(entityPlayer).build(getHolder(), entityPlayer);
+    /**
+     * 设备设置面板：静音、配方锁、禁止同物品插入。
+     */
+    private ModularPanel makeThrottlePanel(PanelSyncManager syncManager, IPanelHandler syncHandler) {
+        return GTGuis.createPopupPanel("mte_setting", 180, 60)
+                .child(GTGuis.popupTitle(getStackForm(), "设备设置"))
+                .child(Flow.row()
+                        /// ///////////////////////////////////////////////////////////////////////
+                        // 开关 静音
+                        .child(new ToggleButton()
+                                .pos(20, 25)
+                                .overlay(true, GTGuiTextures.SOUND_STATE[1])
+                                .overlay(false, GTGuiTextures.SOUND_STATE[0])
+                                .value(new BooleanSyncValue(
+                                        this::isMuffled,
+                                        val -> {
+                                            if (!getWorld().isRemote) {
+                                                toggleMuffled();
+                                                syncManager.getPlayer()
+                                                        .sendStatusMessage(new TextComponentTranslation(isMuffled() ?
+                                                                "gregtech.machine.muffle.on" :
+                                                                "gregtech.machine.muffle.off"), true);
+                                            }
+                                        }))
+                                .addTooltipLine("设置静音开关")
+                        )
+                        // 配方锁
+                        .child(new ToggleButton()
+                                .pos(40, 25)
+                                .value(new BooleanSyncValue(
+                                        workable::isRecipeLockEnable,
+                                        val -> {
+                                            if (!getWorld().isRemote) {
+                                                workable.setRecipeLockEnable(val);
+                                            }
+                                        }))
+                                .overlay(true, GTGuiTextures.OVERLAY_RECIPE_LOCK[1])
+                                .overlay(false, GTGuiTextures.OVERLAY_RECIPE_LOCK[0])
+                                .addTooltip(true, IKey.lang("gregtech.multiblock.universal.lock_enabled"))
+                                .addTooltip(false, IKey.lang("gregtech.multiblock.universal.lock_disabled"))
+                        )
+                        // 禁止同物品插入
+                        .child(new ToggleButton()
+                                .pos(60, 25)
+                                .overlay(true, GTGuiTextures.BUTTON_LOCK)
+                                .overlay(false, GTGuiTextures.BUTTON_LOCK)
+                                .value(new BooleanSyncValue(
+                                        this::isDisallowSameItemInsert,
+                                        this::setDisallowSameItemInsert))
+                                .addTooltip(true, IKey.lang("gregtech.machine.disallow_same_item.enabled"))
+                                .addTooltip(false, IKey.lang("gregtech.machine.disallow_same_item.disabled"))
+                        )
+                );
     }
 
-    @Deprecated
-    protected ModularUI.Builder createGuiTemplate(EntityPlayer player) {
-        RecipeMap<?> workableRecipeMap = workable.getRecipeMap();
-        int yOffset = 0;
-        if (workableRecipeMap.getMaxInputs() >= 6 || workableRecipeMap.getMaxFluidInputs() >= 6 ||
-                workableRecipeMap.getMaxOutputs() >= 6 || workableRecipeMap.getMaxFluidOutputs() >= 6) {
-            yOffset = FONT_HEIGHT;
-        }
 
-        ModularUI.Builder builder = workableRecipeMap.getRecipeMapUI()
-                .createUITemplate(workable::getProgressPercent, importItems, exportItems, importFluids, exportFluids,
-                        yOffset)
-                .widget(new LabelWidget(5, 5, getMetaFullName()))
-                .widget(new SlotWidget(chargerInventory, 0, 79, 62 + yOffset, true, true, false)
-                        .setBackgroundTexture(GuiTextures.SLOT, GuiTextures.CHARGER_OVERLAY)
-                        .setTooltipText("gregtech.gui.charger_slot.tooltip", GTValues.VNF[getTier()],
-                                GTValues.VNF[getTier()]))
-                .widget(new ImageWidget(79, 42 + yOffset, 18, 18, GuiTextures.INDICATOR_NO_ENERGY).setIgnoreColor(true)
-                        .setPredicate(workable::isHasNotEnoughEnergy))
-                .bindPlayerInventory(player.inventory, GuiTextures.SLOT, yOffset);
-
-        int leftButtonStartX = 7;
-
-        if (exportItems.getSlots() > 0) {
-            builder.widget(new ToggleButtonWidget(leftButtonStartX, 62 + yOffset, 18, 18,
-                    GuiTextures.BUTTON_ITEM_OUTPUT, this::isAutoOutputItems, this::setAutoOutputItems)
-                    .setTooltipText("gregtech.gui.item_auto_output.tooltip")
-                    .shouldUseBaseBackground());
-            leftButtonStartX += 18;
-        }
-        if (exportFluids.getTanks() > 0) {
-            builder.widget(new ToggleButtonWidget(leftButtonStartX, 62 + yOffset, 18, 18,
-                    GuiTextures.BUTTON_FLUID_OUTPUT, this::isAutoOutputFluids, this::setAutoOutputFluids)
-                    .setTooltipText("gregtech.gui.fluid_auto_output.tooltip")
-                    .shouldUseBaseBackground());
-        }
-
-        if (exportItems.getSlots() + exportFluids.getTanks() <= 9) {
-            ImageWidget logo = new ImageWidget(152, 63 + yOffset, 17, 17,
-                    GTValues.XMAS.get() ? getXmasLogo() : getLogo()).setIgnoreColor(true);
-
-            if (this.circuitInventory != null) {
-                SlotWidget circuitSlot = new GhostCircuitSlotWidget(circuitInventory, 0, 124, 62 + yOffset)
-                        .setBackgroundTexture(GuiTextures.SLOT, getCircuitSlotOverlay());
-                builder.widget(circuitSlot.setConsumer(this::getCircuitSlotTooltip)).widget(logo);
-            }
-        }
-
-        return builder;
-    }
 
     protected @NotNull TextureArea getLogo() {
         return GuiTextures.GREGTECH_LOGO;

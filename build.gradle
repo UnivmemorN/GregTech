@@ -6,11 +6,12 @@
  * You can also run ./gradlew updateBuildScript to update your buildscript.
  */
 
+
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import com.gtnewhorizons.retrofuturagradle.MinecraftExtension
 import com.gtnewhorizons.retrofuturagradle.mcp.MCPTasks
-import com.gtnewhorizons.retrofuturagradle.minecraft.MinecraftTasks
 import com.gtnewhorizons.retrofuturagradle.mcp.ReobfuscatedJar
+import com.gtnewhorizons.retrofuturagradle.minecraft.MinecraftTasks
 import com.gtnewhorizons.retrofuturagradle.minecraft.RunMinecraftTask
 import com.gtnewhorizons.retrofuturagradle.util.Distribution
 import com.modrinth.minotaur.dependencies.ModDependency
@@ -23,7 +24,6 @@ import org.gradle.api.tasks.testing.logging.TestLogEvent
 import org.gradle.internal.logging.text.StyledTextOutputFactory
 import org.jetbrains.gradle.ext.Gradle
 
-
 import static org.gradle.internal.logging.text.StyledTextOutput.Style
 
 plugins {
@@ -33,7 +33,7 @@ plugins {
     id 'eclipse'
     id 'maven-publish'
     id 'org.jetbrains.gradle.plugin.idea-ext' version '1.1.8'
-    id 'com.gtnewhorizons.retrofuturagradle' version '1.4.0'
+    id 'com.gtnewhorizons.retrofuturagradle' version '1.4.1'
     id 'net.darkhax.curseforgegradle' version '1.1.24' apply false
     id 'com.modrinth.minotaur' version '2.8.7' apply false
     id 'com.palantir.git-version' version '3.0.0' apply false
@@ -507,23 +507,16 @@ dependencies {
 
     compileOnlyApi 'org.jetbrains:annotations:24.1.0'
     annotationProcessor 'org.jetbrains:annotations:24.1.0'
-    patchedMinecraft('net.minecraft:launchwrapper:1.17.2') {
+    /*patchedMinecraft('net.minecraft:launchwrapper:1.17.2') {
         transitive = false
-    }
+    }*/
 
     if ((usesMixins.toBoolean() || forceEnableMixins.toBoolean()) && stripForgeRequirements.toBoolean()) {
         runtimeOnlyNonPublishable 'com.cleanroommc:strip-latest-forge-requirements:1.0'
     }
 
-    if (includeCommonDevEnvMods.toBoolean()) {
-        if (!(modId.equals('jei'))) {
-            implementation 'mezz.jei:jei_1.12.2:4.16.1.302'
-        }
-        if (!(modId.equals('theoneprobe'))) {
-            //noinspection DependencyNotationArgument
-            implementation rfg.deobf('curse.maven:top-245211:2667280') // TOP 1.4.28
-        }
-    }
+    implementation rfg.deobf('curse.maven:had-enough-items-557549:8405357')
+    implementation rfg.deobf('curse.maven:the-one-probe-community-edition-885670:8547575')
 }
 
 pluginManager.withPlugin('org.jetbrains.kotlin.kapt') {

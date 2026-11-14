@@ -10,9 +10,11 @@ import gregtech.api.gui.resources.TextureArea;
 import gregtech.api.items.metaitem.MetaItem;
 import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.metatileentity.SteamMetaTileEntity;
+import gregtech.api.metatileentity.multiblock.nuclear.fission.CoolantRegistry;
+import gregtech.api.metatileentity.multiblock.nuclear.fission.FissionFuelRegistry;
+import gregtech.api.metatileentity.multiblock.nuclear.fission.ModeratorRegistry;
 import gregtech.api.metatileentity.registry.MTERegistry;
 import gregtech.api.modules.GregTechModule;
-import gregtech.api.mui.GregTechGuiTransferHandler;
 import gregtech.api.recipes.Recipe;
 import gregtech.api.recipes.RecipeMap;
 import gregtech.api.recipes.category.GTRecipeCategory;
@@ -34,20 +36,30 @@ import gregtech.common.items.MetaItems;
 import gregtech.common.items.ToolItems;
 import gregtech.common.metatileentities.MetaTileEntities;
 import gregtech.integration.IntegrationSubmodule;
+import gregtech.integration.jei.basic.CoolantCategory;
+import gregtech.integration.jei.basic.CoolantInfo;
+import gregtech.integration.jei.basic.FissionFuelCategory;
+import gregtech.integration.jei.basic.FissionFuelInfo;
 import gregtech.integration.jei.basic.GTFluidVeinCategory;
 import gregtech.integration.jei.basic.GTFluidVeinInfo;
 import gregtech.integration.jei.basic.GTOreCategory;
 import gregtech.integration.jei.basic.GTOreInfo;
 import gregtech.integration.jei.basic.MaterialTree;
 import gregtech.integration.jei.basic.MaterialTreeCategory;
+import gregtech.integration.jei.basic.ModeratorCategory;
+import gregtech.integration.jei.basic.ModeratorInfo;
 import gregtech.integration.jei.basic.OreByProduct;
 import gregtech.integration.jei.basic.OreByProductCategory;
+import gregtech.integration.jei.basic.OreVeinInfoPlugin;
 import gregtech.integration.jei.multiblock.MultiblockInfoCategory;
 import gregtech.integration.jei.recipe.FacadeRegistryPlugin;
 import gregtech.integration.jei.recipe.GTRecipeWrapper;
 import gregtech.integration.jei.recipe.IntCircuitCategory;
 import gregtech.integration.jei.recipe.IntCircuitRecipeWrapper;
 import gregtech.integration.jei.recipe.RecipeMapCategory;
+import gregtech.integration.jei.utils.CollapsibleForestryGroups;
+import gregtech.integration.jei.utils.CollapsibleItemGroups;
+import gregtech.integration.jei.utils.CollapsibleTicGroups;
 import gregtech.integration.jei.utils.MachineSubtypeHandler;
 import gregtech.integration.jei.utils.MetaItemSubtypeHandler;
 import gregtech.integration.jei.utils.ModularUIGuiHandler;
@@ -63,6 +75,7 @@ import net.minecraftforge.fml.common.event.FMLLoadCompleteEvent;
 import net.minecraftforge.fml.relauncher.Side;
 
 import mezz.jei.Internal;
+import mezz.jei.api.ICollapsibleGroupRegistry;
 import mezz.jei.api.IGuiHelper;
 import mezz.jei.api.IJeiHelpers;
 import mezz.jei.api.IJeiRuntime;
@@ -75,6 +88,7 @@ import mezz.jei.api.ingredients.VanillaTypes;
 import mezz.jei.api.recipe.IRecipeCategory;
 import mezz.jei.api.recipe.IRecipeCategoryRegistration;
 import mezz.jei.api.recipe.VanillaRecipeCategoryUid;
+import mezz.jei.api.recipe.transfer.IRecipeTransferHandlerHelper;
 import mezz.jei.config.Constants;
 import mezz.jei.input.IShowsRecipeFocuses;
 import mezz.jei.input.InputHandler;
@@ -93,6 +107,9 @@ import java.util.stream.Stream;
 
 import static gregtech.api.unification.material.info.MaterialFlags.GENERATE_BOLT_SCREW;
 import static gregtech.api.unification.material.info.MaterialFlags.GENERATE_RING;
+import static gregtech.api.util.Mods.Names.FORESTRY;
+import static gregtech.api.util.Mods.Names.TINKERS_CONSTRUCT;
+import static net.minecraftforge.fml.common.Loader.isModLoaded;
 
 @JEIPlugin
 @GregTechModule(
@@ -106,6 +123,80 @@ public class JustEnoughItemsModule extends IntegrationSubmodule implements IModP
     public static IIngredientRegistry ingredientRegistry;
     public static IJeiRuntime jeiRuntime;
     public static IGuiHelper guiHelper;
+    public static IRecipeTransferHandlerHelper transferHelper;
+
+    /**
+     * Comparator to sort certain GT categories to the front or back of the JEI category list.
+     *
+     * @return the comparator
+     */
+    @ApiStatus.Internal
+    public static @NotNull Comparator<IRecipeCategory<?>> getRecipeCategoryComparator() {
+        List<String> backIds = GTRecipeCategory.getCategories().stream()
+                .filter(GTRecipeCategory::shouldSortToBackJEI)
+                .map(GTRecipeCategory::getUniqueID)
+                .collect(Collectors.toCollection(ArrayList::new));
+        backIds.add(IntCircuitCategory.UID);
+        backIds.add(MultiblockInfoCategory.UID);
+        backIds.add(OreByProductCategory.UID);
+        backIds.add(GTOreCategory.UID);
+        backIds.add(GTFluidVeinCategory.UID);
+        List<String> frontIds;
+        if (ConfigHolder.client.preferMaterialTreeInJEI) {
+            frontIds = Collections.singletonList(MaterialTreeCategory.UID);
+        } else {
+            frontIds = Collections.emptyList();
+        }
+
+        return Comparator.<IRecipeCategory<?>>comparingInt(category -> {
+            int index = backIds.indexOf(category.getUid());
+            if (index >= 0) {
+                return index;
+            }
+            return Integer.MIN_VALUE;
+        }).thenComparingInt(category -> {
+            int index = frontIds.indexOf(category.getUid());
+            if (index >= 0) {
+                return index;
+            }
+            return Integer.MAX_VALUE;
+        });
+    }
+
+    /**
+     * Extracted {@link MetaTileEntity} from all {@link MTERegistry} and sorted them.
+     * <p>
+     * This method arrange {@link MetaTileEntity} from additional mods after the ones from GregTech.
+     *
+     * @return the sorted list of all {@link MetaTileEntity}.
+     */
+    @ApiStatus.Internal
+    public static @NotNull List<MetaTileEntity> getAllMetaTileEntities() {
+        List<MetaTileEntity> metaTileEntities = new ArrayList<>();
+        for (MTERegistry mteRegistry : GregTechAPI.mteManager.getRegistries()) {
+            for (ResourceLocation metaTileEntityId : mteRegistry.getKeys()) {
+                MetaTileEntity metaTileEntity = mteRegistry.getObject(metaTileEntityId);
+                if (metaTileEntity != null) {
+                    metaTileEntities.add(metaTileEntity);
+                }
+            }
+        }
+
+        metaTileEntities.sort((a, b) -> {
+            String namespaceA = a.metaTileEntityId.getNamespace();
+            String namespaceB = b.metaTileEntityId.getNamespace();
+
+            boolean isGregTechA = namespaceA.equals(GTValues.MODID);
+            boolean isGregTechB = namespaceB.equals(GTValues.MODID);
+
+            if (isGregTechA && !isGregTechB) return -1;
+            if (!isGregTechA && isGregTechB) return 1;
+
+            return namespaceA.compareTo(namespaceB);
+        });
+
+        return metaTileEntities;
+    }
 
     @Override
     public void loadComplete(FMLLoadCompleteEvent event) {
@@ -132,6 +223,15 @@ public class JustEnoughItemsModule extends IntegrationSubmodule implements IModP
     }
 
     @Override
+    public void registerCollapsibleGroups(@NotNull ICollapsibleGroupRegistry registry) {
+        CollapsibleItemGroups.registerGroups(registry);
+        if(isModLoaded(FORESTRY))
+            CollapsibleForestryGroups.registerGroups(registry);
+        if(isModLoaded(TINKERS_CONSTRUCT))
+            CollapsibleTicGroups.registerGroups(registry);
+    }
+
+    @Override
     public void registerCategories(@NotNull IRecipeCategoryRegistration registry) {
         guiHelper = registry.getJeiHelpers().getGuiHelper();
         registry.addRecipeCategories(new IntCircuitCategory(registry.getJeiHelpers().getGuiHelper()));
@@ -148,6 +248,9 @@ public class JustEnoughItemsModule extends IntegrationSubmodule implements IModP
         registry.addRecipeCategories(new GTOreCategory(registry.getJeiHelpers().getGuiHelper()));
         registry.addRecipeCategories(new GTFluidVeinCategory(registry.getJeiHelpers().getGuiHelper()));
         registry.addRecipeCategories(new MaterialTreeCategory(registry.getJeiHelpers().getGuiHelper()));
+        registry.addRecipeCategories(new CoolantCategory(registry.getJeiHelpers().getGuiHelper()));
+        registry.addRecipeCategories(new FissionFuelCategory(registry.getJeiHelpers().getGuiHelper()));
+        registry.addRecipeCategories(new ModeratorCategory(registry.getJeiHelpers().getGuiHelper()));
     }
 
     @Override
@@ -157,9 +260,12 @@ public class JustEnoughItemsModule extends IntegrationSubmodule implements IModP
         registry.addRecipes(IntCircuitRecipeWrapper.create(), IntCircuitCategory.UID);
         MultiblockInfoCategory.registerRecipes(registry);
         registry.addRecipeRegistryPlugin(new FacadeRegistryPlugin());
+        registry.addRecipeRegistryPlugin(new OreVeinInfoPlugin());
+        registerNuclearRecipes(registry);
 
         // register transfer handler for all categories, but not for the crafting station
         ModularUIGuiHandler modularUIGuiHandler = new ModularUIGuiHandler(jeiHelpers.recipeTransferHandlerHelper());
+        transferHelper = jeiHelpers.recipeTransferHandlerHelper();
         modularUIGuiHandler.blacklistCategory(
                 IntCircuitCategory.UID,
                 MaterialTreeCategory.UID,
@@ -167,10 +273,6 @@ public class JustEnoughItemsModule extends IntegrationSubmodule implements IModP
                 VanillaRecipeCategoryUid.FUEL);
         registry.getRecipeTransferRegistry().addRecipeTransferHandler(modularUIGuiHandler,
                 Constants.UNIVERSAL_RECIPE_TRANSFER_UID);
-
-        // register transfer handler for crafting recipes
-        registry.getRecipeTransferRegistry().addRecipeTransferHandler(new GregTechGuiTransferHandler(
-                jeiHelpers.recipeTransferHandlerHelper()), VanillaRecipeCategoryUid.CRAFTING);
 
         registry.addAdvancedGuiHandlers(modularUIGuiHandler);
         registry.addGhostIngredientHandler(modularUIGuiHandler.getGuiContainerClass(), modularUIGuiHandler);
@@ -233,6 +335,17 @@ public class JustEnoughItemsModule extends IntegrationSubmodule implements IModP
                         }
                     } else if (logic.getRecipeMap() != null) {
                         registerRecipeMapCatalyst(registry, logic.getRecipeMap(), metaTileEntity);
+                    }
+                } else {
+                    // Fallback for machines where CAPABILITY_CONTROLLABLE returns the MTE itself
+                    // (e.g. MetaTileEntityBaseWithControl subclasses) instead of AbstractRecipeLogic.
+                    // Retrieve recipe maps directly from the MTE.
+                    if (metaTileEntity instanceof IMultipleRecipeMaps multiMapMetaTileEntity) {
+                        for (RecipeMap<?> recipeMap : multiMapMetaTileEntity.getAvailableRecipeMaps()) {
+                            registerRecipeMapCatalyst(registry, recipeMap, metaTileEntity);
+                        }
+                    } else if (metaTileEntity.getRecipeMap() != null) {
+                        registerRecipeMapCatalyst(registry, metaTileEntity.getRecipeMap(), metaTileEntity);
                     }
                 }
             }
@@ -306,7 +419,12 @@ public class JustEnoughItemsModule extends IntegrationSubmodule implements IModP
         String fluidVeinSpawnID = GTFluidVeinCategory.UID;
         registry.addRecipes(fluidVeinInfos, fluidVeinSpawnID);
         registry.addRecipeCatalyst(MetaItems.PROSPECTOR_HV.getStackForm(), fluidVeinSpawnID);
+        registry.addRecipeCatalyst(MetaItems.PROSPECTOR_EV.getStackForm(), fluidVeinSpawnID);
+        registry.addRecipeCatalyst(MetaItems.PROSPECTOR_IV.getStackForm(), fluidVeinSpawnID);
         registry.addRecipeCatalyst(MetaItems.PROSPECTOR_LUV.getStackForm(), fluidVeinSpawnID);
+        registry.addRecipeCatalyst(MetaItems.PROSPECTOR_ZPM.getStackForm(), fluidVeinSpawnID);
+        registry.addRecipeCatalyst(MetaItems.PROSPECTOR_UV.getStackForm(), fluidVeinSpawnID);
+        registry.addRecipeCatalyst(MetaItems.PROSPECTOR_UHV.getStackForm(), fluidVeinSpawnID);
         // Fluid Veins End
 
         ingredientRegistry = registry.getIngredientRegistry();
@@ -316,6 +434,7 @@ public class JustEnoughItemsModule extends IntegrationSubmodule implements IModP
         }
 
         registry.addRecipeCatalyst(MetaTileEntities.WORKBENCH.getStackForm(), VanillaRecipeCategoryUid.CRAFTING);
+        registry.addRecipeCatalyst(MetaItems.COVER_CRAFTING.getStackForm(), VanillaRecipeCategoryUid.CRAFTING);
 
         for (MetaTileEntity machine : MetaTileEntities.CANNER) {
             if (machine == null) continue;
@@ -335,6 +454,35 @@ public class JustEnoughItemsModule extends IntegrationSubmodule implements IModP
 
         // Refresh Ore Ingredients Cache
         GTRecipeOreInput.refreshStackCache();
+
+        transferHelper = jeiHelpers.recipeTransferHandlerHelper();
+    }
+
+    private static void registerNuclearRecipes(IModRegistry registry) {
+        Collection<ItemStack> fissionFuels = FissionFuelRegistry.getAllFissionableRods();
+        List<FissionFuelInfo> fissionFuelInfos = new ArrayList<>();
+        for (ItemStack fuel : fissionFuels) {
+            fissionFuelInfos.add(new FissionFuelInfo(fuel));
+        }
+        registry.addRecipes(fissionFuelInfos, FissionFuelCategory.UID);
+        registry.addRecipeCatalyst(MetaTileEntities.FISSION_REACTOR.getStackForm(), FissionFuelCategory.UID);
+
+        Collection<net.minecraftforge.fluids.Fluid> coolants = CoolantRegistry.getAllCoolants();
+        List<CoolantInfo> coolantInfos = new ArrayList<>();
+        for (net.minecraftforge.fluids.Fluid coolant : coolants) {
+            coolantInfos.add(new CoolantInfo(coolant, CoolantRegistry.getCoolant(coolant).getHotCoolant()));
+        }
+        registry.addRecipes(coolantInfos, CoolantCategory.UID);
+        registry.addRecipeCatalyst(MetaTileEntities.FISSION_REACTOR.getStackForm(), CoolantCategory.UID);
+
+        Collection<ModeratorRegistry.ModeratorInfo> moderators = ModeratorRegistry.getAllModerators();
+        List<ModeratorInfo> moderatorInfos = new ArrayList<>();
+        for (ModeratorRegistry.ModeratorInfo moderator : moderators) {
+            moderatorInfos.add(new ModeratorInfo(moderator.getRegistryName(), moderator.getMeta()));
+        }
+        registry.addRecipes(moderatorInfos, ModeratorCategory.UID);
+        registry.addRecipeCatalyst(MetaTileEntities.FISSION_REACTOR.getStackForm(), ModeratorCategory.UID);
+        registry.addRecipeCatalyst(MetaTileEntities.MODERATOR_PORT.getStackForm(), ModeratorCategory.UID);
     }
 
     private void setupInputHandler() {
@@ -386,79 +534,6 @@ public class JustEnoughItemsModule extends IntegrationSubmodule implements IModP
                 jeiCategory.setIcon(icon);
             }
         }
-    }
-
-    /**
-     * Comparator to sort certain GT categories to the front or back of the JEI category list.
-     *
-     * @return the comparator
-     */
-    @ApiStatus.Internal
-    public static @NotNull Comparator<IRecipeCategory<?>> getRecipeCategoryComparator() {
-        List<String> backIds = GTRecipeCategory.getCategories().stream()
-                .filter(GTRecipeCategory::shouldSortToBackJEI)
-                .map(GTRecipeCategory::getUniqueID)
-                .collect(Collectors.toCollection(ArrayList::new));
-        backIds.add(IntCircuitCategory.UID);
-        backIds.add(MultiblockInfoCategory.UID);
-        backIds.add(OreByProductCategory.UID);
-        backIds.add(GTOreCategory.UID);
-        backIds.add(GTFluidVeinCategory.UID);
-        List<String> frontIds;
-        if (ConfigHolder.client.preferMaterialTreeInJEI) {
-            frontIds = Collections.singletonList(MaterialTreeCategory.UID);
-        } else {
-            frontIds = Collections.emptyList();
-        }
-
-        return Comparator.<IRecipeCategory<?>>comparingInt(category -> {
-            int index = backIds.indexOf(category.getUid());
-            if (index >= 0) {
-                return index;
-            }
-            return Integer.MIN_VALUE;
-        }).thenComparingInt(category -> {
-            int index = frontIds.indexOf(category.getUid());
-            if (index >= 0) {
-                return index;
-            }
-            return Integer.MAX_VALUE;
-        });
-    }
-
-    /**
-     * Extracted {@link MetaTileEntity} from all {@link MTERegistry} and sorted them.
-     * <p>
-     * This method arrange {@link MetaTileEntity} from additional mods after the ones from GregTech.
-     *
-     * @return the sorted list of all {@link MetaTileEntity}.
-     */
-    @ApiStatus.Internal
-    public static @NotNull List<MetaTileEntity> getAllMetaTileEntities() {
-        List<MetaTileEntity> metaTileEntities = new ArrayList<>();
-        for (MTERegistry mteRegistry : GregTechAPI.mteManager.getRegistries()) {
-            for (ResourceLocation metaTileEntityId : mteRegistry.getKeys()) {
-                MetaTileEntity metaTileEntity = mteRegistry.getObject(metaTileEntityId);
-                if (metaTileEntity != null) {
-                    metaTileEntities.add(metaTileEntity);
-                }
-            }
-        }
-
-        metaTileEntities.sort((a, b) -> {
-            String namespaceA = a.metaTileEntityId.getNamespace();
-            String namespaceB = b.metaTileEntityId.getNamespace();
-
-            boolean isGregTechA = namespaceA.equals(GTValues.MODID);
-            boolean isGregTechB = namespaceB.equals(GTValues.MODID);
-
-            if (isGregTechA && !isGregTechB) return -1;
-            if (!isGregTechA && isGregTechB) return 1;
-
-            return namespaceA.compareTo(namespaceB);
-        });
-
-        return metaTileEntities;
     }
 
 }

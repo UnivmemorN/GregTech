@@ -4,14 +4,12 @@ import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.metatileentity.multiblock.AbilityInstances;
 import gregtech.api.metatileentity.multiblock.MultiblockAbility;
-import gregtech.api.metatileentity.multiblock.MultiblockControllerBase;
 import gregtech.api.mui.GTGuiTheme;
 import gregtech.api.mui.GTGuis;
 import gregtech.client.renderer.ICubeRenderer;
 import gregtech.client.renderer.texture.Textures;
 import gregtech.client.renderer.texture.cube.SimpleOverlayRenderer;
 import gregtech.client.utils.TooltipHelper;
-import gregtech.common.ConfigHolder;
 import gregtech.common.metatileentities.multi.multiblockpart.MetaTileEntityItemBus;
 
 import net.minecraft.client.resources.I18n;
@@ -27,10 +25,11 @@ import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.SyncHandlers;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.layout.Grid;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -38,8 +37,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MetaTileEntitySteamItemBus extends MetaTileEntityItemBus {
-
-    private static final boolean IS_STEEL = ConfigHolder.machines.steelSteamMultiblocks;
 
     public MetaTileEntitySteamItemBus(ResourceLocation metaTileEntityId, boolean isExportHatch) {
         super(metaTileEntityId, 1, isExportHatch);
@@ -61,13 +58,11 @@ public class MetaTileEntitySteamItemBus extends MetaTileEntityItemBus {
         abilityInstances.add(isExportHatch ? this.exportItems : this.importItems);
     }
 
-    // Override base texture to have a bus with 4 slots, but ULV textures
     @Override
     public ICubeRenderer getBaseTexture() {
-        MultiblockControllerBase controller = getController();
-        if (controller == null)
-            return IS_STEEL ? Textures.STEAM_CASING_STEEL : Textures.STEAM_CASING_BRONZE;
-        return controller.getBaseTexture(this);
+        if(getController()==null)
+            return Textures.STEAM_CASING_BRONZE;
+        return super.getBaseTexture();
     }
 
     @Override
@@ -83,11 +78,15 @@ public class MetaTileEntitySteamItemBus extends MetaTileEntityItemBus {
         if (this.shouldRenderOverlay()) {
             SimpleOverlayRenderer renderer = this.isExportHatch ? Textures.PIPE_OUT_OVERLAY : Textures.PIPE_IN_OVERLAY;
             renderer.renderSided(this.getFrontFacing(), renderState, translation, pipeline);
+            Textures.PIPE_ITEM_OVERLAY.renderSided(getFrontFacing(), renderState, translation, pipeline);
+            SimpleOverlayRenderer overlay = isExportHatch ? Textures.ITEM_HATCH_OUTPUT_OVERLAY :
+                    Textures.ITEM_HATCH_INPUT_OVERLAY;
+            overlay.renderSided(getFrontFacing(), renderState, translation, pipeline);
         }
     }
 
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
         guiSyncManager.registerSlotGroup("item_inv", 2);
 
         List<List<IWidget>> widgets = new ArrayList<>();
@@ -96,7 +95,7 @@ public class MetaTileEntitySteamItemBus extends MetaTileEntityItemBus {
             for (int j = 0; j < 2; j++) {
                 widgets.get(i)
                         .add(new ItemSlot()
-                                .slot(SyncHandlers.itemSlot(isExportHatch ? exportItems : importItems, i * 2 + j)
+                                .slot(new ModularSlot(isExportHatch ? exportItems : importItems, i * 2 + j)
                                         .slotGroup("item_inv")
                                         .accessibility(!isExportHatch, true)));
             }
@@ -120,7 +119,7 @@ public class MetaTileEntitySteamItemBus extends MetaTileEntityItemBus {
 
     @Override
     public GTGuiTheme getUITheme() {
-        return IS_STEEL ? GTGuiTheme.STEEL : GTGuiTheme.BRONZE;
+        return GTGuiTheme.BRONZE;
     }
 
     @Override

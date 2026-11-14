@@ -3,6 +3,8 @@ package gregtech.common;
 import gregtech.api.GTValues;
 import gregtech.api.GregTechAPI;
 import gregtech.api.block.VariantItemBlock;
+import gregtech.api.block.coil.CoilRegistry;
+import gregtech.api.block.coil.CustomCoilBlock;
 import gregtech.api.block.machines.MachineItemBlock;
 import gregtech.api.cover.CoverDefinition;
 import gregtech.api.items.metaitem.MetaItem;
@@ -22,35 +24,46 @@ import gregtech.api.unification.ore.StoneType;
 import gregtech.api.unification.stack.RecyclingData;
 import gregtech.api.util.AssemblyLineManager;
 import gregtech.api.util.GTLog;
-import gregtech.api.util.GTUtility;
 import gregtech.common.blocks.BlockCompressed;
 import gregtech.common.blocks.BlockFrame;
 import gregtech.common.blocks.BlockLamp;
+import gregtech.common.blocks.BlockLeanOre;
 import gregtech.common.blocks.BlockOre;
+import gregtech.common.blocks.BlockSheet;
 import gregtech.common.blocks.BlockSurfaceRock;
 import gregtech.common.blocks.LampItemBlock;
+import gregtech.common.blocks.LeanOreItemBlock;
 import gregtech.common.blocks.MaterialItemBlock;
 import gregtech.common.blocks.MetaBlocks;
 import gregtech.common.blocks.OreItemBlock;
 import gregtech.common.blocks.StoneVariantBlock;
+import gregtech.common.covers.GTQTCoverBehavior;
 import gregtech.common.items.MetaItems;
 import gregtech.common.items.ToolItems;
+import gregtech.common.network.NetworkHandler;
+import gregtech.common.network.multiblock.ClearMoverPreviewPacket;
+import gregtech.common.network.multiblock.StartMoverPreviewPacket;
 import gregtech.common.pipelike.cable.BlockCable;
 import gregtech.common.pipelike.cable.ItemBlockCable;
 import gregtech.common.pipelike.fluidpipe.BlockFluidPipe;
 import gregtech.common.pipelike.fluidpipe.ItemBlockFluidPipe;
+import gregtech.common.pipelike.heat.BlockHeatConductor;
+import gregtech.common.pipelike.heat.ItemBlockHeatConductor;
 import gregtech.common.pipelike.itempipe.BlockItemPipe;
 import gregtech.common.pipelike.itempipe.ItemBlockItemPipe;
 import gregtech.common.pipelike.laser.BlockLaserPipe;
 import gregtech.common.pipelike.laser.ItemBlockLaserPipe;
 import gregtech.common.pipelike.optical.BlockOpticalPipe;
 import gregtech.common.pipelike.optical.ItemBlockOpticalPipe;
-import gregtech.datafix.GTDataFixers;
+import gregtech.common.villager.VillageEngineersHouse;
+import gregtech.common.villager.VillagerHandler;
+import gregtech.common.wireless.WirelessEnergyServiceImpl;
 import gregtech.integration.groovy.GroovyScriptModule;
 import gregtech.loaders.MaterialInfoLoader;
 import gregtech.loaders.OreDictionaryLoader;
 import gregtech.loaders.recipe.CraftingComponent;
 import gregtech.loaders.recipe.GTRecipeManager;
+import gregtech.loaders.recipe.RecipeManager;
 import gregtech.modules.GregTechModules;
 
 import net.minecraft.block.Block;
@@ -61,6 +74,7 @@ import net.minecraft.item.ItemSlab;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.IRecipe;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.world.gen.structure.MapGenStructureIO;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.config.Config.Type;
 import net.minecraftforge.common.config.ConfigManager;
@@ -73,19 +87,17 @@ import net.minecraftforge.fml.common.LoaderState;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.registry.VillagerRegistry;
 import net.minecraftforge.registries.IForgeRegistry;
 
-import gtqt.common.GTQTCommonProxy;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.function.Function;
 
-import static gregtech.api.color.ColoredBlockContainer.registerCEuContainers;
 import static gregtech.common.blocks.MetaBlocks.*;
 import static net.minecraft.init.Blocks.DIAMOND_BLOCK;
-import static net.minecraft.util.text.TextFormatting.AQUA;
 
 @Mod.EventBusSubscriber(modid = GTValues.MODID)
 public class CommonProxy {
@@ -101,18 +113,32 @@ public class CommonProxy {
             }
         }
 
+        for (CoilRegistry r : GregTechAPI.coilManager.getRegistries()) {
+            for (CustomCoilBlock block : r) {
+                registry.register(block);
+            }
+        }
+
         StoneType.init();
 
         for (MaterialRegistry materialRegistry : GregTechAPI.materialManager.getRegistries()) {
             for (Material material : materialRegistry) {
                 if (material.hasProperty(PropertyKey.ORE) && !material.hasFlag(MaterialFlags.DISABLE_ORE_BLOCK)) {
                     createOreBlock(material);
+                    createLeanOreBlock(material);
                 }
 
                 if (material.hasProperty(PropertyKey.WIRE)) {
                     for (BlockCable cable : CABLES.get(materialRegistry.getModid())) {
                         if (cable.isValidPipeMaterial(material)) {
                             cable.addPipeMaterial(material, material.getProperty(PropertyKey.WIRE));
+                        }
+                    }
+                }
+                if (material.hasProperty(PropertyKey.HEAT_CONDUCTOR)) {
+                    for (BlockHeatConductor pipe : HEAT_CONDUCTOR.get(materialRegistry.getModid())) {
+                        if (pipe.isValidPipeMaterial(material)) {
+                            pipe.addPipeMaterial(material, material.getProperty(PropertyKey.HEAT_CONDUCTOR));
                         }
                     }
                 }
@@ -130,10 +156,23 @@ public class CommonProxy {
                         }
                     }
                 }
+                if (material.hasProperty(PropertyKey.OPTICAL_CABLE)) {
+                    for (BlockOpticalPipe pipe : OPTICAL_PIPES.get(materialRegistry.getModid())) {
+                        if (pipe.isValidPipeMaterial(material)) {
+                            pipe.addPipeMaterial(material, material.getProperty(PropertyKey.OPTICAL_CABLE));
+                        }
+                    }
+                }
             }
+
             for (BlockCable cable : CABLES.get(materialRegistry.getModid())) {
                 if (!cable.getEnabledMaterials().isEmpty()) {
                     registry.register(cable);
+                }
+            }
+            for (BlockHeatConductor pipe : HEAT_CONDUCTOR.get(materialRegistry.getModid())) {
+                if (!pipe.getEnabledMaterials().isEmpty()) {
+                    registry.register(pipe);
                 }
             }
             for (BlockFluidPipe pipe : FLUID_PIPES.get(materialRegistry.getModid())) {
@@ -146,8 +185,12 @@ public class CommonProxy {
                     registry.register(pipe);
                 }
             }
+            for (BlockOpticalPipe pipe : OPTICAL_PIPES.get(materialRegistry.getModid())) {
+                if (!pipe.getEnabledMaterials().isEmpty()) {
+                    registry.register(pipe);
+                }
+            }
         }
-        for (BlockOpticalPipe pipe : OPTICAL_PIPES) registry.register(pipe);
         for (BlockLaserPipe pipe : LASER_PIPES) registry.register(pipe);
 
         registry.register(LD_ITEM_PIPE);
@@ -156,6 +199,12 @@ public class CommonProxy {
         registry.register(CLEANROOM_CASING);
         registry.register(COMPUTER_CASING);
         registry.register(BATTERY_BLOCK);
+        registry.register(UNIQUE_CASING);
+        registry.register(LARGE_MULTIBLOCK_CASING);
+        // Forge of the Gods blocks
+        registry.register(GODFORGE_CASING);
+        registry.register(GODFORGE_GLASS);
+        registry.register(GODFORGE_RENDER);
         registry.register(FOAM);
         registry.register(REINFORCED_FOAM);
         registry.register(PETRIFIED_FOAM);
@@ -173,8 +222,9 @@ public class CommonProxy {
         registry.register(WARNING_SIGN);
         registry.register(WARNING_SIGN_1);
         registry.register(ASPHALT);
-        for (StoneVariantBlock block : STONE_BLOCKS.values()) registry.register(block);
         registry.register(RUBBER_LOG);
+        registry.register(TREE_TAP);
+        registry.register(BEDROCK_FLUID_SPRING);
         registry.register(RUBBER_LEAVES);
         registry.register(RUBBER_SAPLING);
         registry.register(PLANKS);
@@ -195,13 +245,21 @@ public class CommonProxy {
         registry.register(LARGE_METAL_SHEET);
         registry.register(STUDS);
 
+        for (StoneVariantBlock block : STONE_BLOCKS.values()) registry.register(block);
         for (BlockLamp block : LAMPS.values()) registry.register(block);
         for (BlockLamp block : BORDERLESS_LAMPS.values()) registry.register(block);
-
         for (BlockCompressed block : COMPRESSED_BLOCKS) registry.register(block);
         for (BlockFrame block : FRAME_BLOCKS) registry.register(block);
+        for (BlockSheet block : SHEET_BLOCKS) registry.register(block);
         for (BlockSurfaceRock block : SURFACE_ROCK_BLOCKS) registry.register(block);
         for (BlockOre block : ORES) registry.register(block);
+        for (BlockLeanOre block : LEAN_ORES) registry.register(block);
+
+        registry.register(FISSION_CASING);
+        registry.register(NUCLEAR_CASING);
+        registry.register(GAS_CENTRIFUGE_CASING);
+        registry.register(PANELLING);
+        registry.register(NUCLEAR_REACTOR_CASING);
     }
 
     private static void createOreBlock(Material material) {
@@ -233,6 +291,27 @@ public class CommonProxy {
         ORES.add(block);
     }
 
+    private static void createLeanOreBlock(Material material) {
+        StoneType[] stoneTypeBuffer = new StoneType[16];
+        int generationIndex = 0;
+        for (StoneType stoneType : StoneType.STONE_TYPE_REGISTRY) {
+            int id = StoneType.STONE_TYPE_REGISTRY.getIDForObject(stoneType), index = id / 16;
+            if (index > generationIndex) {
+                createLeanOreBlock(material, copyNotNull(stoneTypeBuffer), generationIndex);
+                Arrays.fill(stoneTypeBuffer, null);
+            }
+            stoneTypeBuffer[id % 16] = stoneType;
+            generationIndex = index;
+        }
+        createLeanOreBlock(material, copyNotNull(stoneTypeBuffer), generationIndex);
+    }
+
+    private static void createLeanOreBlock(Material material, StoneType[] stoneTypes, int index) {
+        BlockLeanOre block = new BlockLeanOre(material, stoneTypes);
+        block.setRegistryName("ore_lean_" + material + "_" + index);
+        LEAN_ORES.add(block);
+    }
+
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void registerBlocksLast(RegistryEvent.Register<Block> event) {
         // last chance for mods to register their potion types is here
@@ -240,13 +319,8 @@ public class CommonProxy {
     }
 
     @SubscribeEvent
-    public static void registerRecipeHandlers(RegistryEvent.Register<IRecipe> event) {
-        GTQTCommonProxy.registerRecipeHandlers(event);
-    }
-
-    @SubscribeEvent
     public static void registerCoverBehavior(GregTechAPI.RegisterEvent<CoverDefinition> event) {
-        GTQTCommonProxy.registerCoverBehavior();
+        GTQTCoverBehavior.init();
     }
 
     @SubscribeEvent
@@ -277,6 +351,11 @@ public class CommonProxy {
                     registry.register(createItemBlock(cable, ItemBlockCable::new));
                 }
             }
+            for (BlockHeatConductor pipe : HEAT_CONDUCTOR.get(materialRegistry.getModid())) {
+                if (!pipe.getEnabledMaterials().isEmpty()) {
+                    registry.register(createItemBlock(pipe, ItemBlockHeatConductor::new));
+                }
+            }
             for (BlockFluidPipe pipe : FLUID_PIPES.get(materialRegistry.getModid())) {
                 if (!pipe.getEnabledMaterials().isEmpty()) {
                     registry.register(createItemBlock(pipe, ItemBlockFluidPipe::new));
@@ -287,8 +366,12 @@ public class CommonProxy {
                     registry.register(createItemBlock(pipe, ItemBlockItemPipe::new));
                 }
             }
+            for (BlockOpticalPipe pipe : OPTICAL_PIPES.get(materialRegistry.getModid())) {
+                if (!pipe.getEnabledMaterials().isEmpty()) {
+                    registry.register(createItemBlock(pipe, ItemBlockOpticalPipe::new));
+                }
+            }
         }
-        for (BlockOpticalPipe pipe : OPTICAL_PIPES) registry.register(createItemBlock(pipe, ItemBlockOpticalPipe::new));
         for (BlockLaserPipe pipe : LASER_PIPES) registry.register(createItemBlock(pipe, ItemBlockLaserPipe::new));
 
         registry.register(createItemBlock(LD_ITEM_PIPE, ItemBlock::new));
@@ -297,6 +380,11 @@ public class CommonProxy {
         registry.register(createItemBlock(CLEANROOM_CASING, VariantItemBlock::new));
         registry.register(createItemBlock(COMPUTER_CASING, VariantItemBlock::new));
         registry.register(createItemBlock(BATTERY_BLOCK, VariantItemBlock::new));
+        registry.register(createItemBlock(UNIQUE_CASING, VariantItemBlock::new));
+        registry.register(createItemBlock(LARGE_MULTIBLOCK_CASING, VariantItemBlock::new));
+        // Forge of the Gods blocks
+        registry.register(createItemBlock(GODFORGE_CASING, VariantItemBlock::new));
+        registry.register(createItemBlock(GODFORGE_GLASS, VariantItemBlock::new));
         registry.register(createItemBlock(BOILER_CASING, VariantItemBlock::new));
         registry.register(createItemBlock(BOILER_FIREBOX_CASING, VariantItemBlock::new));
         registry.register(createItemBlock(METAL_CASING, VariantItemBlock::new));
@@ -305,6 +393,13 @@ public class CommonProxy {
         registry.register(createItemBlock(STEAM_CASING, VariantItemBlock::new));
         registry.register(createItemBlock(MULTIBLOCK_CASING, VariantItemBlock::new));
         registry.register(createItemBlock(TRANSPARENT_CASING, VariantItemBlock::new));
+
+        for (CoilRegistry coilRegistry : GregTechAPI.coilManager.getRegistries()) {
+            for (CustomCoilBlock block : coilRegistry) {
+                registry.register(createItemBlock(block, VariantItemBlock::new));
+            }
+        }
+
         registry.register(createItemBlock(WIRE_COIL, VariantItemBlock::new));
         registry.register(createItemBlock(FUSION_CASING, VariantItemBlock::new));
         registry.register(createItemBlock(WARNING_SIGN, VariantItemBlock::new));
@@ -330,6 +425,7 @@ public class CommonProxy {
         registry.register(createItemBlock(TREATED_WOOD_FENCE, ItemBlock::new));
         registry.register(createItemBlock(RUBBER_WOOD_FENCE_GATE, ItemBlock::new));
         registry.register(createItemBlock(TREATED_WOOD_FENCE_GATE, ItemBlock::new));
+        registry.register(createItemBlock(BEDROCK_FLUID_SPRING, ItemBlock::new));
         registry.register(createItemBlock(BRITTLE_CHARCOAL, ItemBlock::new));
         registry.register(createItemBlock(RUBBER_LOG, ItemBlock::new));
         registry.register(createItemBlock(RUBBER_LEAVES, ItemBlock::new));
@@ -343,9 +439,21 @@ public class CommonProxy {
         for (BlockFrame block : FRAME_BLOCKS) {
             registry.register(createItemBlock(block, b -> new MaterialItemBlock(b, OrePrefix.frameGt)));
         }
+        for (BlockSheet block : SHEET_BLOCKS) {
+            registry.register(createItemBlock(block, b -> new MaterialItemBlock(b, OrePrefix.sheet)));
+        }
         for (BlockOre block : ORES) {
             registry.register(createItemBlock(block, OreItemBlock::new));
         }
+        for (BlockLeanOre block : LEAN_ORES) {
+            registry.register(createItemBlock(block, LeanOreItemBlock::new));
+        }
+
+        registry.register(createItemBlock(FISSION_CASING, VariantItemBlock::new));
+        registry.register(createItemBlock(NUCLEAR_CASING, VariantItemBlock::new));
+        registry.register(createItemBlock(GAS_CENTRIFUGE_CASING, VariantItemBlock::new));
+        registry.register(createItemBlock(PANELLING, VariantItemBlock::new));
+        registry.register(createItemBlock(NUCLEAR_REACTOR_CASING, VariantItemBlock::new));
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -381,7 +489,8 @@ public class CommonProxy {
         GTLog.logger.info("Registering recipes...");
 
         GTRecipeManager.load();
-        GTQTCommonProxy.registerRecipes();
+        RecipeManager.register();
+        VillagerHandler.registerTrade();
     }
 
     // this is called almost last, to make sure all mods registered their ore dictionary
@@ -450,13 +559,13 @@ public class CommonProxy {
     }
 
     public void onPreLoad() {
-        GTQTCommonProxy.preInit();
+        NetworkHandler.registerMessages();
     }
 
     public void onLoad() {
-        GTDataFixers.init();
-        GTQTCommonProxy.init();
-        registerCEuContainers();
+        MapGenStructureIO.registerStructureComponent(VillageEngineersHouse.class, "gtqt:village_engineers_house");
+        VillagerRegistry.instance().registerVillageCreationHandler(new VillageEngineersHouse.VillageManager());
+        MinecraftForge.EVENT_BUS.register(new WirelessEnergyServiceImpl());
     }
 
     public void onPostLoad() {
@@ -483,4 +592,8 @@ public class CommonProxy {
     public boolean isFancyGraphics() {
         return true;
     }
+
+    public void startMultiblockMoverPreview(StartMoverPreviewPacket packet) {}
+
+    public void clearMultiblockMoverPreview(ClearMoverPreviewPacket packet) {}
 }

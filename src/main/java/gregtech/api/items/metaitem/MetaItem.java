@@ -21,10 +21,13 @@ import gregtech.api.items.metaitem.stats.IItemComponent;
 import gregtech.api.items.metaitem.stats.IItemContainerItemProvider;
 import gregtech.api.items.metaitem.stats.IItemDurabilityManager;
 import gregtech.api.items.metaitem.stats.IItemMaxStackSizeProvider;
+import gregtech.api.items.metaitem.stats.IItemModelDispatcher;
 import gregtech.api.items.metaitem.stats.IItemNameProvider;
+import gregtech.api.items.metaitem.stats.IItemRenderer;
+import gregtech.api.items.metaitem.stats.IItemRendererManager;
 import gregtech.api.items.metaitem.stats.IItemUseManager;
+import gregtech.api.items.metaitem.stats.IMouseEventHandler;
 import gregtech.api.items.metaitem.stats.ISubItemHandler;
-import gregtech.api.recipes.ingredients.IntCircuitIngredient;
 import gregtech.api.unification.OreDictUnifier;
 import gregtech.api.unification.material.Material;
 import gregtech.api.unification.ore.OrePrefix;
@@ -74,6 +77,10 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import net.minecraftforge.items.ItemHandlerHelper;
 import net.minecraftforge.oredict.OreDictionary;
 
+import com.cleanroommc.modularui.factory.HandGuiData;
+import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
+import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.enderio.core.common.interfaces.IOverlayRenderAware;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
@@ -99,7 +106,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import gregtech.api.items.metaitem.stats.IMouseEventHandler;
+
 /**
  * MetaItem is item that can have up to Short.MAX_VALUE items inside one id. These items even can be edible, have custom
  * behaviours, be electric or act like fluid containers! They can also have different burn time, plus be handheld,
@@ -159,6 +166,7 @@ public abstract class MetaItem<T extends MetaItem<?>.MetaValueItem> extends Item
                 ModelResourceLocation[] resourceLocations = new ModelResourceLocation[numberOfModels];
                 for (int i = 0; i < resourceLocations.length; i++) {
                     ResourceLocation resourceLocation = createItemModelPath(metaValueItem, "/" + (i + 1));
+                    registerItemRenderer(metaValueItem, resourceLocation);
                     ModelBakery.registerItemVariants(this, resourceLocation);
                     resourceLocations[i] = new ModelResourceLocation(resourceLocation, "inventory");
                 }
@@ -166,12 +174,19 @@ public abstract class MetaItem<T extends MetaItem<?>.MetaValueItem> extends Item
                 continue;
             }
             ResourceLocation resourceLocation = createItemModelPath(metaValueItem, "");
+            registerItemRenderer(metaValueItem, resourceLocation);
             if (numberOfModels > 0) {
                 ModelBakery.registerItemVariants(this, resourceLocation);
             }
             metaItemsModels.put((short) (metaItemOffset + itemMetaKey),
                     new ModelResourceLocation(resourceLocation, "inventory"));
         }
+    }
+
+    @SideOnly(Side.CLIENT)
+    private void registerItemRenderer(T metaValueItem, ResourceLocation location) {
+        IItemRendererManager renderer = metaValueItem.getRendererManager();
+        if (renderer != null) renderer.onRendererRegistry(location);
     }
 
     @SideOnly(Side.CLIENT)
@@ -197,20 +212,19 @@ public abstract class MetaItem<T extends MetaItem<?>.MetaValueItem> extends Item
         return "metaitems/" + metaValueItem.unlocalizedName;
     }
 
-    protected int getModelIndex(ItemStack itemStack) {
+    public int getModelIndex(ItemStack itemStack) {
         T metaValueItem = getItem(itemStack);
+        Objects.requireNonNull(metaValueItem);
 
-        // Electric Items
-        IElectricItem electricItem = itemStack.getCapability(GregtechCapabilities.CAPABILITY_ELECTRIC_ITEM, null);
-        if (electricItem != null) {
-            return (int) Math.min(((electricItem.getCharge() / (electricItem.getMaxCharge() * 1.0)) * 7), 7);
-        }
+        var modelDispatcher = metaValueItem.getItemModelDispatcher();
+        if (modelDispatcher == null) return 0;
 
-        // Integrated (Config) Circuit
-        if (metaValueItem != null) {
-            return IntCircuitIngredient.getCircuitConfiguration(itemStack);
-        }
-        return 0;
+        int maxIndex = metaValueItem.getModelAmount() - 1;
+        int index = modelDispatcher.getModelIndex(itemStack, maxIndex);
+        Validate.inclusiveBetween(0, maxIndex, index,
+                "Model index should be in range from 0 to %d (inclusive), where %d is supplied", maxIndex, index);
+
+        return index;
     }
 
     @SideOnly(Side.CLIENT)
@@ -243,6 +257,12 @@ public abstract class MetaItem<T extends MetaItem<?>.MetaValueItem> extends Item
         T metaValueItem = getItem(stack);
         if (metaValueItem != null && metaValueItem.getRarity() != null) return metaValueItem.getRarity();
         else return super.getRarity(stack);
+    }
+
+    public int getTier(ItemStack stack) {
+        T metaValueItem = getItem(stack);
+        if (metaValueItem != null) return metaValueItem.getTier();
+        else return 1;
     }
 
     protected abstract T constructMetaValueItem(short metaValue, String unlocalizedName);
@@ -767,13 +787,27 @@ public abstract class MetaItem<T extends MetaItem<?>.MetaValueItem> extends Item
         return uiFactory == null ? null : uiFactory.createUI(holder, entityPlayer);
     }
 
+    /**
+     * The ModularUI 2 counterpart of {@link #createUI(PlayerInventoryHolder, EntityPlayer)}, so that sub items can
+     * provide their UI with MUI2. Such an UI is opened with
+     * {@code ItemGuiFactory.INSTANCE.open(EntityPlayerMP, EnumHand)}.
+     */
+    @Nullable
+    @Override
+    public ModularPanel buildUI(@NotNull HandGuiData guiData, @NotNull PanelSyncManager guiSyncManager,
+                                @NotNull UISettings settings) {
+        T metaValueItem = getItem(guiData.getUsedItemStack());
+        ItemUIFactory uiFactory = metaValueItem == null ? null : metaValueItem.getUIManager();
+        return uiFactory == null ? null : uiFactory.buildUI(guiData, guiSyncManager, settings);
+    }
+
     // IOverlayRenderAware
     @Override
     public void renderItemOverlayIntoGUI(@NotNull ItemStack stack, int xPosition, int yPosition) {
         ToolChargeBarRenderer.renderBarsItem(this, stack, xPosition, yPosition);
     }
 
-    public class MetaValueItem {
+    public class MetaValueItem implements IItemRenderer {
 
         public MetaItem<T> getMetaItem() {
             return MetaItem.this;
@@ -795,8 +829,11 @@ public abstract class MetaItem<T extends MetaItem<?>.MetaValueItem> extends Item
         private IItemColorProvider colorProvider;
         private IItemDurabilityManager durabilityManager;
         private IEnchantabilityHelper enchantabilityHelper;
+        private IItemModelDispatcher itemModelDispatcher;
+        private IItemRendererManager rendererManager;
         private IMouseEventHandler mouseEventHandler;
         private EnumRarity rarity;
+        private int tier = 0;
 
         private int burnValue = 0;
         private int maxStackSize = 64;
@@ -892,6 +929,11 @@ public abstract class MetaItem<T extends MetaItem<?>.MetaValueItem> extends Item
             return this;
         }
 
+        public MetaValueItem setTier(int tier) {
+            this.tier = tier;
+            return this;
+        }
+
         public MetaValueItem addComponents(IItemComponent... stats) {
             addItemComponentsInternal(stats);
             return this;
@@ -936,12 +978,29 @@ public abstract class MetaItem<T extends MetaItem<?>.MetaValueItem> extends Item
                 if (itemComponent instanceof IEnchantabilityHelper iEnchantabilityHelper) {
                     this.enchantabilityHelper = iEnchantabilityHelper;
                 }
+                if (itemComponent instanceof IItemModelDispatcher iItemModelDispatcher) {
+                    this.itemModelDispatcher = iItemModelDispatcher;
+                }
                 // noinspection PatternVariableHidesField
                 if (itemComponent instanceof IMouseEventHandler mouseEventHandler) {
                     this.mouseEventHandler = mouseEventHandler;
                 }
+                if (itemComponent instanceof IItemRendererManager rendererManager) {
+                    this.rendererManager = rendererManager;
+                }
                 this.allStats.add(itemComponent);
             }
+        }
+
+        @Override
+        @Nullable
+        public IItemRendererManager getRendererManager() {
+            return rendererManager;
+        }
+
+        @Nullable
+        public IItemModelDispatcher getItemModelDispatcher() {
+            return itemModelDispatcher;
         }
 
         public int getMetaValue() {
@@ -1023,6 +1082,10 @@ public abstract class MetaItem<T extends MetaItem<?>.MetaValueItem> extends Item
 
         public EnumRarity getRarity() {
             return rarity;
+        }
+
+        public int getTier() {
+            return tier;
         }
 
         public ItemStack getStackForm(int amount) {

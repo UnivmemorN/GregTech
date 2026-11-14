@@ -32,9 +32,11 @@ import codechicken.lib.render.pipeline.IVertexOperation;
 import codechicken.lib.vec.Cuboid6;
 import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.drawable.IKey;
+import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.drawable.Rectangle;
 import com.cleanroommc.modularui.factory.SidedPosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.utils.Color;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
@@ -80,17 +82,19 @@ public class CoverItemFilter extends CoverBase implements CoverWithUI {
 
     @Override
     public void writeInitialSyncData(@NotNull PacketBuffer packetBuffer) {
+        packetBuffer.writeByte(this.filterMode.ordinal());
+        packetBuffer.writeBoolean(this.allowFlow);
         packetBuffer.writeBoolean(itemFilterContainer.hasFilter());
         if (itemFilterContainer.hasFilter()) {
-            packetBuffer.writeByte(this.filterMode.ordinal());
             packetBuffer.writeItemStack(this.itemFilterContainer.getFilterStack());
         }
     }
 
     @Override
     public void readInitialSyncData(@NotNull PacketBuffer packetBuffer) {
-        if (!packetBuffer.readBoolean()) return;
         this.filterMode = ItemFilterMode.VALUES[packetBuffer.readByte()];
+        this.allowFlow = packetBuffer.readBoolean();
+        if (!packetBuffer.readBoolean()) return;
         try {
             this.itemFilterContainer.setFilterStack(packetBuffer.readItemStack());
         } catch (IOException e) {
@@ -98,13 +102,13 @@ public class CoverItemFilter extends CoverBase implements CoverWithUI {
         }
     }
 
-    public ItemFilterMode getFilterMode() {
-        return filterMode;
-    }
-
     public void setFilterMode(ItemFilterMode filterMode) {
         this.filterMode = filterMode;
         getCoverableView().markDirty();
+    }
+
+    public ItemFilterMode getFilterMode() {
+        return filterMode;
     }
 
     public @NotNull BaseFilter getFilter() {
@@ -142,20 +146,24 @@ public class CoverItemFilter extends CoverBase implements CoverWithUI {
     }
 
     @Override
-    public boolean usesMui2() {
-        return true;
+    public ModularPanel buildUI(SidedPosGuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
+        return getFilter().createPanel(guiSyncManager)
+                .size(176, 212).padding(7)
+                .child(buildContent(guiSyncManager))
+                .child(SlotGroupWidget.playerInventory(false).bottom(7).left(7));
     }
 
-    @Override
-    public ModularPanel buildUI(SidedPosGuiData guiData, PanelSyncManager guiSyncManager) {
+    /**
+     * 面板内容：主界面与侧边浮动子面板共用，两者的控件、同步值和槽位组注册完全一致。
+     */
+    private @NotNull IWidget buildContent(@NotNull PanelSyncManager guiSyncManager) {
         var filteringMode = new EnumSyncValue<>(ItemFilterMode.class, this::getFilterMode, this::setFilterMode);
 
         guiSyncManager.syncValue("filtering_mode", filteringMode);
 
-        return getFilter().createPanel(guiSyncManager)
-                .size(176, 212).padding(7)
+        return Flow.column()
                 .child(CoverWithUI.createTitleRow(getFilterContainer().getFilterStack()).left(4))
-                .child(Flow.column().widthRel(1f).align(Alignment.TopLeft).top(22).coverChildrenHeight()
+                .child(Flow.column().widthRel(1f).posRel(Alignment.TopLeft).top(22).coverChildrenHeight()
                         .child(new EnumRowBuilder<>(ItemFilterMode.class)
                                 .value(filteringMode)
                                 .lang("cover.filter.mode.title")
@@ -167,10 +175,9 @@ public class CoverItemFilter extends CoverBase implements CoverWithUI {
                                 .coverChildrenHeight()
                                 .setEnabledIf(b -> getFilterMode() != ItemFilterMode.FILTER_BOTH)
                                 .child(new ToggleButton()
-                                        .overlay(IKey.lang(() -> allowFlow ?
-                                                        "cover.generic.enabled" :
-                                                        "cover.generic.disabled")
-                                                .color(Color.WHITE.main).shadow(false))
+                                        .overlay(createEnabledKey("cover.generic", () -> this.allowFlow)
+                                                .color(Color.WHITE.main)
+                                                .shadow(false))
                                         .tooltip(tooltip -> tooltip
                                                 .addLine(IKey.lang("cover.filter.allow_flow.tooltip")))
                                         .size(72, 18)
@@ -179,10 +186,9 @@ public class CoverItemFilter extends CoverBase implements CoverWithUI {
                                         .asWidget()
                                         .height(18)
                                         .alignX(1f)))
-                        .child(new Rectangle().setColor(UI_TEXT_COLOR).asWidget()
+                        .child(new Rectangle().color(UI_TEXT_COLOR).asWidget()
                                 .height(1).widthRel(0.95f).margin(0, 4))
-                        .child(getFilter().createWidgets(guiSyncManager).left(0)))
-                .child(SlotGroupWidget.playerInventory().bottom(7).left(7));
+                        .child(getFilter().createWidgets(guiSyncManager).left(0)));
     }
 
     @Override
@@ -196,6 +202,7 @@ public class CoverItemFilter extends CoverBase implements CoverWithUI {
         super.writeToNBT(tagCompound);
         tagCompound.setInteger("FilterMode", filterMode.ordinal());
         tagCompound.setTag("Filter", this.itemFilterContainer.serializeNBT());
+        tagCompound.setBoolean("allowFlow", this.allowFlow);
     }
 
     @Override
@@ -209,6 +216,7 @@ public class CoverItemFilter extends CoverBase implements CoverWithUI {
         } else {
             this.itemFilterContainer.deserializeNBT(tagCompound.getCompoundTag("Filter"));
         }
+        this.allowFlow = tagCompound.getBoolean("allowFlow");
     }
 
     @Override

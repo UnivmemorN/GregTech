@@ -5,17 +5,23 @@ import gregtech.api.items.armor.ArmorMetaItem;
 import gregtech.api.items.materialitem.MetaPrefixItem;
 import gregtech.api.items.metaitem.MetaItem;
 import gregtech.api.items.metaitem.MetaItem.MetaValueItem;
+import gregtech.api.metatileentity.multiblock.nuclear.fission.FissionFuelRegistry;
 import gregtech.api.unification.OreDictUnifier;
 import gregtech.api.unification.material.MarkerMaterial;
+import gregtech.api.unification.material.Material;
+import gregtech.api.unification.material.properties.FissionFuelProperty;
+import gregtech.api.unification.material.properties.PropertyKey;
 import gregtech.api.unification.material.registry.MaterialRegistry;
 import gregtech.api.unification.ore.OrePrefix;
 import gregtech.api.util.GTLog;
 import gregtech.client.renderer.handler.FacadeRenderer;
+import gregtech.client.renderer.handler.ProgrammableCircuitRenderer;
 import gregtech.common.items.armor.MetaArmor;
 
 import net.minecraft.client.renderer.block.model.IBakedModel;
 import net.minecraft.client.renderer.block.model.ModelResourceLocation;
 import net.minecraft.item.EnumDyeColor;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.event.ModelBakeEvent;
 import net.minecraftforge.common.MinecraftForge;
@@ -24,7 +30,12 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 
 import com.google.common.base.CaseFormat;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public final class MetaItems {
 
@@ -56,7 +67,7 @@ public final class MetaItems {
 
     public static MetaItem<?>.MetaValueItem SHAPE_EMPTY;
 
-    public static final MetaItem<?>.MetaValueItem[] SHAPE_MOLDS = new MetaValueItem[21];
+    public static final MetaItem<?>.MetaValueItem[] SHAPE_MOLDS = new MetaValueItem[26];
     public static MetaItem<?>.MetaValueItem SHAPE_MOLD_PLATE;
     public static MetaItem<?>.MetaValueItem SHAPE_MOLD_GEAR;
     public static MetaItem<?>.MetaValueItem SHAPE_MOLD_CREDIT;
@@ -78,8 +89,13 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem SHAPE_MOLD_ROD_LONG;
     public static MetaItem<?>.MetaValueItem SHAPE_MOLD_TURBINE_BLADE;
     public static MetaItem<?>.MetaValueItem SHAPE_MOLD_DRILL_HEAD;
+    public static MetaItem<?>.MetaValueItem SHAPE_MOLD_PIPE_TINY;
+    public static MetaItem<?>.MetaValueItem SHAPE_MOLD_PIPE_SMALL;
+    public static MetaItem<?>.MetaValueItem SHAPE_MOLD_PIPE_NORMAL;
+    public static MetaItem<?>.MetaValueItem SHAPE_MOLD_PIPE_LARGE;
+    public static MetaItem<?>.MetaValueItem SHAPE_MOLD_PIPE_HUGE;
 
-    public static final MetaItem<?>.MetaValueItem[] SHAPE_EXTRUDERS = new MetaValueItem[29 ];
+    public static final MetaItem<?>.MetaValueItem[] SHAPE_EXTRUDERS = new MetaValueItem[29];
     public static MetaItem<?>.MetaValueItem SHAPE_EXTRUDER_PLATE;
     public static MetaItem<?>.MetaValueItem SHAPE_EXTRUDER_ROD;
     public static MetaItem<?>.MetaValueItem SHAPE_EXTRUDER_BOLT;
@@ -136,6 +152,22 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem BATTERY_HULL_LARGE_VANADIUM;
     public static MetaItem<?>.MetaValueItem BATTERY_HULL_MEDIUM_NAQUADRIA;
     public static MetaItem<?>.MetaValueItem BATTERY_HULL_LARGE_NAQUADRIA;
+
+    // Disposable Battery Block shells (1 per tier, 8 total)
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_BATTERY_SHELL_LV;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_BATTERY_SHELL_MV;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_BATTERY_SHELL_HV;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_BATTERY_SHELL_EV;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_BATTERY_SHELL_IV;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_BATTERY_SHELL_LUV;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_BATTERY_SHELL_ZPM;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_BATTERY_SHELL_UV;
+
+    // Disposable Battery Block components — exchange membranes (3 types covering 8 tiers)
+    public static MetaItem<?>.MetaValueItem PROTON_EXCHANGE_MEMBRANE;
+    public static MetaItem<?>.MetaValueItem CERAMIC_EXCHANGE_MEMBRANE;
+    public static MetaItem<?>.MetaValueItem GRAPHENE_EXCHANGE_MEMBRANE;
+    public static MetaItem<?>.MetaValueItem CARBON_NANOTUBE_FILM;
 
     public static MetaItem<?>.MetaValueItem BATTERY_ULV_TANTALUM;
     public static MetaItem<?>.MetaValueItem BATTERY_LV_CADMIUM;
@@ -235,7 +267,7 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem ELECTRIC_PISTON_HV;
     public static MetaItem<?>.MetaValueItem ELECTRIC_PISTON_EV;
     public static MetaItem<?>.MetaValueItem ELECTRIC_PISTON_IV;
-    public static MetaItem<?>.MetaValueItem ELECTRIC_PISTON_LUV;
+    public static MetaItem<?>.MetaValueItem ELECTRIC_PISTON_LuV;
     public static MetaItem<?>.MetaValueItem ELECTRIC_PISTON_ZPM;
     public static MetaItem<?>.MetaValueItem ELECTRIC_PISTON_UV;
     public static MetaItem<?>.MetaValueItem ELECTRIC_PISTON_UHV;
@@ -309,9 +341,13 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem TOOL_DATA_ORB;
     public static MetaItem<?>.MetaValueItem TOOL_DATA_MODULE;
 
-    public static MetaItem<?>.MetaValueItem MULTIBLOCK_PREVIEW;
+
 
     public static final Map<MarkerMaterial, MetaValueItem> GLASS_LENSES = new HashMap<>();
+
+    public static MetaItem<?>.MetaValueItem SCRAP;
+    public static MetaItem<?>.MetaValueItem SCRAP_BOX;
+    public static MetaItem<?>.MetaValueItem UU_MATER;
 
     public static MetaItem<?>.MetaValueItem SILICON_BOULE;
     public static MetaItem<?>.MetaValueItem PHOSPHORUS_BOULE;
@@ -468,10 +504,9 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem COVER_ENERGY_DETECTOR;
     public static MetaItem<?>.MetaValueItem COVER_ENERGY_DETECTOR_ADVANCED;
     public static MetaItem<?>.MetaValueItem COVER_MAINTENANCE_DETECTOR;
-
     public static MetaItem<?>.MetaValueItem COVER_SCREEN;
-    public static MetaItem<?>.MetaValueItem COVER_INFINITE_WATER;
     public static MetaItem<?>.MetaValueItem COVER_AIR_VENT;
+    public static MetaItem<?>.MetaValueItem COVER_DRAIN;
     public static MetaItem<?>.MetaValueItem COVER_ENDER_FLUID_LINK;
     public static MetaItem<?>.MetaValueItem COVER_ENDER_ITEM_LINK;
     public static MetaItem<?>.MetaValueItem COVER_DIGITAL_INTERFACE;
@@ -480,10 +515,15 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem COVER_FLUID_VOIDING_ADVANCED;
     public static MetaItem<?>.MetaValueItem COVER_ITEM_VOIDING;
     public static MetaItem<?>.MetaValueItem COVER_ITEM_VOIDING_ADVANCED;
+    public static MetaItem<?>.MetaValueItem COVER_CRAFTING;
     public static MetaItem<?>.MetaValueItem COVER_STORAGE;
     public static MetaItem<?>.MetaValueItem COVER_STORAGE_MEDIUM;
     public static MetaItem<?>.MetaValueItem COVER_STORAGE_LARGE;
     public static MetaItem<?>.MetaValueItem COVER_STORAGE_HUGE;
+    public static MetaItem<?>.MetaValueItem COVER_INFINITE_WATER_LV;
+    public static MetaItem<?>.MetaValueItem COVER_INFINITE_WATER_MV;
+    public static MetaItem<?>.MetaValueItem COVER_INFINITE_WATER_HV;
+    public static MetaItem<?>.MetaValueItem COVER_INFINITE_WATER_EV;
 
     public static MetaItem<?>.MetaValueItem COVER_SOLAR_PANEL;
     public static MetaItem<?>.MetaValueItem COVER_SOLAR_PANEL_ULV;
@@ -537,7 +577,10 @@ public final class MetaItems {
     public static MetaItem<?>.MetaValueItem PROSPECTOR_UHV;
 
     public static MetaItem<?>.MetaValueItem MINING_LASER;
-    public static MetaItem<?>.MetaValueItem VAJRA;
+
+    public static MetaItem<?>.MetaValueItem VAJRA_HV;
+    public static MetaItem<?>.MetaValueItem VAJRA_EV;
+    public static MetaItem<?>.MetaValueItem VAJRA_IV;
 
     public static MetaItem<?>.MetaValueItem TRICORDER_SCANNER;
     public static MetaItem<?>.MetaValueItem DEBUG_SCANNER;
@@ -584,6 +627,14 @@ public final class MetaItems {
 
     public static ArmorMetaItem<?>.ArmorMetaValueItem NIGHTVISION_GOGGLES;
 
+    public static ArmorMetaItem<?>.ArmorMetaValueItem HAZMAT_CHESTPLATE;
+    public static ArmorMetaItem<?>.ArmorMetaValueItem HAZMAT_LEGGINGS;
+    public static ArmorMetaItem<?>.ArmorMetaValueItem HAZMAT_BOOTS;
+    public static ArmorMetaItem<?>.ArmorMetaValueItem HAZMAT_HELMET;
+
+    public static ArmorMetaItem<?>.ArmorMetaValueItem PISTON_BOOTS;
+    public static ArmorMetaItem<?>.ArmorMetaValueItem COAL_JETPACK;
+
     public static ArmorMetaItem<?>.ArmorMetaValueItem NANO_CHESTPLATE;
     public static ArmorMetaItem<?>.ArmorMetaValueItem NANO_LEGGINGS;
     public static ArmorMetaItem<?>.ArmorMetaValueItem NANO_BOOTS;
@@ -601,6 +652,23 @@ public final class MetaItems {
     public static ArmorMetaItem<?>.ArmorMetaValueItem NANO_CHESTPLATE_ADVANCED;
     public static ArmorMetaItem<?>.ArmorMetaValueItem QUANTUM_CHESTPLATE_ADVANCED;
 
+    public static ArmorMetaItem<?>.ArmorMetaValueItem SIMPLE_GAS_MASK;
+
+    public static ArmorMetaItem<?>.ArmorMetaValueItem GAS_MASK;
+    public static ArmorMetaItem<?>.ArmorMetaValueItem GAS_TANK;
+    public static ArmorMetaItem<?>.ArmorMetaValueItem REBREATHER_TANK;
+    public static ArmorMetaItem<?>.ArmorMetaValueItem FILTERED_TANK;
+
+    public static ArmorMetaItem<?>.ArmorMetaValueItem ASBESTOS_MASK;
+    public static ArmorMetaItem<?>.ArmorMetaValueItem ASBESTOS_CHESTPLATE;
+    public static ArmorMetaItem<?>.ArmorMetaValueItem ASBESTOS_LEGGINGS;
+    public static ArmorMetaItem<?>.ArmorMetaValueItem ASBESTOS_BOOTS;
+
+    public static ArmorMetaItem<?>.ArmorMetaValueItem NOMEX_MASK;
+    public static ArmorMetaItem<?>.ArmorMetaValueItem NOMEX_CHESTPLATE;
+    public static ArmorMetaItem<?>.ArmorMetaValueItem NOMEX_LEGGINGS;
+    public static ArmorMetaItem<?>.ArmorMetaValueItem NOMEX_BOOTS;
+
     public static MetaItem<?>.MetaValueItem POWER_THRUSTER;
     public static MetaItem<?>.MetaValueItem POWER_THRUSTER_ADVANCED;
     public static MetaItem<?>.MetaValueItem GRAVITATION_ENGINE;
@@ -613,7 +681,170 @@ public final class MetaItems {
 
     public static MetaItem<?>.MetaValueItem LOGO;
 
+    public static MetaItem<?>.MetaValueItem STRUCTURE_BUILDER;
     public static MetaItem<?>.MetaValueItem MULTIBLOCK_BUILDER;
+    public static MetaItem<?>.MetaValueItem MULTIBLOCK_REMOVER;
+    public static MetaItem<?>.MetaValueItem MULTIBLOCK_MOVER;
+    public static MetaItem<?>.MetaValueItem MULTIBLOCK_TOOL;
+    public static MetaItem<?>.MetaValueItem OFFHAND_PLACER;
+    public static MetaItem<?>.MetaValueItem BATTERY_CASE;
+    public static MetaItem<?>.MetaValueItem WATERPROOF_SPRAY_CAN;
+    public static MetaItem<?>.MetaValueItem TOOL_COVER_COPY_PASTE;
+
+    public static MetaItem<?>.MetaValueItem TOOL_TROLLEY;
+
+    public static MetaItem<?>.MetaValueItem UPGRADE_KIT_FUSE;
+    public static MetaItem<?>.MetaValueItem UPGRADE_KIT_BACKUP_CAPACITOR;
+
+    // Forge of the Gods
+    public static MetaItem<?>.MetaValueItem STELLAR_FUEL;
+
+    // Nuclear item metadata occupies 2048-2289 in GT_META_ITEM.
+    public static MetaItem<?>.MetaValueItem ANODE_BASKET;
+    public static MetaItem<?>.MetaValueItem FUEL_CLADDING;
+
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_1X;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_2X;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_4X;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_URANIUM_1X_DEPLETED;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_URANIUM_2X_DEPLETED;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_URANIUM_4X_DEPLETED;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_THORIUM_1X_DEPLETED;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_THORIUM_2X_DEPLETED;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_THORIUM_4X_DEPLETED;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_PLUTONIUM_1X_DEPLETED;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_PLUTONIUM_2X_DEPLETED;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_PLUTONIUM_4X_DEPLETED;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_NAQUADAH_1X_DEPLETED;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_NAQUADAH_2X_DEPLETED;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_NAQUADAH_4X_DEPLETED;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_URANIUM_1X;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_URANIUM_2X;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_URANIUM_4X;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_THORIUM_1X;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_THORIUM_2X;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_THORIUM_4X;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_PLUTONIUM_1X;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_PLUTONIUM_2X;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_PLUTONIUM_4X;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_NAQUADAH_1X;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_NAQUADAH_2X;
+    public static MetaItem<?>.MetaValueItem FUEL_ROD_NAQUADAH_4X;
+    public static MetaItem<?>.MetaValueItem HEAT_VENT_BASIC;
+    public static MetaItem<?>.MetaValueItem HEAT_VENT_ADVANCED;
+    public static MetaItem<?>.MetaValueItem HEAT_VENT_ELITE;
+    public static MetaItem<?>.MetaValueItem HEAT_VENT_ULTIMATE;
+    public static MetaItem<?>.MetaValueItem COMPONENT_HEAT_VENT_BASIC;
+    public static MetaItem<?>.MetaValueItem COMPONENT_HEAT_VENT_ADVANCED;
+    public static MetaItem<?>.MetaValueItem COMPONENT_HEAT_VENT_ELITE;
+    public static MetaItem<?>.MetaValueItem COMPONENT_HEAT_VENT_ULTIMATE;
+    public static MetaItem<?>.MetaValueItem COOLANT_CELL_10K;
+    public static MetaItem<?>.MetaValueItem COOLANT_CELL_30K;
+    public static MetaItem<?>.MetaValueItem COOLANT_CELL_60K;
+    public static MetaItem<?>.MetaValueItem COOLANT_CELL_COOLANT_10K;
+    public static MetaItem<?>.MetaValueItem COOLANT_CELL_COOLANT_30K;
+    public static MetaItem<?>.MetaValueItem COOLANT_CELL_COOLANT_60K;
+    public static MetaItem<?>.MetaValueItem COOLANT_CELL_SODIUM_POTASSIUM_10K;
+    public static MetaItem<?>.MetaValueItem COOLANT_CELL_SODIUM_POTASSIUM_30K;
+    public static MetaItem<?>.MetaValueItem COOLANT_CELL_SODIUM_POTASSIUM_60K;
+    public static MetaItem<?>.MetaValueItem COOLANT_CELL_HELIUM_10K;
+    public static MetaItem<?>.MetaValueItem COOLANT_CELL_HELIUM_30K;
+    public static MetaItem<?>.MetaValueItem COOLANT_CELL_HELIUM_60K;
+    public static MetaItem<?>.MetaValueItem NEUTRON_REFLECTOR_BASIC;
+    public static MetaItem<?>.MetaValueItem NEUTRON_REFLECTOR_THICK;
+    public static MetaItem<?>.MetaValueItem NEUTRON_REFLECTOR_IRIDIUM;
+    public static MetaItem<?>.MetaValueItem HEAT_EXCHANGER_BASIC;
+    public static MetaItem<?>.MetaValueItem HEAT_EXCHANGER_ADVANCED;
+    public static MetaItem<?>.MetaValueItem HEAT_EXCHANGER_REACTOR;
+    public static MetaItem<?>.MetaValueItem COMPONENT_HEAT_EXCHANGER;
+    public static MetaItem<?>.MetaValueItem REACTOR_PLATING_BASIC;
+    public static MetaItem<?>.MetaValueItem REACTOR_PLATING_ADVANCED;
+
+    public static MetaItem<?>.MetaValueItem COVER_PROGRAMMABLE_CIRCUIT;
+    public static MetaItem<?>.MetaValueItem PROGRAMMABLE_CIRCUIT;
+    public static MetaItem<?>.MetaValueItem PROGRAMMING_TOOLKIT;
+    public static MetaItem<?>.MetaValueItem VEIN_SCANNER;
+
+    public static MetaItem<?>.MetaValueItem GENERAL_CIRCUIT_ULV;
+    public static MetaItem<?>.MetaValueItem GENERAL_CIRCUIT_LV;
+    public static MetaItem<?>.MetaValueItem GENERAL_CIRCUIT_MV;
+    public static MetaItem<?>.MetaValueItem GENERAL_CIRCUIT_HV;
+    public static MetaItem<?>.MetaValueItem GENERAL_CIRCUIT_EV;
+    public static MetaItem<?>.MetaValueItem GENERAL_CIRCUIT_IV;
+    public static MetaItem<?>.MetaValueItem GENERAL_CIRCUIT_LuV;
+    public static MetaItem<?>.MetaValueItem GENERAL_CIRCUIT_ZPM;
+    public static MetaItem<?>.MetaValueItem GENERAL_CIRCUIT_UV;
+    public static MetaItem<?>.MetaValueItem GENERAL_CIRCUIT_UHV;
+    public static MetaItem<?>.MetaValueItem GENERAL_CIRCUIT_UEV;
+    public static MetaItem<?>.MetaValueItem GENERAL_CIRCUIT_UIV;
+    public static MetaItem<?>.MetaValueItem GENERAL_CIRCUIT_UXV;
+    public static MetaItem<?>.MetaValueItem GENERAL_CIRCUIT_OpV;
+    public static MetaItem<?>.MetaValueItem GENERAL_CIRCUIT_MAX;
+
+    public static MetaItem<?>.MetaValueItem WOODEN_BUCKET;
+    public static MetaItem<?>.MetaValueItem FLUID_CELL_CHROME;
+    public static MetaItem<?>.MetaValueItem FLUID_CELL_IRIDIUM;
+    public static MetaItem<?>.MetaValueItem FLUID_CELL_NAQUADAH_ALLOY;
+    public static MetaItem<?>.MetaValueItem FLUID_CELL_NEUTRONIUM;
+
+    public static MetaItem<?>.MetaValueItem CASTING_MOLD_EMPTY;
+    public static MetaItem<?>.MetaValueItem CASTING_MOLD_SAW;
+    public static MetaItem<?>.MetaValueItem CASTING_MOLD_HARD_HAMMER;
+    public static MetaItem<?>.MetaValueItem CASTING_MOLD_SOFT_MALLET;
+    public static MetaItem<?>.MetaValueItem CASTING_MOLD_WRENCH;
+    public static MetaItem<?>.MetaValueItem CASTING_MOLD_FILE;
+    public static MetaItem<?>.MetaValueItem CASTING_MOLD_CROWBAR;
+    public static MetaItem<?>.MetaValueItem CASTING_MOLD_SCREWDRIVER;
+    public static MetaItem<?>.MetaValueItem CASTING_MOLD_MORTAR;
+    public static MetaItem<?>.MetaValueItem CASTING_MOLD_WIRE_CUTTER;
+    public static MetaItem<?>.MetaValueItem CASTING_MOLD_KNIFE;
+    public static MetaItem<?>.MetaValueItem CASTING_MOLD_BUTCHERY_KNIFE;
+    public static MetaItem<?>.MetaValueItem CASTING_MOLD_ROLLING_PIN;
+
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_SAW;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_HARD_HAMMER;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_SOFT_MALLET;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_WRENCH;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_FILE;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_CROWBAR;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_SCREWDRIVER;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_MORTAR;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_WIRE_CUTTER;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_KNIFE;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_BUTCHERY_KNIFE;
+    public static MetaItem<?>.MetaValueItem DISPOSABLE_ROLLING_PIN;
+
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_INPUT_ULV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_INPUT_LV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_INPUT_MV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_INPUT_HV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_INPUT_EV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_INPUT_IV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_INPUT_LUV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_INPUT_ZPM;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_INPUT_UV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_INPUT_UHV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_INPUT_UEV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_INPUT_UIV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_INPUT_UXV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_INPUT_OPV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_INPUT_MAX;
+
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_OUTPUT_ULV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_OUTPUT_LV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_OUTPUT_MV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_OUTPUT_HV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_OUTPUT_EV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_OUTPUT_IV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_OUTPUT_LUV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_OUTPUT_ZPM;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_OUTPUT_UV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_OUTPUT_UHV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_OUTPUT_UEV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_OUTPUT_UIV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_OUTPUT_UXV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_OUTPUT_OPV;
+    public static MetaItem<?>.MetaValueItem WIRELESS_ENERGY_COVER_OUTPUT_MAX;
 
     private static final List<OrePrefix> orePrefixes = new ArrayList<>();
 
@@ -632,11 +863,20 @@ public final class MetaItems {
         orePrefixes.add(OrePrefix.gemFlawed);
         orePrefixes.add(OrePrefix.gemFlawless);
         orePrefixes.add(OrePrefix.gemExquisite);
+        orePrefixes.add(OrePrefix.gemLegendary);
         orePrefixes.add(OrePrefix.ingot);
         orePrefixes.add(OrePrefix.ingotHot);
+        orePrefixes.add(OrePrefix.ingotDouble);
+        orePrefixes.add(OrePrefix.ingotTriple);
+        orePrefixes.add(OrePrefix.ingotQuadruple);
+        orePrefixes.add(OrePrefix.ingotQuintuple);
         orePrefixes.add(OrePrefix.plate);
         orePrefixes.add(OrePrefix.plateDouble);
+        orePrefixes.add(OrePrefix.plateTriple);
+        orePrefixes.add(OrePrefix.plateQuadruple);
+        orePrefixes.add(OrePrefix.plateQuintuple);
         orePrefixes.add(OrePrefix.plateDense);
+        orePrefixes.add(OrePrefix.plateCurved);
         orePrefixes.add(OrePrefix.foil);
         orePrefixes.add(OrePrefix.stick);
         orePrefixes.add(OrePrefix.stickLong);
@@ -658,15 +898,31 @@ public final class MetaItems {
         orePrefixes.add(OrePrefix.toolHeadWrench);
         orePrefixes.add(OrePrefix.toolHeadBuzzSaw);
         orePrefixes.add(OrePrefix.toolHeadScrewdriver);
+        orePrefixes.add(OrePrefix.fuelRod);
+        orePrefixes.add(OrePrefix.fuelRodDepleted);
+        orePrefixes.add(OrePrefix.fuelPelletRaw);
+        orePrefixes.add(OrePrefix.fuelRodHotDepleted);
+        orePrefixes.add(OrePrefix.fuelPellet);
+        orePrefixes.add(OrePrefix.fuelPelletDepleted);
+        orePrefixes.add(OrePrefix.dustSpentFuel);
+        orePrefixes.add(OrePrefix.dustBredFuel);
+        orePrefixes.add(OrePrefix.dustFissionByproduct);
+        orePrefixes.add(OrePrefix.fuelPebble);
+        orePrefixes.add(OrePrefix.fuelPebbleDepleted);
     }
-    public static MetaItem1 GT_META_ITEM;
+
+    public static GregTechMetaItem GT_META_ITEM;
     public static MetaArmor GT_ARMOR;
+    public static OrbItems GT_ORB_ITEMS;
 
     public static void init() {
-        GT_META_ITEM = new MetaItem1();
+        GT_META_ITEM = new GregTechMetaItem();
         GT_META_ITEM.setRegistryName("meta_item_1");
         GT_ARMOR = new MetaArmor();
         GT_ARMOR.setRegistryName("gt_armor");
+        GT_ORB_ITEMS = new OrbItems();
+        GT_ORB_ITEMS.setRegistryName("gt_orb_items");
+
         for (OrePrefix prefix : orePrefixes) {
             for (MaterialRegistry registry : GregTechAPI.materialManager.getRegistries()) {
                 String regName = CaseFormat.UPPER_CAMEL.to(CaseFormat.LOWER_UNDERSCORE, prefix.name());
@@ -688,6 +944,29 @@ public final class MetaItems {
             // Register "craftingLensGlass", intended only for recipes to dye lenses and not in the Engraver
             OreDictUnifier.registerOre(entry.getValue().getStackForm(),
                     String.format("%s%s", OrePrefix.craftingLens.name(), "Glass"));
+        }
+
+        for (Material material : GregTechAPI.materialManager.getRegisteredMaterials()) {
+            if (!material.hasProperty(PropertyKey.FISSION_FUEL)) continue;
+
+            FissionFuelProperty fuel = material.getProperty(PropertyKey.FISSION_FUEL);
+            if (fuel.getDepletedFuelSupplier() == null) {
+                fuel.setDepletedFuelSupplier(
+                        thermalProportion -> OreDictUnifier.get(OrePrefix.fuelRodHotDepleted, material));
+                fuel.setAllDepletedFuels(() -> {
+                    List<ItemStack> depletedFuels = new ArrayList<>();
+                    depletedFuels.add(OreDictUnifier.get(OrePrefix.fuelRodHotDepleted, material));
+                    return depletedFuels;
+                });
+            }
+
+            ItemStack fuelRod = OreDictUnifier.get(OrePrefix.fuelRod, material);
+            if (fuelRod.isEmpty()) {
+                GTLog.logger.warn("Skipping fission fuel registration for {} because no fuel rod item was generated",
+                        material.getResourceLocation());
+                continue;
+            }
+            FissionFuelRegistry.registerFuel(fuelRod, fuel);
         }
     }
 
@@ -711,6 +990,15 @@ public final class MetaItems {
     public static void registerBakedModels(ModelBakeEvent event) {
         GTLog.logger.info("Registering special item models");
         registerSpecialItemModel(event, COVER_FACADE, new FacadeRenderer());
+        if (MetaItems.PROGRAMMABLE_CIRCUIT != null) {
+            ResourceLocation modelPath = ((MetaItem) MetaItems.PROGRAMMABLE_CIRCUIT.getMetaItem())
+                    .createItemModelPath(MetaItems.PROGRAMMABLE_CIRCUIT, "");
+            ModelResourceLocation mrl = new ModelResourceLocation(modelPath, "inventory");
+            IBakedModel bakedModel = event.getModelRegistry().getObject(mrl);
+            if (bakedModel != null) {
+                event.getModelRegistry().putObject(mrl, new ProgrammableCircuitRenderer(bakedModel));
+            }
+        }
     }
 
     @SideOnly(Side.CLIENT)
@@ -727,4 +1015,6 @@ public final class MetaItems {
     public static void addOrePrefix(OrePrefix... prefixes) {
         orePrefixes.addAll(Arrays.asList(prefixes));
     }
+
+
 }

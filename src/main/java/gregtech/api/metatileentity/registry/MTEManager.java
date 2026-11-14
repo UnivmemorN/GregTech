@@ -39,13 +39,21 @@ public final class MTEManager {
     private MTEManager() {}
 
     /**
+     * @param modid the modid to check
+     * @return if a registry exists for the given modid
+     */
+    public boolean containsKey(@NotNull String modid) {
+        return registryMap.containsKey(modid);
+    }
+
+    /**
      * @param modid the modid of the registry
      * @return the registry associated with the modid, otherwise the default registry
      */
     public @NotNull MTERegistry getRegistry(@NotNull String modid) {
         MTERegistry registry = registryMap.get(modid);
         if (registry == null) {
-            throw new IllegalArgumentException("No MTE registry exists for modid " + modid);
+            registry = registryMap.get("gregtech");
         }
         return registry;
     }

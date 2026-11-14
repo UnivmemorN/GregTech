@@ -2,13 +2,19 @@ package gregtech.api.metatileentity.multiblock;
 
 import gregtech.api.GTValues;
 import gregtech.api.capability.IEnergyContainer;
+import gregtech.api.capability.IGenerator;
+import gregtech.api.capability.IMufflerHatch;
 import gregtech.api.capability.IMultipleTankHandler;
 import gregtech.api.capability.impl.EnergyContainerList;
 import gregtech.api.capability.impl.MultiblockFuelRecipeLogic;
+import gregtech.api.metatileentity.ITieredMetaTileEntity;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIBuilder;
 import gregtech.api.mui.sync.FixedIntArraySyncValue;
 import gregtech.api.recipes.RecipeMap;
+import gregtech.api.unification.material.Material;
+import gregtech.api.unification.material.Materials;
 import gregtech.api.util.GTUtility;
+import gregtech.api.util.KeyUtil;
 import gregtech.api.util.TextComponentUtil;
 import gregtech.api.util.TextFormattingUtil;
 import gregtech.common.ConfigHolder;
@@ -28,12 +34,18 @@ import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
-public abstract class FuelMultiblockController extends RecipeMapMultiblockController {
+public abstract class FuelMultiblockController extends RecipeMapMultiblockController implements IGenerator,
+                                                                                                ITieredMetaTileEntity {
+
+    public int tier;
 
     public FuelMultiblockController(ResourceLocation metaTileEntityId, RecipeMap<?> recipeMap, int tier) {
         super(metaTileEntityId, recipeMap);
+        this.tier = tier;
         this.recipeMapWorkable = new MultiblockFuelRecipeLogic(this);
         this.recipeMapWorkable.setMaximumOverclockVoltage(GTValues.V[tier]);
     }
@@ -47,13 +59,44 @@ public abstract class FuelMultiblockController extends RecipeMapMultiblockContro
         this.energyContainer = new EnergyContainerList(outputEnergy);
     }
 
+    public void outputRecoveryFluid(int progress) {
+        if(getGasType() == gasType.NONE) return;
+        for(IMufflerHatch muffler : getAbilities(MultiblockAbility.MUFFLER_HATCH))
+        {
+            if(muffler.mufflerWaste()) muffler.recoverFluidsTable(getGasType().getExhaustGas().getFluid(5*progress));
+        }
+    }
+
+    public gasType getGasType() {
+        return gasType.NONE;
+    }
+
+    public enum gasType {
+        NONE(null),
+        LOW(Materials.ExhaustGas),
+        MEDIUM(Materials.HighPressureExhaustGas),
+        HIGH(Materials.SupercriticalExhaustGas);
+
+        final Material exhaustGas;
+
+        gasType(Material exhaustGas) {
+            this.exhaustGas = exhaustGas;
+        }
+
+        public Material getExhaustGas() {
+            return exhaustGas;
+        }
+    }
+
     @Override
     protected void configureDisplayText(MultiblockUIBuilder builder) {
         MultiblockFuelRecipeLogic recipeLogic = (MultiblockFuelRecipeLogic) recipeMapWorkable;
+        boolean dynamoFull = isDynamoFull();
 
-        builder.setWorkingStatus(recipeLogic.isWorkingEnabled(), recipeLogic.isActive())
+        builder.setWorkingStatus(recipeLogic.isWorkingEnabled() && !dynamoFull,
+                recipeLogic.isActive() && !dynamoFull)
                 .addEnergyProductionLine(getMaxVoltage(), recipeLogic.getRecipeEUt())
-                .addFuelNeededLine(recipeLogic.getRecipeFluidInputInfo(), recipeLogic.getPreviousRecipeDuration())
+                .addFuelNeededLine(recipeLogic::getRecipeFluidInputInfo, recipeLogic::getPreviousRecipeDuration)
                 .addWorkingStatusLine();
     }
 
@@ -62,6 +105,12 @@ public abstract class FuelMultiblockController extends RecipeMapMultiblockContro
         builder.addLowDynamoTierLine(isDynamoTierTooLow());
         if (hasMaintenanceMechanics())
             builder.addMaintenanceProblemLines(getMaintenanceProblems(), true);
+        builder.addCustom((manager, syncer) -> {
+            if (syncer.syncBoolean(this::isDynamoFull)) {
+                manager.add(KeyUtil.lang(TextFormatting.YELLOW,
+                        "gregtech.multiblock.large_combustion_engine.dynamo_hatch_full"));
+            }
+        });
     }
 
     protected long getMaxVoltage() {
@@ -77,8 +126,8 @@ public abstract class FuelMultiblockController extends RecipeMapMultiblockContro
         if (isStructureFormed()) {
             IEnergyContainer energyContainer = recipeMapWorkable.getEnergyContainer();
             if (energyContainer != null && energyContainer.getEnergyCapacity() > 0) {
-                long maxVoltage = Math.max(energyContainer.getInputVoltage(), energyContainer.getOutputVoltage());
-                return maxVoltage < recipeMapWorkable.getRecipeEUt();
+                long maxOutput = energyContainer.getOutputVoltage() * energyContainer.getOutputAmperage();
+                return maxOutput < recipeMapWorkable.getRecipeEUt();
             }
         }
         return false;
@@ -151,8 +200,9 @@ public abstract class FuelMultiblockController extends RecipeMapMultiblockContro
         int fuelCapacity = 0;
         FluidStack fuelStack = null;
         MultiblockFuelRecipeLogic recipeLogic = (MultiblockFuelRecipeLogic) recipeMapWorkable;
-        if (isStructureFormed() && recipeLogic.getInputFluidStack() != null && getInputFluidInventory() != null) {
-            fuelStack = recipeLogic.getInputFluidStack().copy();
+        FluidStack cachedFuel = recipeLogic.getCachedInputFluidStack();
+        if (isStructureFormed() && cachedFuel != null && getInputFluidInventory() != null) {
+            fuelStack = cachedFuel.copy();
             fuelStack.amount = Integer.MAX_VALUE;
             int[] fuelAmount = getTotalFluidAmount(fuelStack, getInputFluidInventory());
             fuelStored = fuelAmount[0];
@@ -189,7 +239,9 @@ public abstract class FuelMultiblockController extends RecipeMapMultiblockContro
             Fluid fluid = fuelNameValue.getStringValue() == null ? null :
                     FluidRegistry.getFluid(fuelNameValue.getStringValue());
             if (fluid == null) {
-                tooltip.addLine(IKey.lang("gregtech.multiblock.large_combustion_engine.fuel_none"));
+                tooltip.addLine(IKey.lang(isDynamoFull()
+                        ? "gregtech.multiblock.large_combustion_engine.dynamo_hatch_full"
+                        : "gregtech.multiblock.large_combustion_engine.fuel_none"));
             } else {
                 tooltip.addLine(
                         IKey.lang("gregtech.multiblock.large_combustion_engine.fuel_amount", amounts.getValue(0),
@@ -198,5 +250,46 @@ public abstract class FuelMultiblockController extends RecipeMapMultiblockContro
         } else {
             tooltip.addLine(IKey.lang("gregtech.multiblock.invalid_structure"));
         }
+    }
+
+    @Override
+    public boolean isDynamoFull() {
+        IEnergyContainer energyContainer = getEnergyContainer();
+        if (energyContainer == null || energyContainer.getEnergyCapacity() <= 0) {
+            return false;
+        }
+        long requiredOutputSpace = Math.max(1L, Math.abs(recipeMapWorkable.getRecipeEUt()));
+        return energyContainer.getEnergyCanBeInserted() < requiredOutputSpace;
+    }
+
+    @Override
+    public boolean isEnergyOverFlow() {
+        return recipeMapWorkable.isOverflowMode();
+    }
+
+    @Override
+    public void setEnergyOverFlowMode(boolean enable) {
+        boolean changed = recipeMapWorkable.isOverflowMode() != enable;
+        recipeMapWorkable.setOverflowMode(enable);
+        if (changed) {
+            notifyStructureConfigChanged();
+        }
+    }
+
+    @NotNull
+    @Override
+    @SuppressWarnings("unchecked")
+    protected Object getStructureConfigDependencyValue() {
+        Map<String, Object> values = new LinkedHashMap<>(
+                (Map<String, Object>) super.getStructureConfigDependencyValue());
+        values.put("energyOverflowMode", recipeMapWorkable != null && recipeMapWorkable.isOverflowMode());
+        values.put("tier", tier);
+        return values;
+    }
+
+
+    @Override
+    public int getTier() {
+        return tier;
     }
 }

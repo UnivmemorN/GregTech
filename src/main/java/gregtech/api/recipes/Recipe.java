@@ -11,6 +11,9 @@ import gregtech.api.recipes.ingredients.GTRecipeInput;
 import gregtech.api.recipes.properties.RecipeProperty;
 import gregtech.api.recipes.properties.RecipePropertyStorage;
 import gregtech.api.recipes.properties.RecipePropertyStorageImpl;
+import gregtech.api.unification.OreDictUnifier;
+import gregtech.api.unification.material.Materials;
+import gregtech.api.unification.ore.OrePrefix;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.ItemStackHashStrategy;
 import gregtech.integration.groovy.GroovyScriptModule;
@@ -71,6 +74,8 @@ public class Recipe {
 
     private final List<GTRecipeInput> inputs;
     private final List<ItemStack> outputs;
+    private final boolean hasSpecialMufflerDust;
+    private final List<ItemStack> mufflerDustList;
 
     /**
      * A chance of 10000 equals 100%
@@ -93,11 +98,6 @@ public class Recipe {
     private final boolean hidden;
     private final GTRecipeCategory recipeCategory;
 
-    /**
-     * If this Recipe is a Crafttweaker recipe. Used for logging purposes
-     */
-    // TODO YEET
-    private final boolean isCTRecipe;
     private final boolean groovyRecipe;
     private final RecipePropertyStorage recipePropertyStorage;
 
@@ -109,10 +109,10 @@ public class Recipe {
                   List<GTRecipeInput> fluidInputs,
                   List<FluidStack> fluidOutputs,
                   @NotNull ChancedOutputList<FluidStack, ChancedFluidOutput> chancedFluidOutputs,
+                  List<ItemStack> mufflerDustList,
                   int duration,
                   long EUt,
                   boolean hidden,
-                  boolean isCTRecipe,
                   @NotNull RecipePropertyStorage recipePropertyStorage,
                   @NotNull GTRecipeCategory recipeCategory) {
         this.recipePropertyStorage = recipePropertyStorage;
@@ -122,6 +122,16 @@ public class Recipe {
         } else {
             this.outputs = new ArrayList<>(outputs);
         }
+        if (mufflerDustList.isEmpty()) {
+            this.mufflerDustList = new ArrayList<>(
+                    Collections.singleton(OreDictUnifier.get(OrePrefix.dustTiny, Materials.Ash)));
+            hasSpecialMufflerDust = false;
+        } else
+        {
+            this.mufflerDustList = new ArrayList<>(mufflerDustList);
+            hasSpecialMufflerDust = true;
+        }
+
         this.chancedOutputs = chancedOutputs;
         this.chancedFluidOutputs = chancedFluidOutputs;
         this.fluidInputs = GTRecipeInputCache.deduplicateInputs(fluidInputs);
@@ -130,7 +140,6 @@ public class Recipe {
         this.EUt = EUt;
         this.hidden = hidden;
         this.recipeCategory = recipeCategory;
-        this.isCTRecipe = isCTRecipe;
         this.hashCode = makeHashCode();
         this.groovyRecipe = GroovyScriptModule.isCurrentlyRunning();
     }
@@ -138,8 +147,8 @@ public class Recipe {
     @NotNull
     public Recipe copy() {
         return new Recipe(this.inputs, this.outputs, this.chancedOutputs, this.fluidInputs,
-                this.fluidOutputs, this.chancedFluidOutputs, this.duration,
-                this.EUt, this.hidden, this.isCTRecipe, this.recipePropertyStorage, this.recipeCategory);
+                this.fluidOutputs, this.chancedFluidOutputs, this.mufflerDustList,this.duration,
+                this.EUt, this.hidden, this.recipePropertyStorage, this.recipeCategory);
     }
 
     /**
@@ -437,10 +446,10 @@ public class Recipe {
                 .append("chancedOutputs", chancedOutputs)
                 .append("fluidInputs", fluidInputs)
                 .append("fluidOutputs", fluidOutputs)
+                .append("mufflerDustList", mufflerDustList)
                 .append("duration", duration)
                 .append("EUt", EUt)
                 .append("hidden", hidden)
-                .append("CTRecipe", isCTRecipe)
                 .append("GSRecipe", groovyRecipe)
                 .toString();
     }
@@ -693,6 +702,20 @@ public class Recipe {
 
         return outputs;
     }
+    public List<ItemStack> getMufflerDustList() {
+        return mufflerDustList;
+    }
+
+    public String getMufflerDustName() {
+        StringBuilder mufflerDustName = new StringBuilder();
+        for (ItemStack mufflerDust : mufflerDustList)
+            mufflerDustName.append(mufflerDust.getDisplayName());
+        return mufflerDustName.toString();
+    }
+
+    public boolean isHasSpecialMufflerDust() {
+        return hasSpecialMufflerDust;
+    }
 
     public int getDuration() {
         return duration;
@@ -704,10 +727,6 @@ public class Recipe {
 
     public boolean isHidden() {
         return hidden;
-    }
-
-    public boolean getIsCTRecipe() {
-        return isCTRecipe;
     }
 
     public boolean isGroovyRecipe() {

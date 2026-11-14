@@ -37,41 +37,125 @@ public class ConfigHolder {
     @Config.Name("Tool and Armor Options")
     public static ToolOptions tools = new ToolOptions();
 
+    @Config.Comment("Multiblock universal tool mover limits and safety options")
+    @Config.Name("Multiblock Universal Tool Options")
+    public static MultiblockToolOptions multiblockMover = new MultiblockToolOptions();
+
     @Config.Comment("Config options for World Generation features")
     @Config.Name("Worldgen Options")
     @Config.RequiresMcRestart
     public static WorldGenOptions worldgen = new WorldGenOptions();
 
+    public static class MultiblockToolOptions {
+
+        @Config.RangeInt(min = 1, max = 16384)
+        public int maxBlocks = 4096;
+
+        @Config.RangeInt(min = 1, max = 256)
+        public int maxAxisLength = 64;
+
+        @Config.RangeInt(min = 1, max = 1024)
+        public int maxDistance = 128;
+
+        @Config.Comment("Distance used when placing a mover preview while pointing at air")
+        @Config.RangeInt(min = 1, max = 64)
+        public int airTargetDistance = 8;
+
+        @Config.RangeInt(min = 100, max = 72000)
+        public int sessionTimeoutTicks = 1200;
+
+        @Config.RangeInt(min = 1, max = 20)
+        public int previewCollisionRefreshTicks = 5;
+
+        public boolean enableEffects = true;
+        public boolean enableBlockModelPreview = true;
+
+        @Config.RangeInt(min = 0, max = 16384)
+        public int maxModelPreviewBlocks = 4096;
+
+        public boolean enableRotation = true;
+
+        @Config.RangeInt(min = 0)
+        public int rotationEnergyPerQuarterTurn = 250000;
+
+        @Config.RangeInt(min = 1, max = 60000)
+        public int performanceWarnMillis = 50;
+
+        @Config.RangeInt(min = 0)
+        public int baseEnergyCost = 100000;
+
+        @Config.RangeInt(min = 0)
+        public int energyPerBlock = 1000;
+
+        @Config.RangeInt(min = 0)
+        public int energyPerTileEntity = 5000;
+    }
+
     //原版优化 Vanilla Optimize
     @Config.Comment("Config options for Vanilla Optimize")
     @Config.Name("Vanilla Optimize")
     public static VanillaOptimizeOptions vanillaOptimizeOptions = new VanillaOptimizeOptions();
+    @Config.Comment("Config options applying to all GCYM Multiblocks")
+    @Config.Name("Global Multiblock Options")
+    public static GlobalMultiblocks globalMultiblocks = new GlobalMultiblocks();
+
+    @Config.Comment("Config options for integrated nuclear features")
+    @Config.Name("Nuclear Options")
+    @Config.RequiresMcRestart
+    public static NuclearOptions nuclear = new NuclearOptions();
+
+    @Config.Comment("Miscellaneous options for integrated nuclear features")
+    @Config.Name("Nuclear Misc Options")
+    @Config.RequiresMcRestart
+    public static NuclearMiscOptions nuclearMisc = new NuclearMiscOptions();
+
+    public static class NuclearOptions {
+
+        @Config.Comment({ "Nuclear max power multiplier for balancing purposes.", "Default: 0.1" })
+        @Config.RangeDouble(min = 0, max = 10000)
+        public double nuclearPowerMultiplier = 0.1;
+
+        @Config.Comment({ "How much the power required to boil a coolant is divided by.", "Default: 14" })
+        @Config.RangeDouble(min = 0.1, max = 1000)
+        public double fissionCoolantDivisor = 14;
+
+        @Config.Comment({
+                "Fission coolant throughput and turbine output multiplier.",
+                "Default: 40"
+        })
+        @Config.RangeDouble(min = 0.1, max = 10000)
+        public double fissionPowerMultiplier = 40;
+
+        @Config.Comment({
+                "The level of detail used to analyze fission reactors.",
+                "Higher values may cause more lag. Default: 100"
+        })
+        @Config.RangeInt(min = 5, max = 10000)
+        public double fissionReactorResolution = 100;
+
+        @Config.Comment({
+                "The number of neutron multiplication calculations.",
+                "Higher values may cause more lag. Default: 6"
+        })
+        public int fissionReactorPowerIterations = 6;
+
+        @Config.Comment({ "Nuclear coolant heat exchanger recipe efficiency multiplier.", "Default: 0.25" })
+        @Config.RangeDouble(min = 0, max = 1000)
+        public double heatExchangerEfficiencyMultiplier = 0.25;
+
+        @Config.Comment({ "Whether to enable meltdowns and associated explosions.", "Default: true" })
+        public boolean enableMeltdown = true;
+    }
+
+    public static class NuclearMiscOptions {
+        @Config.Comment({ "Allow extended facing for fission reactors.", "Default: false" })
+        public boolean allowExtendedFacingForFissionReactor = false;
+    }
 
     public static class VanillaOptimizeOptions {
-
-        @Config.Comment({"对蝙蝠进行立即处死", })
-        @Config.Name("特定生物处死优化")
-        public boolean killEntityEnable = false;
-
-        @Config.Comment({"对所有动物进行立即处死", })
-        @Config.Name("动物处死优化")
-        public boolean killAnimalEnable = false;
-
         @Config.Comment({"对林业的蝴蝶进行立即处死", })
         @Config.Name("林业蝴蝶处死优化")
         public boolean killButterflyEnable = false;
-
-        @Config.Comment({"拒绝地形矿物生成", })
-        @Config.Name("拒绝矿物生成")
-        public boolean disableOreGeneration = false;
-
-        @Config.Comment({"禁用生物随机生成", })
-        @Config.Name("禁用生物随机生成")
-        public boolean disableSpawnEnable = false;
-
-        @Config.Comment({"禁用方块随机更新", })
-        @Config.Name("禁用方块随机更新")
-        public boolean disableUpdateEnable = false;
     }
     //难度模式
     @Config.Comment("Config options for Difficulty Mode")
@@ -86,15 +170,25 @@ public class ConfigHolder {
     }
 
     public static class MachineOptions {
+        //启用污染机制？
+        @Config.Comment({ "Whether to enable Pollution.", "Default: true" })
+        public boolean enablePollution = true;
+
         @Config.Comment({ "Whether insufficient energy supply should reset Machine recipe progress to zero.",
                 "If true, progress will reset.", "If false, progress will decrease to zero with 2x speed",
                 "Default: false" })
-        public boolean recipeProgressLowEnergy = false;
+        public boolean recipeProgressLowEnergy = true;
+
+        @Config.Comment({ "Whether the machine should destroy the current recipe when power supply is interrupted.",
+                "If true, the current recipe will be immediately destroyed upon power loss.",
+                "If false, the recipe progress will be preserved when power is interrupted.",
+                "Default: false" })
+        public boolean resetRecipeOnPowerLoss = true;
 
         @Config.Comment({
                 "Whether to require a Wrench, Wirecutter, or other GregTech tools to break machines, casings, wires, and more.",
                 "Default: false" })
-        public boolean requireGTToolsForBlocks = false;
+        public boolean requireGTToolsForBlocks = true;
 
         @Config.Comment({ "Whether to enable the Maintenance Hatch, required for Multiblocks.", "Default: true" })
         public boolean enableMaintenance = true;
@@ -123,9 +217,6 @@ public class ConfigHolder {
 
         @Config.Comment({ "Minimum distance betweeb Long Distance Fluid Pipe Endpoints", "Default: 50" })
         public int ldFluidPipeMinDistance = 50;
-
-        @Config.Comment({ "Whether Steam Multiblocks should use Steel instead of Bronze.", "Default: false" })
-        public boolean steelSteamMultiblocks = false;
 
         @Config.Comment({ "Steam to EU multiplier for Steam Multiblocks.",
                 "1.0 means 1L Steam -> 1 EU. 0.5 means 2L Steam -> 1 EU.", "Default: 0.5" })
@@ -198,38 +289,6 @@ public class ConfigHolder {
         @Config.RequiresMcRestart
         public boolean highTierContent = true;
 
-        @Config.Comment({ "Whether tick acceleration effects are allowed to affect GT machines.",
-                "This does NOT apply to the World Accelerator, but to external effects like Time in a Bottle.",
-                "Default: true" })
-        public boolean allowTickAcceleration = true;
-
-        //为所有设备都开启延迟检测功能
-        @Config.Comment({ "Whether to enable delayed structure checks for GT machines.",
-        "Otherwise, delay detection is enabled only for specific multi-party blocks"})
-        public boolean commonStructureCheckSwitch = false;
-
-        @Config.Comment({ "Specifies whether to enable multi-block delay detection",
-                "If detected, detection is delayed for multi-party blocks that mark the need for delayed detection.", "If it is not detected, it will be the same as the original",
-                "Default: true",})
-        public boolean delayStructureCheckSwitch = true;
-
-        //每次检查的时间间隔（单位tick）
-        @Config.Comment({ "The delay between structure checks for machines that require a structure.",
-                "值得注意的是，在原版逻辑中，就是每20tick检测一次，如果你设置为20tick，那么他将什么效果都没有",})
-        @Config.RangeInt(min = 20, max = 2000)
-        public int delayStructureCheckTick = 100;
-
-        @Config.Comment({ "Specifies whether to enable delayed structure checks for machines that require a structure in the standby state.",
-                "If detected, detection is delayed for multi-party blocks that mark the need for delayed detection.", "If it is not detected, it will be the same as the original",
-                "Default: true",})
-        public boolean delayStructureCheckStandbySwitch = true;
-
-        //待机状态时，检测间隔延长x倍
-        @Config.Comment({ "The delay multiplier for structure checks for machines that require a structure.",
-                "对配方类型多方块待机时的检测间隔，需要设置的比delayStructureCheckTick大，否则你会更卡"})
-        @Config.RangeInt(min = 20, max = 2000)
-        public int delayStructureCheckStandby = 600;
-
         //是否开启抽样多方块成型检测
         @Config.Comment({ "Whether to enable sampling for structure checks for machines that require a structure.",
         "Note! Sampling molding testing will only be performed if the multi-block delay detection is turned on"})
@@ -241,9 +300,24 @@ public class ConfigHolder {
         @Config.RangeDouble(min = 0.05,max = 1)
         public double delayStructureCheckSample = 0.20;
 
-        //转子仓伤害
-        @Config.Comment({ "The amount of damage a rotor holder can take before it breaks.", "Default: 100" })
-        public boolean enableRotorDamage = true;
+        @Config.Comment({ "Whether to enable async structure checking for unformed multiblocks.",
+                "When enabled, unformed controllers check patterns on a background thread.",
+                "Disable if you experience issues with structure formation.", "Default: true" })
+        public boolean enableAsyncStructureCheck = true;
+
+        @Config.Comment({ "Whether to enable event-driven structure checking for formed multiblocks.",
+                "When enabled, formed multiblocks only re-check when a block change is detected.",
+                "Disable to revert to periodic polling for formed multiblocks.", "Default: true" })
+        public boolean enableEventDrivenStructureCheck = true;
+
+        @Config.Comment({ "Whether to enable debug logging for structure check events.",
+                "Logs event-driven triggers, async check results, and timing info.", "Default: false" })
+        public boolean debugStructureCheck = false;
+
+        @Config.Comment({ "Whether to enable verbose trace logging for multiblock structure decisions.",
+                "Logs controller position, orientation, check path, missing abilities, and pattern error positions.",
+                "Default: false" })
+        public boolean debugStructureTrace = false;
     }
 
     public static class WorldGenOptions {
@@ -294,7 +368,7 @@ public class ConfigHolder {
 
         @Config.Comment({ "Whether to nerf Wood crafting to 2 Planks from 1 Log, and 2 Sticks from 2 Planks.",
                 "Default: false" })
-        public boolean nerfWoodCrafting = false;
+        public boolean nerfWoodCrafting = true;
 
         @Config.Comment({ "Whether to nerf the Paper crafting recipe.", "Default: true" })
         public boolean nerfPaperCrafting = true;
@@ -425,13 +499,13 @@ public class ConfigHolder {
 
         public static class AE2CompatOptions {
 
-            @Config.Comment({ "The interval between ME Hatch/Bus interact ME network.",
-                    "It may cause lag if the interval is too small.", "Default: 2 sec" })
-            @Config.RangeInt(min = 1, max = 80)
+            @Config.Comment({ "The default refresh rate of ME I/O hatches",
+                    "Setting this low may cause lag.", "Default: 40 ticks" })
+            @Config.RangeInt(min = 1)
             public int updateIntervals = 40;
 
             @Config.Comment({ "The energy consumption of ME Hatch/Bus.", "Default: 1.0AE/t" })
-            @Config.RangeDouble(min = 0.0, max = 10.0)
+            @Config.RangeDouble(min = 0)
             public double meHatchEnergyUsage = 1.0;
         }
     }
@@ -459,6 +533,36 @@ public class ConfigHolder {
 
         @Config.Comment({ "Whether to give the terminal to new players on login", "Default: true" })
         public boolean spawnTerminal = true;
+
+        @Config.Comment({
+                "Make auto-filled fluid block showup in the JEI / in-world preview.",
+                "Default: true"
+        })
+        @Config.RequiresMcRestart
+        public boolean showFluidsForAutoFillingMultiblocks = true;
+
+        @Config.Comment({
+                "Whether to broadcast lag warnings to all online players in chat.",
+                "When a machine exceeds 100ms per tick multiple times within a time window,",
+                "a warning message is sent to all players.", "Default: true"
+        })
+        public boolean lagBroadcastEnabled = true;
+
+        @Config.Comment({
+                "Time window size (in ticks) for lag broadcast accumulation.",
+                "If a machine triggers lag warnings more than 'lagBroadcastThreshold' times",
+                "within this window, a chat broadcast is sent.", "Default: 6000 (5 minutes)"
+        })
+        @Config.RangeInt(min = 200, max = 72000)
+        public int lagBroadcastWindowTicks = 6000;
+
+        @Config.Comment({
+                "Number of lag warnings within the time window required to trigger a chat broadcast.",
+                "Default: 5"
+        })
+        @Config.RangeInt(min = 1, max = 100)
+        public int lagBroadcastThreshold = 5;
+
     }
 
     public static class ClientOptions {
@@ -469,6 +573,13 @@ public class ConfigHolder {
         @Config.Name("Armor HUD Location")
         @Config.RequiresMcRestart
         public ArmorHud armorHud = new ArmorHud();
+
+        @Config.Name("Wireless HUD Location")
+        public WirelessHud wirelessHud = new WirelessHud();
+
+        @Config.Comment("Configuration for the wireless computation HUD.")
+        @Config.Name("Wireless Computation HUD")
+        public WirelessComputationHud wirelessComputationHud = new WirelessComputationHud();
 
         @Config.Comment("Config options for Shaders and Post-processing Effects")
         @Config.Name("Shader Options")
@@ -521,13 +632,13 @@ public class ConfigHolder {
                 "16777215 (0xFFFFFF in decimal) is no coloring (like GTCE).",
                 "13819135 (0xD2DCFF in decimal) is the classic blue from GT5 (default)." })
         @Config.RangeInt(min = 0, max = 0xFFFFFF)
-        public int defaultPaintingColor = 0xD2DCFF;
+        public int defaultPaintingColor = 0xFFFFFF;
 
         @Config.Comment({ "The default color to overlay onto Machine (and other) UIs.",
                 "16777215 (0xFFFFFF) is no coloring (like GTCE).",
                 "13819135 (0xD2DCFF in decimal) is the classic blue from GT5 (default)." })
         @Config.RangeInt(min = 0, max = 0xFFFFFF)
-        public int defaultUIColor = 0xD2DCFF;
+        public int defaultUIColor = 0xFFFFFF;
 
         // requires mc restart, color is set upon jei plugin registration
         @Config.Comment({ "The color to use as a background for the Multiblock Preview JEI Page.",
@@ -558,9 +669,15 @@ public class ConfigHolder {
         @Config.Comment({ "Whether to prefer the Material Tree over other categories in JEI", "Default: false" })
         public boolean preferMaterialTreeInJEI = false;
 
-        //是否运行Quit插件
-        @Config.Comment({ "是否运行Quit插件", "Default: true" })
-        public boolean runQuit = true;
+        @Config.Comment({ "Collapse GT MetaPrefixItems and other variant-heavy items into JEI collapsible groups.",
+                "When enabled, items like dusts, plates, cables, pipes, etc. are folded into expandable groups.",
+                "Default: true" })
+        @Config.RequiresMcRestart
+        public boolean collapseGTItems = true;
+
+        @Config.Comment({ "Whether machines' MUI2 GUIs show a world preview next to the cover buttons.",
+                "Default: true" })
+        public boolean enableMachineWorldPreview = true;
 
         public static class GuiConfig {
 
@@ -572,6 +689,85 @@ public class ConfigHolder {
                     "False is incremental like the Minecraft furnace.",
                     "Default: true" })
             public boolean smoothProgressBars = true;
+
+            @Config.Comment({ "If MUI2 screens play a jelly-like pop animation when they are opened.",
+                    "Ignored while NeverEnoughAnimations is installed, since that mod already animates GUI openings.",
+                    "Default: true" })
+            public boolean jellyOpeningAnimation = true;
+        }
+
+        public static class WirelessHud {
+            @Config.Comment({ "Whether the wireless HUD is enabled.", "Default: true" })
+            public boolean enabled = true;
+
+            @Config.Comment({ "X of HUD.", "Default: 5" })
+            @Config.RangeInt(min = 0, max = 255)
+            public int hudOffsetX = 5;
+
+            @Config.Comment({ "Y of HUD.", "Default: 40" })
+            @Config.RangeInt(min = 0, max = 255)
+            public int hudOffsetY = 40;
+
+            @Config.Comment({ "Whether to show the gradient power bar.", "Default: true" })
+            public boolean showPowerBar = true;
+
+            @Config.Comment({ "Whether to show the 5m/1h difference text.", "Default: true" })
+            public boolean showTimeDifference = true;
+
+            @Config.Comment({ "Whether to show the power chart.", "Default: true" })
+            public boolean showPowerChart = true;
+
+            @Config.Comment({ "Width of the power chart.", "Default: 150" })
+            @Config.RangeInt(min = 50, max = 500)
+            public int chartWidth = 150;
+
+            @Config.Comment({ "Height of the power chart.", "Default: 100" })
+            @Config.RangeInt(min = 30, max = 300)
+            public int chartHeight = 100;
+
+            @Config.Comment({ "Draw the stored energy line in the power chart.", "Default: true" })
+            public boolean chartShowStored = true;
+
+            @Config.Comment({ "Draw the input rate line in the power chart.", "Default: false" })
+            public boolean chartShowInput = false;
+
+            @Config.Comment({ "Draw the output rate line in the power chart.", "Default: false" })
+            public boolean chartShowOutput = false;
+        }
+        public static class WirelessComputationHud {
+            @Config.Comment({ "Whether the wireless computation HUD is enabled.", "Default: true" })
+            public boolean enabled = true;
+
+            @Config.Comment({ "X of HUD.", "Default: 5" })
+            @Config.RangeInt(min = 0, max = 255)
+            public int hudOffsetX = 5;
+
+            @Config.Comment({ "Y of HUD.", "Default: 40" })
+            @Config.RangeInt(min = 0, max = 255)
+            public int hudOffsetY = 40;
+
+            @Config.Comment({ "Whether to show the utilization gradient bar.", "Default: true" })
+            public boolean showUtilizationBar = true;
+
+            @Config.Comment({ "Whether to show the 5m/1h difference text.", "Default: true" })
+            public boolean showTimeDifference = true;
+
+            @Config.Comment({ "Whether to show the allocation chart.", "Default: true" })
+            public boolean showChart = true;
+
+            @Config.Comment({ "Width of the chart.", "Default: 150" })
+            @Config.RangeInt(min = 50, max = 500)
+            public int chartWidth = 150;
+
+            @Config.Comment({ "Height of the chart.", "Default: 100" })
+            @Config.RangeInt(min = 30, max = 300)
+            public int chartHeight = 100;
+
+            @Config.Comment({ "Draw the allocated CWU/t line in the chart.", "Default: true" })
+            public boolean chartShowAllocated = true;
+
+            @Config.Comment({ "Draw the allocation rate line in the chart.", "Default: false" })
+            public boolean chartShowRate = false;
         }
 
         public static class ArmorHud {
@@ -672,6 +868,27 @@ public class ConfigHolder {
                     "Enable the display of a second hotbar representing the toolbelt's inventory when one is selected.",
                     "Default: true" })
             public boolean enableToolbeltHotbarDisplay = true;
+        }
+
+        @Config.Comment("Config options for The One Probe integration")
+        @Config.Name("TOP Config")
+        public TOPConfig topConfig = new TOPConfig();
+
+        public static class TOPConfig {
+            @Config.Comment({"How many items and fluids can be shown at once before it starts hiding names.", "Default: 4", "Range: 1 ~ 40"})
+            @Config.RangeInt(min = 1, max = 40)
+            @Config.Name("物品流体详细显示限制")
+            public int itemFluidDetailLimit = 4;
+
+            @Config.Comment({"How many items and fluids are shown in seperate rows (when ItemFluidDetailLimit is exceeded)", "Default: 12", "Range: 1 ~ 40"})
+            @Config.RangeInt(min = 1, max = 40)
+            @Config.Name("每行最大显示数量")
+            public int maxEntriesToShowInRow = 12;
+
+            @Config.Comment({"How far items and fluids are seperated when shown in rows.", "Default: 2", "Range: 0 ~ 10"})
+            @Config.RangeInt(min = 0, max = 10)
+            @Config.Name("行间距")
+            public int rowDistanceSeperation = 2;
         }
     }
 
@@ -816,6 +1033,11 @@ public class ConfigHolder {
         @Config.Comment({ "The maximum amount of pipes a recursive spray can do at once", "Default: 128 blocks" })
         @Config.RangeInt(min = 1, max = 1024)
         public int maxRecursiveSprayLength = 128;
+
+        @Config.Comment({ "The mining time required for each Vajra mining speed tier in order.",
+                "0 means instant break. Default: 0t, 8t, 20t, 40t" })
+        @Config.Name("Vajra Mining Speeds")
+        public int[] vajraMiningTiers = new int[] { 0, 8, 20, 40 };
     }
 
     public static class ArmorHud {
@@ -845,5 +1067,12 @@ public class ConfigHolder {
         @Config.RangeInt(min = 1, max = 512)
         @Config.Comment({ "The EU/t consumption of the NanoSaber.", "Default: 64" })
         public int energyConsumption = 64;
+    }
+
+    public static class GlobalMultiblocks {
+
+        @Config.Comment({ "Makes nearly every GCYM Multiblock require blocks which set their maximum voltages.",
+                "Default: false" })
+        public boolean enableTieredCasings = true;
     }
 }

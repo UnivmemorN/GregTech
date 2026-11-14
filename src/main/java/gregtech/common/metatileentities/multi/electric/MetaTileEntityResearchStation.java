@@ -1,7 +1,5 @@
 package gregtech.common.metatileentities.multi.electric;
 
-import com.cleanroommc.modularui.api.drawable.IDrawable;
-
 import gregtech.api.GTValues;
 import gregtech.api.capability.IObjectHolder;
 import gregtech.api.capability.IOpticalComputationHatch;
@@ -17,10 +15,9 @@ import gregtech.api.metatileentity.multiblock.RecipeMapMultiblockController;
 import gregtech.api.metatileentity.multiblock.ui.KeyManager;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIBuilder;
 import gregtech.api.metatileentity.multiblock.ui.UISyncer;
-import gregtech.api.pattern.BlockPattern;
-import gregtech.api.pattern.FactoryBlockPattern;
-import gregtech.api.pattern.MultiblockShapeInfo;
-import gregtech.api.pattern.PatternMatchContext;
+import gregtech.api.pattern.FormedStructureView;
+import gregtech.api.pattern.casing.DeclarativePatternBuilder;
+import gregtech.api.pattern.element.StructureDefinition;
 import gregtech.api.recipes.Recipe;
 import gregtech.api.recipes.RecipeMaps;
 import gregtech.api.util.AssemblyLineManager;
@@ -28,7 +25,6 @@ import gregtech.api.util.GTUtility;
 import gregtech.api.util.KeyUtil;
 import gregtech.client.renderer.ICubeRenderer;
 import gregtech.client.renderer.texture.Textures;
-import gregtech.common.ConfigHolder;
 import gregtech.common.blocks.BlockComputerCasing;
 import gregtech.common.blocks.MetaBlocks;
 import gregtech.common.items.behaviors.DataItemBehavior;
@@ -36,9 +32,7 @@ import gregtech.common.metatileentities.MetaTileEntities;
 
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.resources.I18n;
-import net.minecraft.init.Blocks;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.World;
@@ -46,6 +40,7 @@ import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import net.minecraftforge.items.IItemHandlerModifiable;
 
+import com.cleanroommc.modularui.api.drawable.IDrawable;
 import com.cleanroommc.modularui.utils.serialization.ByteBufAdapters;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -54,11 +49,33 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import static gregtech.api.util.RelativeDirection.*;
-
 public class MetaTileEntityResearchStation extends RecipeMapMultiblockController
         implements IOpticalComputationReceiver {
 
+    private static final StructureDefinition<?> STRUCTURE_DEFINITION = StructureDefinition.getOrBuild(
+            "gregtech:research_station", () -> DeclarativePatternBuilder.start()
+                    .aisle("XXX", "VVV", "PPP", "PPP", "PPP", "VVV", "XXX")
+                    .aisle("XXX", "VAV", "AAA", "AAA", "AAA", "VAV", "XXX")
+                    .aisle("XXX", "VAV", "XAX", "XSX", "XAX", "VAV", "XXX")
+                    .aisle("XXX", "XAX", "---", "---", "---", "XAX", "XXX")
+                    .aisle(" X ", "XAX", "---", "---", "---", "XAX", " X ")
+                    .aisle(" X ", "XAX", "-A-", "-H-", "-A-", "XAX", " X ")
+                    .aisle("   ", "XXX", "---", "---", "---", "XXX", "   ")
+                    .self('S', MetaTileEntityResearchStation.class)
+                    .block('X', getCasingState())
+                    .any(' ')
+                    .air('-')
+                    .block('V', getVentState())
+                    .block('A', getAdvancedState())
+                    .hatch('H', MultiblockAbility.OBJECT_HOLDER)
+                    .casing('P', getCasingState())
+                    .hatch(MultiblockAbility.INPUT_ENERGY, 1, 4,
+                            () -> MetaTileEntities.ENERGY_INPUT_HATCH[GTValues.LuV])
+                    .hatch(MultiblockAbility.MAINTENANCE_HATCH, 1, 1,
+                            () -> MetaTileEntities.MAINTENANCE_HATCH)
+                    .hatch(MultiblockAbility.COMPUTATION_DATA_RECEPTION, 1, 1,
+                            () -> MetaTileEntities.COMPUTATION_HATCH_RECEIVER[GTValues.LuV])
+                    .buildStructureDefinition());
     private IOpticalComputationProvider computationProvider;
     private IObjectHolder objectHolder;
 
@@ -67,14 +84,33 @@ public class MetaTileEntityResearchStation extends RecipeMapMultiblockController
         this.recipeMapWorkable = new ResearchStationRecipeLogic(this);
     }
 
+    @NotNull
+    private static IBlockState getVentState() {
+        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.COMPUTER_HEAT_VENT);
+    }
+
+    @NotNull
+    private static IBlockState getAdvancedState() {
+        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.ADVANCED_COMPUTER_CASING);
+    }
+
+    @NotNull
+    public static IBlockState getCasingState() {
+        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.COMPUTER_CASING);
+    }
+
     @Override
     public MetaTileEntity createMetaTileEntity(IGregTechTileEntity tileEntity) {
         return new MetaTileEntityResearchStation(metaTileEntityId);
     }
 
     @Override
-    protected void formStructure(PatternMatchContext context) {
-        super.formStructure(context);
+    protected void formStructure(@NotNull FormedStructureView formed) {
+        formRecipeMapStructure(formed);
+        formResearchStationStructure();
+    }
+
+    private void formResearchStationStructure() {
         List<IOpticalComputationHatch> providers = getAbilities(MultiblockAbility.COMPUTATION_DATA_RECEPTION);
         if (providers != null && providers.size() >= 1) {
             computationProvider = providers.get(0);
@@ -92,17 +128,8 @@ public class MetaTileEntityResearchStation extends RecipeMapMultiblockController
         }
     }
 
-    // force object holder to be facing the controller
     @Override
-    public void checkStructurePattern() {
-        super.checkStructurePattern();
-        if (isStructureFormed() && objectHolder.getFrontFacing() != getFrontFacing().getOpposite()) {
-            invalidateStructure();
-        }
-    }
-
-    @Override
-    public ComputationRecipeLogic getRecipeMapWorkable() {
+    public @NotNull ComputationRecipeLogic getRecipeMapWorkable() {
         return (ComputationRecipeLogic) recipeMapWorkable;
     }
 
@@ -127,70 +154,9 @@ public class MetaTileEntityResearchStation extends RecipeMapMultiblockController
         return objectHolder;
     }
 
-    @NotNull
     @Override
-    protected BlockPattern createStructurePattern() {
-        return FactoryBlockPattern.start()
-                .aisle("XXX", "VVV", "PPP", "PPP", "PPP", "VVV", "XXX")
-                .aisle("XXX", "VAV", "AAA", "AAA", "AAA", "VAV", "XXX")
-                .aisle("XXX", "VAV", "XAX", "XSX", "XAX", "VAV", "XXX")
-                .aisle("XXX", "XAX", "---", "---", "---", "XAX", "XXX")
-                .aisle(" X ", "XAX", "---", "---", "---", "XAX", " X ")
-                .aisle(" X ", "XAX", "-A-", "-H-", "-A-", "XAX", " X ")
-                .aisle("   ", "XXX", "---", "---", "---", "XXX", "   ")
-                .where('S', selfPredicate())
-                .where('X', states(getCasingState()))
-                .where(' ', any())
-                .where('-', air())
-                .where('V', states(getVentState()))
-                .where('A', states(getAdvancedState()))
-                .where('P', states(getCasingState())
-                        .or(abilities(MultiblockAbility.INPUT_ENERGY).setMinGlobalLimited(1))
-                        .or(maintenancePredicate())
-                        .or(abilities(MultiblockAbility.COMPUTATION_DATA_RECEPTION).setExactLimit(1)))
-                .where('H', abilities(MultiblockAbility.OBJECT_HOLDER))
-                .build();
-    }
-
-    @Override
-    public List<MultiblockShapeInfo> getMatchingShapes() {
-        return Collections.singletonList(MultiblockShapeInfo.builder(RIGHT, DOWN, FRONT)
-                .aisle("XXX", "VVV", "POP", "PEP", "PMP", "VVV", "XXX")
-                .aisle("XXX", "VAV", "AAA", "AAA", "AAA", "VAV", "XXX")
-                .aisle("XXX", "VAV", "XAX", "XSX", "XAX", "VAV", "XXX")
-                .aisle("XXX", "XAX", "---", "---", "---", "XAX", "XXX")
-                .aisle("-X-", "XAX", "---", "---", "---", "XAX", "-X-")
-                .aisle("-X-", "XAX", "-A-", "-H-", "-A-", "XAX", "-X-")
-                .aisle("---", "XXX", "---", "---", "---", "XXX", "---")
-                .where('S', MetaTileEntities.RESEARCH_STATION, EnumFacing.SOUTH)
-                .where('X', getCasingState())
-                .where('-', Blocks.AIR.getDefaultState())
-                .where('V', getVentState())
-                .where('A', getAdvancedState())
-                .where('P', getCasingState())
-                .where('O', MetaTileEntities.COMPUTATION_HATCH_RECEIVER[GTValues.LuV], EnumFacing.NORTH)
-                .where('E', MetaTileEntities.ENERGY_INPUT_HATCH[GTValues.LuV], EnumFacing.NORTH)
-                .where('M',
-                        () -> ConfigHolder.machines.enableMaintenance ? MetaTileEntities.MAINTENANCE_HATCH :
-                                getCasingState(),
-                        EnumFacing.NORTH)
-                .where('H', MetaTileEntities.OBJECT_HOLDER, EnumFacing.NORTH)
-                .build());
-    }
-
-    @NotNull
-    private static IBlockState getVentState() {
-        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.COMPUTER_HEAT_VENT);
-    }
-
-    @NotNull
-    private static IBlockState getAdvancedState() {
-        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.ADVANCED_COMPUTER_CASING);
-    }
-
-    @NotNull
-    private static IBlockState getCasingState() {
-        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.COMPUTER_CASING);
+    protected StructureDefinition<?> createStructureDefinition() {
+        return STRUCTURE_DEFINITION;
     }
 
     @SideOnly(Side.CLIENT)

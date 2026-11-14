@@ -33,6 +33,7 @@ import com.cleanroommc.modularui.drawable.ItemDrawable;
 import com.cleanroommc.modularui.drawable.Rectangle;
 import com.cleanroommc.modularui.factory.SidedPosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.value.BoolValue;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
@@ -114,12 +115,17 @@ public class CoverMachineController extends CoverBase implements CoverWithUI {
     }
 
     @Override
-    public boolean usesMui2() {
-        return true;
+    public ModularPanel buildUI(SidedPosGuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
+        return GTGuis.createPanel(this, 176, 112)
+                .child(CoverWithUI.createTitleRow(getPickItem()))
+                .child(buildContent(guiSyncManager))
+                .bindPlayerInventory();
     }
 
-    @Override
-    public ModularPanel buildUI(SidedPosGuiData guiData, PanelSyncManager guiSyncManager) {
+    /**
+     * 面板内容：主界面与侧边浮动子面板共用，两者的控件与同步值完全一致。
+     */
+    private @NotNull Flow buildContent(@NotNull PanelSyncManager guiSyncManager) {
         EnumSyncValue<ControllerMode> controllerModeValue = new EnumSyncValue<>(ControllerMode.class,
                 this::getControllerMode, this::setControllerMode);
         BooleanSyncValue invertedValue = new BooleanSyncValue(this::isInverted, this::setInverted);
@@ -127,54 +133,52 @@ public class CoverMachineController extends CoverBase implements CoverWithUI {
         guiSyncManager.syncValue("controller_mode", controllerModeValue);
         guiSyncManager.syncValue("inverted", invertedValue);
 
-        return GTGuis.createPanel(this, 176, 112)
-                .child(CoverWithUI.createTitleRow(getPickItem()))
-                .child(Flow.column()
-                        .widthRel(1.0f).margin(7, 0)
-                        .top(24).coverChildrenHeight()
+        return Flow.column()
+                .widthRel(1.0f).margin(7, 0)
+                .top(24).coverChildrenHeight()
 
-                        // Inverted mode
-                        .child(createSettingsRow()
-                                .child(new ToggleButton()
-                                        .size(16).left(0)
-                                        .value(new BoolValue.Dynamic(invertedValue::getValue,
-                                                $ -> invertedValue.setValue(true)))
-                                        .overlay(GTGuiTextures.BUTTON_REDSTONE_ON)
-                                        .selectedBackground(GTGuiTextures.MC_BUTTON_DISABLED))
-                                .child(IKey.lang("cover.machine_controller.enable_with_redstone").asWidget()
-                                        .heightRel(1.0f).left(20)))
-                        .child(createSettingsRow()
-                                .child(new ToggleButton()
-                                        .size(16).left(0)
-                                        .value(new BoolValue.Dynamic(() -> !invertedValue.getValue(),
-                                                $ -> invertedValue.setValue(false)))
-                                        .overlay(GTGuiTextures.BUTTON_REDSTONE_OFF)
-                                        .selectedBackground(GTGuiTextures.MC_BUTTON_DISABLED))
-                                .child(IKey.lang("cover.machine_controller.disable_with_redstone").asWidget()
-                                        .heightRel(1.0f).left(20)))
+                // Inverted mode
+                .child(createSettingsRow()
+                        .child(new ToggleButton()
+                                .size(16).left(0)
+                                .value(new BoolValue.Dynamic(invertedValue::getValue,
+                                        $ -> invertedValue.setValue(true)))
+                                .overlay(GTGuiTextures.BUTTON_REDSTONE_ON)
+                                .selectedBackground(GTGuiTextures.MC_BUTTON_DISABLED))
+                        .child(IKey.lang("cover.machine_controller.enable_with_redstone").asWidget()
+                                .heightRel(1.0f).left(20)))
+                .child(createSettingsRow()
+                        .child(new ToggleButton()
+                                .size(16).left(0)
+                                .value(new BoolValue.Dynamic(() -> !invertedValue.getValue(),
+                                        $ -> invertedValue.setValue(false)))
+                                .overlay(GTGuiTextures.BUTTON_REDSTONE_OFF)
+                                .selectedBackground(GTGuiTextures.MC_BUTTON_DISABLED))
+                        .child(IKey.lang("cover.machine_controller.disable_with_redstone").asWidget()
+                                .heightRel(1.0f).left(20)))
 
-                        // Separating line
-                        .child(new Rectangle().setColor(UI_TEXT_COLOR).asWidget()
-                                .height(1).widthRel(0.9f).alignX(0.5f).marginBottom(4).marginTop(4))
+                // Separating line
+                .child(new Rectangle().color(UI_TEXT_COLOR).asWidget()
+                        .height(1).widthRel(0.9f).alignX(0.5f).marginBottom(4).marginTop(4))
 
-                        // Controlling selector
-                        .child(createSettingsRow().height(16 + 2 + 16)
-                                .child(Flow.column().heightRel(1.0f).coverChildrenWidth()
-                                        .child(IKey.lang("cover.machine_controller.control").asWidget()
-                                                .left(0).height(16).marginBottom(2))
-                                        .child(modeButton(controllerModeValue, ControllerMode.MACHINE).left(0)))
-                                .child(modeColumn(controllerModeValue, ControllerMode.COVER_UP, IKey.str("U"))
-                                        .right(100))
-                                .child(modeColumn(controllerModeValue, ControllerMode.COVER_DOWN, IKey.str("D"))
-                                        .right(80))
-                                .child(modeColumn(controllerModeValue, ControllerMode.COVER_NORTH, IKey.str("N"))
-                                        .right(60))
-                                .child(modeColumn(controllerModeValue, ControllerMode.COVER_SOUTH, IKey.str("S"))
-                                        .right(40))
-                                .child(modeColumn(controllerModeValue, ControllerMode.COVER_EAST, IKey.str("E"))
-                                        .right(20))
-                                .child(modeColumn(controllerModeValue, ControllerMode.COVER_WEST, IKey.str("W"))
-                                        .right(0))));
+                // Controlling selector
+                .child(createSettingsRow().height(16 + 2 + 16)
+                        .child(Flow.column().heightRel(1.0f).coverChildrenWidth()
+                                .child(IKey.lang("cover.machine_controller.control").asWidget()
+                                        .left(0).height(16).marginBottom(2))
+                                .child(modeButton(controllerModeValue, ControllerMode.MACHINE).left(0)))
+                        .child(modeColumn(controllerModeValue, ControllerMode.COVER_UP, IKey.str("U"))
+                                .right(100))
+                        .child(modeColumn(controllerModeValue, ControllerMode.COVER_DOWN, IKey.str("D"))
+                                .right(80))
+                        .child(modeColumn(controllerModeValue, ControllerMode.COVER_NORTH, IKey.str("N"))
+                                .right(60))
+                        .child(modeColumn(controllerModeValue, ControllerMode.COVER_SOUTH, IKey.str("S"))
+                                .right(40))
+                        .child(modeColumn(controllerModeValue, ControllerMode.COVER_EAST, IKey.str("E"))
+                                .right(20))
+                        .child(modeColumn(controllerModeValue, ControllerMode.COVER_WEST, IKey.str("W"))
+                                .right(0)));
     }
 
     private Flow modeColumn(EnumSyncValue<ControllerMode> syncValue, ControllerMode mode, IKey title) {

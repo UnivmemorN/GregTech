@@ -6,20 +6,16 @@ import gregtech.api.capability.IMultipleRecipeMaps;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIBuilder;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIFactory;
 import gregtech.api.mui.GTGuiTextures;
-import gregtech.api.pattern.TraceabilityPredicate;
 import gregtech.api.recipes.RecipeMap;
 import gregtech.api.util.GTUtility;
 
-import net.minecraft.client.resources.I18n;
 import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.text.TextComponentTranslation;
-import net.minecraft.world.World;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
@@ -29,9 +25,10 @@ import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.widgets.CycleButtonWidget;
 import org.apache.commons.lang3.ArrayUtils;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.NotNull;
 
-import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public abstract class MultiMapMultiblockController extends RecipeMapMultiblockController
         implements IMultipleRecipeMaps {
@@ -82,11 +79,15 @@ public abstract class MultiMapMultiblockController extends RecipeMapMultiblockCo
 
     @Override
     public void setRecipeMapIndex(int index) {
+        int previousIndex = this.recipeMapIndex;
         this.recipeMapIndex = index;
         if (!getWorld().isRemote) {
             writeCustomData(GregtechDataCodes.RECIPE_MAP_INDEX, buf -> buf.writeByte(index));
             recipeMapWorkable.forceRecipeRecheck();
             markDirty();
+            if (previousIndex != index) {
+                notifyStructureConfigChanged();
+            }
         }
     }
 
@@ -95,58 +96,19 @@ public abstract class MultiMapMultiblockController extends RecipeMapMultiblockCo
         return getAvailableRecipeMaps()[recipeMapIndex];
     }
 
+    @NotNull
     @Override
-    public TraceabilityPredicate autoAbilities(boolean checkEnergyIn, boolean checkMaintenance, boolean checkItemIn,
-                                               boolean checkItemOut, boolean checkFluidIn, boolean checkFluidOut,
-                                               boolean checkMuffler) {
-        boolean checkedItemIn = false, checkedItemOut = false, checkedFluidIn = false, checkedFluidOut = false;
-
-        TraceabilityPredicate predicate = super.autoAbilities(checkMaintenance, checkMuffler)
-                .or(checkEnergyIn ? abilities(MultiblockAbility.INPUT_ENERGY).setMinGlobalLimited(1)
-                        .setMaxGlobalLimited(3).setPreviewCount(1) : new TraceabilityPredicate());
-
-        for (RecipeMap<?> recipeMap : getAvailableRecipeMaps()) {
-            if (checkItemIn || checkFluidIn) {
-                if (recipeMap.getMaxInputs() > 0 || recipeMap.getMaxFluidInputs() > 0) {
-                    predicate = predicate.or(abilities(MultiblockAbility.DUAL_IMPORT).setPreviewCount(1));
-                }
-            }
-            if (checkItemOut || checkFluidOut) {
-                if (recipeMap.getMaxOutputs() > 0 || recipeMap.getMaxFluidOutputs() > 0) {
-                    predicate = predicate.or(abilities(MultiblockAbility.DUAL_EXPORT).setPreviewCount(1));
-                }
-            }
-
-            predicate = predicate.or(abilities(MultiblockAbility.COMPLEX_DUAL).setPreviewCount(1));
-
-            if (!checkedItemIn && checkItemIn) {
-                if (recipeMap.getMaxInputs() > 0) {
-                    checkedItemIn = true;
-                    predicate = predicate.or(abilities(MultiblockAbility.IMPORT_ITEMS).setPreviewCount(1));
-                }
-            }
-            if (!checkedItemOut && checkItemOut) {
-                if (recipeMap.getMaxOutputs() > 0) {
-                    checkedItemOut = true;
-                    predicate = predicate.or(abilities(MultiblockAbility.EXPORT_ITEMS).setPreviewCount(1));
-                }
-            }
-            if (!checkedFluidIn && checkFluidIn) {
-                if (recipeMap.getMaxFluidInputs() > 0) {
-                    checkedFluidIn = true;
-                    predicate = predicate.or(abilities(MultiblockAbility.IMPORT_FLUIDS).setPreviewCount(1));
-                }
-            }
-            if (!checkedFluidOut && checkFluidOut) {
-                if (recipeMap.getMaxFluidOutputs() > 0) {
-                    checkedFluidOut = true;
-                    predicate = predicate.or(abilities(MultiblockAbility.EXPORT_FLUIDS).setPreviewCount(1));
-                }
-            }
-        }
-        return predicate;
+    @SuppressWarnings("unchecked")
+    protected Object getStructureConfigDependencyValue() {
+        Map<String, Object> values = new LinkedHashMap<>(
+                (Map<String, Object>) super.getStructureConfigDependencyValue());
+        RecipeMap<?> currentRecipeMap = getCurrentRecipeMap();
+        values.put("recipeMapIndex", recipeMapIndex);
+        values.put("currentRecipeMap", currentRecipeMap == null ? null : currentRecipeMap.getUnlocalizedName());
+        return values;
     }
 
+    @Override
     protected MultiblockUIFactory createUIFactory() {
         return super.createUIFactory()
                 .createGcymButton((guiData, syncManager) -> {
@@ -163,8 +125,7 @@ public abstract class MultiMapMultiblockController extends RecipeMapMultiblockCo
                             .length(recipeMaps.length)
                             .tooltipBuilder(t -> {
                                 RecipeMap<?> map = recipeMaps[activeMapIndex.getIntValue()];
-                                String name = I18n.format(map.getTranslationKey());
-                                t.addLine(IKey.lang("gregtech.multiblock.multiple_recipemaps.value", name));
+                                t.addLine(IKey.lang("gregtech.multiblock.multiple_recipemaps.value", IKey.lang(map.getTranslationKey())));
                             });
                 });
     }
@@ -176,18 +137,13 @@ public abstract class MultiMapMultiblockController extends RecipeMapMultiblockCo
                 .addEnergyUsageLine(this.getEnergyContainer())
                 .addEnergyTierLine(GTUtility.getTierByVoltage(recipeMapWorkable.getMaxVoltage()))
                 .addParallelsLine(recipeMapWorkable.getParallelLimit())
-                .addWorkingStatusLine()
-                .addProgressLine(recipeMapWorkable.getProgress(), recipeMapWorkable.getMaxProgress())
-                .addRecipeOutputLine(recipeMapWorkable);
+                .addWorkingStatusLine();
+
+        // Cross-recipe parallel display (synced via builder to prevent client/server buffer desync)
+        builder.addCrossRecipeOrProgressDisplay(recipeMapWorkable);
     }
 
     @Override
-    public void addInformation(ItemStack stack, @Nullable World player, List<String> tooltip, boolean advanced) {
-        if (recipeMaps.length > 1)
-            tooltip.add(I18n.format("gregtech.multiblock.multiple_recipemaps_recipes.tooltip", this.recipeMapsToString()));
-        super.addInformation(stack, player, tooltip, advanced);
-    }
-
     @SideOnly(Side.CLIENT)
     public String recipeMapsToString() {
         StringBuilder recipeMapsString = new StringBuilder();

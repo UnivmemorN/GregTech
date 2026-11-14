@@ -2,12 +2,18 @@ package gregtech.api.capability;
 
 import net.minecraft.util.EnumFacing;
 
+/**
+ * GregTech 能量容器接口。
+ * <p>
+ * 该接口定义了 GT EU 能量系统的基本交互协议，包括网络传输、内部增减和容量查询。
+ */
 public interface IEnergyContainer {
 
     /**
      * This method is basically {@link #changeEnergy(long)}, but it also handles amperes.
      * This method should always be used when energy is passed between blocks.
      *
+     * @param side     the side from which energy is being received
      * @param voltage  amount of energy packets (energy to add / input voltage)
      * @param amperage packet size (energy to add / input amperage)
      * @return amount of used amperes. 0 if not accepted anything.

@@ -21,18 +21,42 @@ import net.optifine.shaders.ShadersRender;
 import org.lwjgl.opengl.GL11;
 
 import java.util.Collection;
+import java.util.Iterator;
 
 @SideOnly(Side.CLIENT)
 public class VBOWorldSceneRenderer extends ImmediateWorldSceneRenderer {
 
-    protected static final VertexBuffer[] VBOS = new VertexBuffer[BlockRenderLayer.values().length];
+    // Per-instance VBO storage: each renderer owns its own vertex buffers
+    protected final VertexBuffer[] vbos = new VertexBuffer[BlockRenderLayer.values().length];
     protected boolean isDirty = true;
+    private BufferBuilder incrementalUploadBuffer;
+    private Iterator<BlockPos> incrementalUploadIterator;
+    private int incrementalUploadLayer;
+    private int incrementalUploadBlockCount;
+    private long incrementalUploadProcessedBlocks;
+    private boolean incrementalUploadInProgress;
 
     public VBOWorldSceneRenderer(World world) {
         super(world);
     }
 
+    /**
+     * Release GPU resources held by this renderer's VBOs.
+     * Should be called when the renderer is no longer needed.
+     */
+    @Override
+    public void dispose() {
+        cancelIncrementalUpload();
+        for (int i = 0; i < vbos.length; i++) {
+            if (vbos[i] != null) {
+                vbos[i].deleteGlBuffers();
+                vbos[i] = null;
+            }
+        }
+    }
+
     private void uploadVBO() {
+        cancelIncrementalUpload();
         BlockRenderLayer oldRenderLayer = MinecraftForgeClient.getRenderLayer();
 
         try { // render block in each layer
@@ -48,8 +72,8 @@ public class VBOWorldSceneRenderer extends ImmediateWorldSceneRenderer {
                 buffer.reset();
 
                 int i = layer.ordinal();
-                var vbo = VBOS[i];
-                if (vbo == null) vbo = VBOS[i] = new VertexBuffer(DefaultVertexFormats.BLOCK);
+                var vbo = vbos[i];
+                if (vbo == null) vbo = vbos[i] = new VertexBuffer(DefaultVertexFormats.BLOCK);
                 vbo.bufferData(buffer.getByteBuffer());
 
                 OptiFineHelper.postRenderChunkLayer(layer);
@@ -58,6 +82,107 @@ public class VBOWorldSceneRenderer extends ImmediateWorldSceneRenderer {
             ForgeHooksClient.setRenderLayer(oldRenderLayer);
         }
         this.isDirty = false;
+    }
+
+    /**
+     * Uploads a bounded number of blocks into this renderer's VBOs. This must run on the render thread; it exists so
+     * JEI can keep drawing a loading indicator while a very large preview is meshed.
+     *
+     * @return {@code true} when all render layers have been uploaded
+     */
+    public boolean uploadVBOChunk(int maximumBlocks) {
+        if (!isDirty) {
+            return true;
+        }
+        if (maximumBlocks <= 0) {
+            return false;
+        }
+        if (!incrementalUploadInProgress) {
+            startIncrementalUpload();
+        }
+
+        int remaining = maximumBlocks;
+        BlockRenderLayer oldRenderLayer = MinecraftForgeClient.getRenderLayer();
+        try {
+            while (remaining > 0 && incrementalUploadLayer < BlockRenderLayer.values().length) {
+                BlockRenderLayer layer = BlockRenderLayer.values()[incrementalUploadLayer];
+                if (incrementalUploadBuffer == null) {
+                    incrementalUploadBuffer = new BufferBuilder(2_097_152);
+                    incrementalUploadBuffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
+                    incrementalUploadIterator = renderedBlocks.iterator();
+                }
+
+                ForgeHooksClient.setRenderLayer(layer);
+                int pass = layer == BlockRenderLayer.TRANSLUCENT ? 1 : 0;
+                setDefaultPassRenderState(pass);
+                OptiFineHelper.preRenderChunkLayer(layer);
+                try {
+                    while (remaining > 0 && incrementalUploadIterator.hasNext()) {
+                        renderBlock(layer, incrementalUploadIterator.next(), incrementalUploadBuffer);
+                        remaining--;
+                        incrementalUploadProcessedBlocks++;
+                    }
+                } finally {
+                    OptiFineHelper.postRenderChunkLayer(layer);
+                }
+
+                if (incrementalUploadIterator.hasNext()) {
+                    break;
+                }
+
+                incrementalUploadBuffer.finishDrawing();
+                incrementalUploadBuffer.reset();
+                int layerIndex = layer.ordinal();
+                VertexBuffer vbo = vbos[layerIndex];
+                if (vbo == null) {
+                    vbo = vbos[layerIndex] = new VertexBuffer(DefaultVertexFormats.BLOCK);
+                }
+                vbo.bufferData(incrementalUploadBuffer.getByteBuffer());
+                incrementalUploadBuffer = null;
+                incrementalUploadIterator = null;
+                incrementalUploadLayer++;
+            }
+        } finally {
+            ForgeHooksClient.setRenderLayer(oldRenderLayer);
+        }
+
+        if (incrementalUploadLayer >= BlockRenderLayer.values().length) {
+            incrementalUploadInProgress = false;
+            isDirty = false;
+        }
+        return !isDirty;
+    }
+
+    /**
+     * @return a best-effort mesh upload progress value in the range {@code [0, 1]}.
+     */
+    public float getVBOUploadProgress() {
+        if (!isDirty) {
+            return 1.0F;
+        }
+        int layerCount = BlockRenderLayer.values().length;
+        if (!incrementalUploadInProgress) {
+            return 0.0F;
+        }
+        long total = (long) Math.max(1, incrementalUploadBlockCount) * layerCount;
+        return Math.min(1.0F, (float) incrementalUploadProcessedBlocks / total);
+    }
+
+    private void startIncrementalUpload() {
+        cancelIncrementalUpload();
+        incrementalUploadInProgress = true;
+        incrementalUploadLayer = 0;
+        incrementalUploadBlockCount = renderedBlocks.size();
+        incrementalUploadProcessedBlocks = 0L;
+    }
+
+    private void cancelIncrementalUpload() {
+        incrementalUploadBuffer = null;
+        incrementalUploadIterator = null;
+        incrementalUploadLayer = 0;
+        incrementalUploadBlockCount = 0;
+        incrementalUploadProcessedBlocks = 0L;
+        incrementalUploadInProgress = false;
     }
 
     @Override
@@ -92,7 +217,7 @@ public class VBOWorldSceneRenderer extends ImmediateWorldSceneRenderer {
             GlStateManager.pushMatrix();
             {
                 int i = layer.ordinal();
-                var vbo = VBOS[i];
+                var vbo = vbos[i];
                 vbo.bindBuffer();
                 enableClientStates();
                 setupArrayPointers();
@@ -122,6 +247,7 @@ public class VBOWorldSceneRenderer extends ImmediateWorldSceneRenderer {
     @Override
     public WorldSceneRenderer addRenderedBlocks(Collection<BlockPos> blocks) {
         this.isDirty = true;
+        cancelIncrementalUpload();
         return super.addRenderedBlocks(blocks);
     }
 

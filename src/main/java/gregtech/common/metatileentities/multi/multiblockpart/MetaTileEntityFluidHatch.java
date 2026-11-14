@@ -14,9 +14,9 @@ import gregtech.api.items.itemhandlers.GTItemStackHandler;
 import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.metatileentity.multiblock.AbilityInstances;
+import gregtech.api.metatileentity.multiblock.IColorChannelPart;
 import gregtech.api.metatileentity.multiblock.IMultiblockAbilityPart;
 import gregtech.api.metatileentity.multiblock.MultiblockAbility;
-import gregtech.api.metatileentity.multiblock.MultiblockControllerBase;
 import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuis;
 import gregtech.api.mui.widget.GhostCircuitSlotWidget;
@@ -47,13 +47,14 @@ import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.network.NetworkUtils;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.utils.Color;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.RichTextWidget;
 import com.cleanroommc.modularui.widgets.ToggleButton;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -64,19 +65,17 @@ import java.util.List;
 
 public class MetaTileEntityFluidHatch extends MetaTileEntityMultiblockNotifiablePart
         implements IMultiblockAbilityPart<IFluidTank>, IControllable,
-                   IGhostSlotConfigurable {
-
+                   IGhostSlotConfigurable, IColorChannelPart {
     public static final int INITIAL_INVENTORY_SIZE = 8000;
 
     // only holding this for convenience
     protected final HatchFluidTank fluidTank;
     protected boolean workingEnabled;
-    private GhostCircuitItemStackHandler circuitInventory;
-
     // export hatch-only fields
     protected boolean locked;
     @Nullable
     protected FluidStack lockedFluid;
+    private GhostCircuitItemStackHandler circuitInventory;
 
     public MetaTileEntityFluidHatch(ResourceLocation metaTileEntityId, int tier, boolean isExportHatch) {
         super(metaTileEntityId, tier, isExportHatch);
@@ -90,13 +89,20 @@ public class MetaTileEntityFluidHatch extends MetaTileEntityMultiblockNotifiable
         super.initializeInventory();
         if (this.hasGhostCircuitInventory()) {
             this.circuitInventory = new GhostCircuitItemStackHandler(this);
-            this.circuitInventory.addNotifiableMetaTileEntity(this);
         }
     }
 
     @Override
     public boolean hasGhostCircuitInventory() {
         return !isExportHatch;
+    }
+
+    @Override
+    public int getGhostCircuitConfig() {
+        if (this.circuitInventory == null) {
+            return 0;
+        }
+        return this.circuitInventory.getCircuitValue();
     }
 
     @Override
@@ -166,17 +172,17 @@ public class MetaTileEntityFluidHatch extends MetaTileEntityMultiblockNotifiable
     }
 
     @Override
+    public boolean isWorkingEnabled() {
+        return workingEnabled;
+    }
+
+    @Override
     public void setWorkingEnabled(boolean workingEnabled) {
         this.workingEnabled = workingEnabled;
         World world = getWorld();
         if (world != null && !world.isRemote) {
             writeCustomData(GregtechDataCodes.WORKING_ENABLED, buf -> buf.writeBoolean(workingEnabled));
         }
-    }
-
-    @Override
-    public boolean isWorkingEnabled() {
-        return workingEnabled;
     }
 
     @Override
@@ -227,6 +233,7 @@ public class MetaTileEntityFluidHatch extends MetaTileEntityMultiblockNotifiable
         if (shouldRenderOverlay()) {
             SimpleOverlayRenderer renderer = isExportHatch ? Textures.PIPE_OUT_OVERLAY : Textures.PIPE_IN_OVERLAY;
             renderer.renderSided(getFrontFacing(), renderState, translation, pipeline);
+            Textures.PIPE_FLUID_OVERLAY.renderSided(getFrontFacing(), renderState, translation, pipeline);
             SimpleOverlayRenderer overlay = isExportHatch ? Textures.FLUID_HATCH_OUTPUT_OVERLAY :
                     Textures.FLUID_HATCH_INPUT_OVERLAY;
             overlay.renderSided(getFrontFacing(), renderState, translation, pipeline);
@@ -281,7 +288,7 @@ public class MetaTileEntityFluidHatch extends MetaTileEntityMultiblockNotifiable
     }
 
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
         var fluidSyncHandler = GTFluidSlot.sync(fluidTank)
                 .showAmountOnSlot(false)
                 .accessibility(true, !isExportHatch);
@@ -299,12 +306,12 @@ public class MetaTileEntityFluidHatch extends MetaTileEntityMultiblockNotifiable
                 .child(IKey.lang(getMetaFullName()).asWidget().pos(6, 6))
 
                 // export specific
-                .childIf(isExportHatch, new ItemSlot()
+                .childIf(isExportHatch, () -> new ItemSlot()
                         .pos(90, 44)
                         .background(GTGuiTextures.SLOT, GTGuiTextures.OUT_SLOT_OVERLAY)
                         .slot(new ModularSlot(exportItems, 0)
                                 .accessibility(false, true)))
-                .childIf(isExportHatch, new ToggleButton()
+                .childIf(isExportHatch, () -> new ToggleButton()
                         .pos(7, 63)
                         .overlay(GTGuiTextures.BUTTON_LOCK)
                         .value(new BooleanSyncValue(this::isLocked, fluidSyncHandler::lockFluid))
@@ -312,15 +319,15 @@ public class MetaTileEntityFluidHatch extends MetaTileEntityMultiblockNotifiable
                         .addTooltip(false, IKey.lang("gregtech.gui.fluid_lock.tooltip.disabled")))
 
                 // import specific
-                .childIf(!isExportHatch, GTGuiTextures.TANK_ICON.asWidget()
+                .childIf(!isExportHatch, () -> GTGuiTextures.TANK_ICON.asWidget()
                         .pos(91, 36)
                         .size(14, 15))
-                .childIf(!isExportHatch, new ItemSlot()
+                .childIf(!isExportHatch, () -> new ItemSlot()
                         .pos(90, 53)
                         .background(GTGuiTextures.SLOT, GTGuiTextures.OUT_SLOT_OVERLAY)
                         .slot(new ModularSlot(exportItems, 0)
                                 .accessibility(false, true)))
-                .childIf(!isExportHatch, new GhostCircuitSlotWidget()
+                .childIf(!isExportHatch, () -> new GhostCircuitSlotWidget()
                         .slot(circuitInventory, 0)
                         .background(GTGuiTextures.SLOT, GTGuiTextures.INT_CIRCUIT_OVERLAY)
                         .pos(124, 62))
@@ -369,20 +376,6 @@ public class MetaTileEntityFluidHatch extends MetaTileEntityMultiblockNotifiable
     }
 
     @Override
-    public void addToMultiBlock(MultiblockControllerBase controllerBase) {
-        super.addToMultiBlock(controllerBase);
-        if (hasGhostCircuitInventory())
-            this.circuitInventory.addNotifiableMetaTileEntity(controllerBase);
-    }
-
-    @Override
-    public void removeFromMultiBlock(MultiblockControllerBase controllerBase) {
-        super.removeFromMultiBlock(controllerBase);
-        if (hasGhostCircuitInventory())
-            this.circuitInventory.removeNotifiableMetaTileEntity(controllerBase);
-    }
-
-    @Override
     public void addInformation(ItemStack stack, @Nullable World player, @NotNull List<String> tooltip,
                                boolean advanced) {
         if (this.isExportHatch)
@@ -400,11 +393,11 @@ public class MetaTileEntityFluidHatch extends MetaTileEntityMultiblockNotifiable
         super.addToolUsages(stack, world, tooltip, advanced);
     }
 
-    private boolean isLocked() {
+    public boolean isLocked() {
         return this.locked;
     }
 
-    private void setLocked(boolean locked) {
+    public void setLocked(boolean locked) {
         if (!isExportHatch || this.locked == locked) return;
         this.locked = locked;
 
@@ -418,6 +411,20 @@ public class MetaTileEntityFluidHatch extends MetaTileEntityMultiblockNotifiable
         }
         this.lockedFluid = null;
         fluidTank.onContentsChanged();
+    }
+
+    @Nullable
+    public FluidStack getLockedFluid() {
+        return lockedFluid == null ? null : lockedFluid.copy();
+    }
+
+    public void setLockedFluid(@Nullable FluidStack lockedFluid) {
+        if (!isExportHatch) return;
+        this.lockedFluid = lockedFluid == null ? null : lockedFluid.copy();
+        if (this.lockedFluid != null) this.lockedFluid.amount = 1;
+        this.locked = this.locked || this.lockedFluid != null;
+        fluidTank.onContentsChanged();
+        if (!getWorld().isRemote) markDirty();
     }
 
     protected class HatchFluidTank extends NotifiableFluidTank implements IFilteredFluidContainer, IFilter<FluidStack> {
@@ -467,5 +474,10 @@ public class MetaTileEntityFluidHatch extends MetaTileEntityMultiblockNotifiable
             if (!isExportHatch) return IFilter.noPriority();
             return !locked || lockedFluid == null ? IFilter.noPriority() : IFilter.whitelistPriority(1);
         }
+    }
+
+    @Override
+    public boolean showColorChannelPatch() {
+        return !isExportHatch;
     }
 }

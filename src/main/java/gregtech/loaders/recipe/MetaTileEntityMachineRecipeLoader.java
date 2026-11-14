@@ -7,7 +7,6 @@ import gregtech.api.recipes.ModHandler;
 import gregtech.api.recipes.ingredients.GTRecipeInput;
 import gregtech.api.recipes.ingredients.GTRecipeItemInput;
 import gregtech.api.recipes.ingredients.GTRecipeOreInput;
-import gregtech.api.unification.material.MarkerMaterial;
 import gregtech.api.unification.stack.UnificationEntry;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.Mods;
@@ -23,13 +22,11 @@ import static gregtech.api.recipes.RecipeMaps.ASSEMBLY_LINE_RECIPES;
 import static gregtech.api.unification.material.MarkerMaterials.Tier;
 import static gregtech.api.unification.material.Materials.*;
 import static gregtech.api.unification.ore.OrePrefix.*;
-import static gregtech.api.util.Mods.Names.GTQT_CORE;
+import static gregtech.api.util.Mods.Names.GTQT_TEST;
 import static gregtech.common.blocks.MetaBlocks.*;
 import static gregtech.common.items.MetaItems.*;
 import static gregtech.common.metatileentities.MetaTileEntities.*;
-import static gtqt.api.util.MaterialHelper.*;
-import static gtqt.common.metatileentities.GTQTMetaTileEntities.DUAL_IMPORT_HATCH;
-import static net.minecraftforge.fml.common.Loader.isModLoaded;
+import static gregtech.api.util.MaterialHelper.*;
 
 public class MetaTileEntityMachineRecipeLoader {
 
@@ -57,7 +54,7 @@ public class MetaTileEntityMachineRecipeLoader {
 
             ASSEMBLER_RECIPES.recipeBuilder()
                     .input(FLUID_IMPORT_HATCH[i])
-                    .input(pipeQuadrupleFluid, Pipe.get(i))
+                    .input(pipeNonupleFluid, Pipe.get(i))
                     .fluidInputs(Plastic.get(i).getFluid(L * 9))
                     .circuitMeta(9)
                     .output(NONUPLE_IMPORT_HATCH[i])
@@ -65,7 +62,7 @@ public class MetaTileEntityMachineRecipeLoader {
 
             ASSEMBLER_RECIPES.recipeBuilder()
                     .input(FLUID_IMPORT_HATCH[i])
-                    .input(pipeQuadrupleFluid, Pipe.get(i))
+                    .input(pipeQuadrupleFluid, Pipe.get(i),4)
                     .fluidInputs(Plastic.get(i).getFluid(L * 16))
                     .circuitMeta(16)
                     .output(SIXTEEN_IMPORT_HATCH[i])
@@ -81,7 +78,7 @@ public class MetaTileEntityMachineRecipeLoader {
 
             ASSEMBLER_RECIPES.recipeBuilder()
                     .input(FLUID_EXPORT_HATCH[i])
-                    .input(pipeNonupleFluid, Titanium)
+                    .input(pipeNonupleFluid, Pipe.get(i))
                     .fluidInputs(Plastic.get(i).getFluid(L * 9))
                     .circuitMeta(9)
                     .output(NONUPLE_EXPORT_HATCH[i])
@@ -89,7 +86,7 @@ public class MetaTileEntityMachineRecipeLoader {
 
             ASSEMBLER_RECIPES.recipeBuilder()
                     .input(FLUID_EXPORT_HATCH[i])
-                    .input(pipeQuadrupleFluid, Pipe.get(i))
+                    .input(pipeQuadrupleFluid, Pipe.get(i),4)
                     .fluidInputs(Plastic.get(i).getFluid(L * 16))
                     .circuitMeta(16)
                     .output(SIXTEEN_EXPORT_HATCH[i])
@@ -98,11 +95,11 @@ public class MetaTileEntityMachineRecipeLoader {
 
         // Reservoir Hatch
         ASSEMBLER_RECIPES.recipeBuilder()
-                .input(COVER_INFINITE_WATER)
-                .input(FLUID_IMPORT_HATCH[EV])
-                .input(ELECTRIC_PUMP_EV)
+                .input(COVER_INFINITE_WATER_EV)
+                .input(FLUID_IMPORT_HATCH[LuV])
+                .input(ELECTRIC_PUMP_LuV)
                 .output(RESERVOIR_HATCH)
-                .duration(300).EUt(VA[EV]).buildAndRegister();
+                .duration(300).EUt(VA[LuV]).buildAndRegister();
 
         // Item Buses
         registerHatchBusRecipe(ULV, ITEM_IMPORT_BUS[ULV], ITEM_EXPORT_BUS[ULV], OreDictNames.chestWood.toString());
@@ -232,7 +229,7 @@ public class MetaTileEntityMachineRecipeLoader {
                         .EUt(VA[ZPM]))
                 .duration(800).EUt(VA[UV]).buildAndRegister();
 
-        if (!Loader.isModLoaded(GTQT_CORE)) {
+        if (!Loader.isModLoaded(GTQT_TEST)) {
             ASSEMBLY_LINE_RECIPES.recipeBuilder()
                     .input(HULL[UHV])
                     .input(spring, Europium, 4)
@@ -362,7 +359,7 @@ public class MetaTileEntityMachineRecipeLoader {
                         .EUt(VA[ZPM]))
                 .duration(800).EUt(VA[UV]).buildAndRegister();
 
-        if (!Loader.isModLoaded(GTQT_CORE)) {
+        if (!Loader.isModLoaded(GTQT_TEST)) {
             ASSEMBLY_LINE_RECIPES.recipeBuilder()
                     .input(HULL[UHV])
                     .input(cableGtSingle, Europium, 4)
@@ -658,60 +655,6 @@ public class MetaTileEntityMachineRecipeLoader {
                 .output(LD_FLUID_PIPE, 64)
                 .duration(600).EUt(24).buildAndRegister();
 
-        // ME Parts
-
-        if (Mods.AppliedEnergistics2.isModLoaded()) {
-
-            ItemStack fluidInterface = Mods.AppliedEnergistics2.getItem("fluid_interface");
-            ItemStack normalInterface = Mods.AppliedEnergistics2.getItem("interface");
-            ItemStack accelerationCard = Mods.AppliedEnergistics2.getItem("material", 30, 2);
-
-            ASSEMBLER_RECIPES.recipeBuilder()
-                    .input(FLUID_EXPORT_HATCH[EV])
-                    .inputs(fluidInterface.copy())
-                    .inputs(accelerationCard.copy())
-                    .output(FLUID_EXPORT_HATCH_ME)
-                    .duration(300).EUt(VA[HV]).buildAndRegister();
-
-            ASSEMBLER_RECIPES.recipeBuilder()
-                    .input(FLUID_IMPORT_HATCH[EV])
-                    .inputs(fluidInterface.copy())
-                    .inputs(accelerationCard.copy())
-                    .output(FLUID_IMPORT_HATCH_ME)
-                    .duration(300).EUt(VA[HV]).buildAndRegister();
-
-            ASSEMBLER_RECIPES.recipeBuilder()
-                    .input(ITEM_EXPORT_BUS[EV])
-                    .inputs(normalInterface.copy())
-                    .inputs(accelerationCard.copy())
-                    .output(ITEM_EXPORT_BUS_ME)
-                    .duration(300).EUt(VA[HV]).buildAndRegister();
-
-            ASSEMBLER_RECIPES.recipeBuilder()
-                    .input(ITEM_IMPORT_BUS[EV])
-                    .inputs(normalInterface.copy())
-                    .inputs(accelerationCard.copy())
-                    .output(ITEM_IMPORT_BUS_ME)
-                    .duration(300).EUt(VA[HV]).buildAndRegister();
-
-            ASSEMBLER_RECIPES.recipeBuilder()
-                    .input(ITEM_IMPORT_BUS[IV])
-                    .inputs(normalInterface.copy())
-                    .input(CONVEYOR_MODULE_IV)
-                    .input(SENSOR_IV)
-                    .inputs(GTUtility.copy(4, accelerationCard))
-                    .output(STOCKING_BUS_ME)
-                    .duration(300).EUt(VA[IV]).buildAndRegister();
-
-            ASSEMBLER_RECIPES.recipeBuilder()
-                    .input(FLUID_IMPORT_HATCH[IV])
-                    .inputs(fluidInterface.copy())
-                    .input(ELECTRIC_PUMP_IV)
-                    .input(SENSOR_IV)
-                    .inputs(GTUtility.copy(4, accelerationCard))
-                    .output(STOCKING_HATCH_ME)
-                    .duration(300).EUt(VA[IV]).buildAndRegister();
-        }
     }
 
     public static void registerHatchBusRecipe(int tier, MetaTileEntity inputBus, MetaTileEntity outputBus,

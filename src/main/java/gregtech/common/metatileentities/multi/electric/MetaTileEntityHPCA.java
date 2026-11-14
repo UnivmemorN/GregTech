@@ -1,22 +1,33 @@
 package gregtech.common.metatileentities.multi.electric;
 
 import gregtech.api.GTValues;
-import gregtech.api.capability.*;
+import gregtech.api.capability.GregtechDataCodes;
+import gregtech.api.capability.GregtechTileCapabilities;
+import gregtech.api.capability.IControllable;
+import gregtech.api.capability.IEnergyContainer;
+import gregtech.api.capability.IHPCAComponentHatch;
+import gregtech.api.capability.IHPCAComputationProvider;
+import gregtech.api.capability.IHPCACoolantProvider;
+import gregtech.api.capability.IOpticalComputationProvider;
 import gregtech.api.capability.impl.EnergyContainerList;
 import gregtech.api.capability.impl.FluidTankList;
 import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
-import gregtech.api.metatileentity.multiblock.*;
+import gregtech.api.metatileentity.multiblock.IMultiblockPart;
+import gregtech.api.metatileentity.multiblock.MultiblockAbility;
+import gregtech.api.metatileentity.multiblock.MultiblockWithDisplayBase;
+import gregtech.api.metatileentity.multiblock.ProgressBarMultiblock;
 import gregtech.api.metatileentity.multiblock.ui.KeyManager;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIBuilder;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIFactory;
 import gregtech.api.metatileentity.multiblock.ui.TemplateBarBuilder;
 import gregtech.api.metatileentity.multiblock.ui.UISyncer;
 import gregtech.api.mui.GTGuiTextures;
-import gregtech.api.pattern.BlockPattern;
-import gregtech.api.pattern.FactoryBlockPattern;
-import gregtech.api.pattern.MultiblockShapeInfo;
-import gregtech.api.pattern.PatternMatchContext;
+import gregtech.api.pattern.FormedStructureView;
+import gregtech.api.pattern.casing.DeclarativePatternBuilder;
+import gregtech.api.pattern.casing.GTStructureChannels;
+import gregtech.api.pattern.element.Elements;
+import gregtech.api.pattern.element.StructureDefinition;
 import gregtech.api.unification.material.Materials;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.KeyUtil;
@@ -40,7 +51,7 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.SoundEvent;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.text.*;
+import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.World;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.fluids.Fluid;
@@ -73,25 +84,45 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 
-import static gregtech.api.util.RelativeDirection.*;
-
 public class MetaTileEntityHPCA extends MultiblockWithDisplayBase
         implements IOpticalComputationProvider, IControllable, ProgressBarMultiblock {
 
     private static final double IDLE_TEMPERATURE = 200;
     private static final double DAMAGE_TEMPERATURE = 1000;
 
+    private static final StructureDefinition<?> STRUCTURE_DEFINITION = StructureDefinition.getOrBuild(
+            "gregtech:high_performance_computing_array", () -> DeclarativePatternBuilder.start()
+                    .piece("top")
+                    .aisle("AA", "CC", "CC", "CC", "AA")
+                    .repeatablePiece("body", 3, 3)
+                    .aisle("VA", "XV", "XV", "XV", "VA")
+                    .withAisleChannel(GTStructureChannels.STRUCTURE_LENGTH.getName())
+                    .piece("bottom")
+                    .aisle("SA", "CC", "CC", "CC", "AA")
+                    .self('S', MetaTileEntityHPCA.class)
+                    .block('A', getAdvancedState())
+                    .block('V', getVentState())
+                    .where('X', Elements.withDefaultCandidate(
+                            Elements.abilities(MultiblockAbility.HPCA_COMPONENT),
+                            () -> MetaTileEntities.HPCA_EMPTY_COMPONENT))
+                    .casing('C', getCasingState())
+                    .hatch(MultiblockAbility.MAINTENANCE_HATCH, 1, 1,
+                            () -> MetaTileEntities.MAINTENANCE_HATCH)
+                    .hatch(MultiblockAbility.INPUT_ENERGY, 1, 3,
+                            () -> MetaTileEntities.ENERGY_INPUT_HATCH[GTValues.LuV])
+                    .hatch(MultiblockAbility.IMPORT_FLUIDS, 0, 1,
+                            () -> MetaTileEntities.FLUID_IMPORT_HATCH[GTValues.LV])
+                    .hatch(MultiblockAbility.COMPUTATION_DATA_TRANSMISSION, 1, 1,
+                            () -> MetaTileEntities.COMPUTATION_HATCH_TRANSMITTER[GTValues.LuV])
+                    .buildStructureDefinition());
+    private final HPCAGridHandler hpcaHandler;
+    private final TimedProgressSupplier progressSupplier;
     private IEnergyContainer energyContainer;
     private IFluidHandler coolantHandler;
-    private final HPCAGridHandler hpcaHandler;
-
     private boolean isActive;
     private boolean isWorkingEnabled = true;
     private boolean hasNotEnoughEnergy;
-
     private double temperature = IDLE_TEMPERATURE; // start at idle temperature
-
-    private final TimedProgressSupplier progressSupplier;
 
     public MetaTileEntityHPCA(ResourceLocation metaTileEntityId) {
         super(metaTileEntityId);
@@ -100,14 +131,26 @@ public class MetaTileEntityHPCA extends MultiblockWithDisplayBase
         this.hpcaHandler = new HPCAGridHandler(this);
     }
 
+    public static IBlockState getCasingState() {
+        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.COMPUTER_CASING);
+    }
+
+    private static @NotNull IBlockState getAdvancedState() {
+        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.ADVANCED_COMPUTER_CASING);
+    }
+
+    private static @NotNull IBlockState getVentState() {
+        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.COMPUTER_HEAT_VENT);
+    }
+
     @Override
     public MetaTileEntity createMetaTileEntity(IGregTechTileEntity tileEntity) {
         return new MetaTileEntityHPCA(metaTileEntityId);
     }
 
     @Override
-    protected void formStructure(PatternMatchContext context) {
-        super.formStructure(context);
+    protected void formStructure(@NotNull FormedStructureView formed) {
+        formStructureWithDisplay(formed);
         this.energyContainer = new EnergyContainerList(getAbilities(MultiblockAbility.INPUT_ENERGY));
         this.coolantHandler = new FluidTankList(false, getAbilities(MultiblockAbility.IMPORT_FLUIDS));
         this.hpcaHandler.onStructureForm(getAbilities(MultiblockAbility.HPCA_COMPONENT));
@@ -206,106 +249,13 @@ public class MetaTileEntityHPCA extends MultiblockWithDisplayBase
     }
 
     @Override
-    protected @NotNull BlockPattern createStructurePattern() {
-        return FactoryBlockPattern.start()
-                .aisle("AA", "CC", "CC", "CC", "AA")
-                .aisle("VA", "XV", "XV", "XV", "VA")
-                .aisle("VA", "XV", "XV", "XV", "VA")
-                .aisle("VA", "XV", "XV", "XV", "VA")
-                .aisle("SA", "CC", "CC", "CC", "AA")
-                .where('S', selfPredicate())
-                .where('A', states(getAdvancedState()))
-                .where('V', states(getVentState()))
-                .where('X', abilities(MultiblockAbility.HPCA_COMPONENT))
-                .where('C', states(getCasingState()).setMinGlobalLimited(5)
-                        .or(maintenancePredicate())
-                        .or(abilities(MultiblockAbility.INPUT_ENERGY).setMinGlobalLimited(1))
-                        .or(abilities(MultiblockAbility.IMPORT_FLUIDS).setMaxGlobalLimited(1))
-                        .or(abilities(MultiblockAbility.COMPUTATION_DATA_TRANSMISSION).setExactLimit(1)))
-                .build();
-    }
-
-    private static @NotNull IBlockState getCasingState() {
-        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.COMPUTER_CASING);
-    }
-
-    private static @NotNull IBlockState getAdvancedState() {
-        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.ADVANCED_COMPUTER_CASING);
-    }
-
-    private static @NotNull IBlockState getVentState() {
-        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.COMPUTER_HEAT_VENT);
-    }
-
-    @Override
-    public List<MultiblockShapeInfo> getMatchingShapes() {
-        List<MultiblockShapeInfo> shapeInfo = new ArrayList<>();
-        MultiblockShapeInfo.Builder builder = MultiblockShapeInfo.builder(RIGHT, DOWN, FRONT)
-                .aisle("AA", "EC", "MC", "HC", "AA")
-                .aisle("VA", "6V", "3V", "0V", "VA")
-                .aisle("VA", "7V", "4V", "1V", "VA")
-                .aisle("VA", "8V", "5V", "2V", "VA")
-                .aisle("SA", "CC", "CC", "OC", "AA")
-                .where('S', MetaTileEntities.HIGH_PERFORMANCE_COMPUTING_ARRAY, EnumFacing.SOUTH)
-                .where('A', getAdvancedState())
-                .where('V', getVentState())
-                .where('C', getCasingState())
-                .where('E', MetaTileEntities.ENERGY_INPUT_HATCH[GTValues.LuV], EnumFacing.NORTH)
-                .where('H', MetaTileEntities.FLUID_IMPORT_HATCH[GTValues.LV], EnumFacing.NORTH)
-                .where('O', MetaTileEntities.COMPUTATION_HATCH_TRANSMITTER[GTValues.LuV], EnumFacing.SOUTH)
-                .where('M', () -> ConfigHolder.machines.enableMaintenance ? MetaTileEntities.MAINTENANCE_HATCH :
-                        getCasingState(), EnumFacing.NORTH);
-
-        // a few example structures
-        shapeInfo.add(builder.shallowCopy()
-                .where('0', MetaTileEntities.HPCA_EMPTY_COMPONENT, EnumFacing.WEST)
-                .where('1', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .where('2', MetaTileEntities.HPCA_EMPTY_COMPONENT, EnumFacing.WEST)
-                .where('3', MetaTileEntities.HPCA_EMPTY_COMPONENT, EnumFacing.WEST)
-                .where('4', MetaTileEntities.HPCA_COMPUTATION_COMPONENT, EnumFacing.WEST)
-                .where('5', MetaTileEntities.HPCA_EMPTY_COMPONENT, EnumFacing.WEST)
-                .where('6', MetaTileEntities.HPCA_EMPTY_COMPONENT, EnumFacing.WEST)
-                .where('7', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .where('8', MetaTileEntities.HPCA_EMPTY_COMPONENT, EnumFacing.WEST)
-                .build());
-
-        shapeInfo.add(builder.shallowCopy()
-                .where('0', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .where('1', MetaTileEntities.HPCA_COMPUTATION_COMPONENT, EnumFacing.WEST)
-                .where('2', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .where('3', MetaTileEntities.HPCA_ACTIVE_COOLER_COMPONENT, EnumFacing.WEST)
-                .where('4', MetaTileEntities.HPCA_COMPUTATION_COMPONENT, EnumFacing.WEST)
-                .where('5', MetaTileEntities.HPCA_BRIDGE_COMPONENT, EnumFacing.WEST)
-                .where('6', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .where('7', MetaTileEntities.HPCA_COMPUTATION_COMPONENT, EnumFacing.WEST)
-                .where('8', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .build());
-
-        shapeInfo.add(builder.shallowCopy()
-                .where('0', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .where('1', MetaTileEntities.HPCA_COMPUTATION_COMPONENT, EnumFacing.WEST)
-                .where('2', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .where('3', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .where('4', MetaTileEntities.HPCA_ADVANCED_COMPUTATION_COMPONENT, EnumFacing.WEST)
-                .where('5', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .where('6', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .where('7', MetaTileEntities.HPCA_BRIDGE_COMPONENT, EnumFacing.WEST)
-                .where('8', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .build());
-
-        shapeInfo.add(builder.shallowCopy()
-                .where('0', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .where('1', MetaTileEntities.HPCA_ADVANCED_COMPUTATION_COMPONENT, EnumFacing.WEST)
-                .where('2', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .where('3', MetaTileEntities.HPCA_ACTIVE_COOLER_COMPONENT, EnumFacing.WEST)
-                .where('4', MetaTileEntities.HPCA_BRIDGE_COMPONENT, EnumFacing.WEST)
-                .where('5', MetaTileEntities.HPCA_ACTIVE_COOLER_COMPONENT, EnumFacing.WEST)
-                .where('6', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .where('7', MetaTileEntities.HPCA_ADVANCED_COMPUTATION_COMPONENT, EnumFacing.WEST)
-                .where('8', MetaTileEntities.HPCA_HEAT_SINK_COMPONENT, EnumFacing.WEST)
-                .build());
-
-        return shapeInfo;
+    // Migrated to createStructureDefinition(): structure is split into three
+    // named pieces ("top" cap, "body" with the repeatable component row,
+    // "bottom" cap) so each section can be checked independently by the
+    // sharded checker. Cached via StructureDefinition.getOrBuild() since the
+    // structure has no runtime-editable dimensions.
+    protected StructureDefinition<?> createStructureDefinition() {
+        return STRUCTURE_DEFINITION;
     }
 
     @SideOnly(Side.CLIENT)
@@ -723,8 +673,8 @@ public class MetaTileEntityHPCA extends MultiblockWithDisplayBase
         }
 
         /**
-         * Get the coolant stack for this HPCA. Eventually this could be made more diverse with different
-         * coolants from different Active Cooler components, but currently it is just a fixed Fluid.
+         * Get the coolant stack for this HPCA. Eventually this could be made more diverse with different coolants from
+         * different Active Cooler components, but currently it is just a fixed Fluid.
          */
         public FluidStack getCoolantStack(int amount) {
             return new FluidStack(getCoolant(), amount);
@@ -735,8 +685,8 @@ public class MetaTileEntityHPCA extends MultiblockWithDisplayBase
         }
 
         /**
-         * Roll a 1/200 chance to damage a HPCA component marked as damageable. Randomly selects the component.
-         * If called every tick, this succeeds on average once every 10 seconds.
+         * Roll a 1/200 chance to damage a HPCA component marked as damageable. Randomly selects the component. If
+         * called every tick, this succeeds on average once every 10 seconds.
          */
         public void attemptDamageHPCA() {
             // 1% chance each tick to damage a component if running too hot

@@ -6,21 +6,14 @@ import gregtech.api.capability.impl.EnergyContainerHandler;
 import gregtech.api.capability.impl.FluidTankList;
 import gregtech.api.capability.impl.FuelRecipeLogic;
 import gregtech.api.capability.impl.RecipeLogicEnergy;
-import gregtech.api.gui.GuiTextures;
-import gregtech.api.gui.ModularUI;
-import gregtech.api.gui.widgets.LabelWidget;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
-import gregtech.api.mui.GTGuiTextures;
-import gregtech.api.mui.GTGuis;
 import gregtech.api.recipes.RecipeMap;
+import gregtech.api.util.tooltips.TooltipBuilder;
 import gregtech.client.renderer.ICubeRenderer;
 import gregtech.client.renderer.texture.Textures;
 import gregtech.client.utils.PipelineUtil;
 
-import lombok.Getter;
-
 import net.minecraft.client.resources.I18n;
-import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
@@ -35,8 +28,8 @@ import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.widget.Widget;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -46,38 +39,32 @@ import java.util.function.Function;
 
 public class SimpleGeneratorMetaTileEntity extends WorkableTieredMetaTileEntity implements IActiveOutputSide {
 
-    //发电效率表
-    //0 100%
-    //1 95%
-    //2 90%
-    //3 85%
-    //4 80%
-    //5 60%
-    public static final double[] efficiency = { 1, 0.95, 0.9, 0.85, 0.8, 0.6 };
-    private static final int FONT_HEIGHT = 9; // Minecraft's FontRenderer FONT_HEIGHT value
-    @Getter
-    boolean enableGenerationEfficiency;
+    double efficiency;
 
     public SimpleGeneratorMetaTileEntity(ResourceLocation metaTileEntityId, RecipeMap<?> recipeMap,
                                          ICubeRenderer renderer, int tier,
                                          Function<Integer, Integer> tankScalingFunction,
-                                         boolean enableGenerationEfficiency) {
-        this(metaTileEntityId, recipeMap, renderer, tier, tankScalingFunction, false, enableGenerationEfficiency);
+                                         double efficiency) {
+        this(metaTileEntityId, recipeMap, renderer, tier, tankScalingFunction, false, efficiency);
     }
 
     public SimpleGeneratorMetaTileEntity(ResourceLocation metaTileEntityId, RecipeMap<?> recipeMap,
                                          ICubeRenderer renderer, int tier,
                                          Function<Integer, Integer> tankScalingFunction, boolean handlesRecipeOutputs,
-                                         boolean enableGenerationEfficiency) {
+                                         double efficiency) {
         super(metaTileEntityId, recipeMap, renderer, tier, tankScalingFunction, handlesRecipeOutputs);
-        this.enableGenerationEfficiency = enableGenerationEfficiency;
-        if (this.enableGenerationEfficiency) workable.setEnergyEfficiency(efficiency[tier]);
+        this.efficiency = efficiency;
+        workable.setEnergyEfficiency(efficiency);
+    }
+
+    public double getEfficiency() {
+        return efficiency;
     }
 
     @Override
     public MetaTileEntity createMetaTileEntity(IGregTechTileEntity tileEntity) {
         return new SimpleGeneratorMetaTileEntity(metaTileEntityId, workable.getRecipeMap(), renderer, getTier(),
-                getTankScalingFunction(), handlesRecipeOutputs, enableGenerationEfficiency);
+                getTankScalingFunction(), handlesRecipeOutputs, efficiency);
     }
 
     @Override
@@ -114,26 +101,6 @@ public class SimpleGeneratorMetaTileEntity extends WorkableTieredMetaTileEntity 
         return super.getCapability(capability, side);
     }
 
-    protected ModularUI.Builder createGuiTemplate(EntityPlayer player) {
-        RecipeMap<?> workableRecipeMap = workable.getRecipeMap();
-        int yOffset = 0;
-        if (workableRecipeMap.getMaxInputs() >= 6 || workableRecipeMap.getMaxFluidInputs() >= 6 ||
-                workableRecipeMap.getMaxOutputs() >= 6 || workableRecipeMap.getMaxFluidOutputs() >= 6)
-            yOffset = FONT_HEIGHT;
-
-        ModularUI.Builder builder;
-        if (handlesRecipeOutputs)
-            builder = workableRecipeMap.getRecipeMapUI().createUITemplate(workable::getProgressPercent,
-                    importItems, exportItems, importFluids, exportFluids, yOffset);
-        else builder = workableRecipeMap.getRecipeMapUI().createUITemplateNoOutputs(workable::getProgressPercent,
-                importItems,
-                exportItems, importFluids, exportFluids, yOffset);
-        builder.widget(new LabelWidget(6, 6, getMetaFullName()))
-                .bindPlayerInventory(player.inventory, GuiTextures.SLOT, yOffset);
-
-        return builder;
-    }
-
     @Override
     public void renderMetaTileEntity(CCRenderState renderState, Matrix4 translation, IVertexOperation[] pipeline) {
         super.renderMetaTileEntity(renderState, translation, pipeline);
@@ -148,45 +115,47 @@ public class SimpleGeneratorMetaTileEntity extends WorkableTieredMetaTileEntity 
     }
 
     @Override
+    public void update() {
+        super.update();
+        if (this.isActive()) {
+            if (getWorld().isRemote) {
+                pollution(this.getPollutionAmount(), this.getPollutionTicks());
+            }
+        }
+    }
+
+    @Override
+    public double getPollutionAmount() {
+        return getTier() * 0.001;
+    }
+
+    @Override
     public boolean usesMui2() {
         RecipeMap<?> map = getRecipeMap();
         return map != null && map.getRecipeMapUI().usesMui2();
     }
 
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager panelSyncManager, UISettings settings) {
         RecipeMap<?> workableRecipeMap = Objects.requireNonNull(workable.getRecipeMap(), "recipe map is null");
-        int yOffset = 0;
-        if (workableRecipeMap.getMaxInputs() >= 6 || workableRecipeMap.getMaxFluidInputs() >= 6 ||
-                workableRecipeMap.getMaxOutputs() >= 6 || workableRecipeMap.getMaxFluidOutputs() >= 6) {
-            yOffset = FONT_HEIGHT;
-        }
 
-        ModularPanel panel = GTGuis.createPanel(this, 176, 166 + yOffset);
-        Widget<?> widget = workableRecipeMap.getRecipeMapUI().buildWidget(workable::getProgressPercent, importItems,
-                exportItems, importFluids, exportFluids, yOffset, guiSyncManager);
-
-        panel.child(widget)
+        return workableRecipeMap.getRecipeMapUI()
+                .constructPanel(this, builder -> builder
+                        .calculateOffset()
+                        .setInputs(importItems, importFluids)
+                        .setOutputs(exportItems, exportFluids)
+                        .inventorySlotGroups()
+                        .progressWidget(workable::getProgressPercent))
                 .child(IKey.lang(getMetaFullName()).asWidget().pos(5, 5))
+                .child(createPlayerInventoryLogo(17))
                 .bindPlayerInventory();
-
-        if (exportItems.getSlots() + exportFluids.getTanks() <= 9) {
-            panel.child(new Widget<>()
-                    .size(17)
-                    .pos(152, 63 + yOffset)
-                    .background(GTGuiTextures.getLogo(getUITheme())));
-        }
-        return panel;
-    }
-
-    @Override
-    protected ModularUI createUI(EntityPlayer entityPlayer) {
-        return createGuiTemplate(entityPlayer).build(getHolder(), entityPlayer);
     }
 
     @Override
     public void addInformation(ItemStack stack, @Nullable World player, @NotNull List<String> tooltip,
                                boolean advanced) {
+        TooltipBuilder.create().addPollution(getPollutionAmount(), getPollutionTicks()).build(this, tooltip);
+
         String key = this.metaTileEntityId.getPath().split("\\.")[0];
         String mainKey = String.format("gregtech.machine.%s.tooltip", key);
         if (I18n.hasKey(mainKey)) {
@@ -199,10 +168,7 @@ public class SimpleGeneratorMetaTileEntity extends WorkableTieredMetaTileEntity 
         if (recipeMap.getMaxFluidInputs() > 0 || recipeMap.getMaxFluidOutputs() > 0)
             tooltip.add(I18n.format("gregtech.universal.tooltip.fluid_storage_capacity",
                     this.getTankScalingFunction().apply(getTier())));
-        if (enableGenerationEfficiency)
-            tooltip.add(I18n.format("gregtech.universal.tooltip.generation_efficiency", efficiency[getTier()]*100));
-        else
-            tooltip.add(I18n.format("gregtech.universal.tooltip.generation_efficiency",100.0));
+        tooltip.add(I18n.format("gregtech.universal.tooltip.generation_efficiency", efficiency * 100));
     }
 
     @Override
@@ -231,6 +197,26 @@ public class SimpleGeneratorMetaTileEntity extends WorkableTieredMetaTileEntity 
     @Override
     public boolean isAllowInputFromOutputSideFluids() {
         return false;
+    }
+
+    @Override
+    public EnumFacing getOutputFacingItems() {
+        return null;
+    }
+
+    @Override
+    public void setOutputFacingItems(EnumFacing facing) {
+
+    }
+
+    @Override
+    public EnumFacing getOutputFacingFluids() {
+        return null;
+    }
+
+    @Override
+    public void setOutputFacingFluids(EnumFacing facing) {
+
     }
 
     @Override

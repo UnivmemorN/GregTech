@@ -4,7 +4,8 @@ public class PropertyKey<T extends IMaterialProperty> {
 
     public static final PropertyKey<BlastProperty> BLAST = new PropertyKey<>("blast", BlastProperty.class);
     public static final PropertyKey<MixProperty> MIX = new PropertyKey<>("mix", MixProperty.class);
-
+    public static final PropertyKey<FissionFuelProperty> FISSION_FUEL = new PropertyKey<>("fission_fuel",
+            FissionFuelProperty.class);
     public static final PropertyKey<DustProperty> DUST = new PropertyKey<>("dust", DustProperty.class);
     public static final PropertyKey<FluidPipeProperties> FLUID_PIPE = new PropertyKey<>("fluid_pipe",
             FluidPipeProperties.class);
@@ -20,7 +21,19 @@ public class PropertyKey<T extends IMaterialProperty> {
             ExtraToolProperty.class);
     public static final PropertyKey<RotorProperty> ROTOR = new PropertyKey<>("rotor", RotorProperty.class);
     public static final PropertyKey<WireProperties> WIRE = new PropertyKey<>("wire", WireProperties.class);
+    public static final PropertyKey<HeatConductorProperties> HEAT_CONDUCTOR = new PropertyKey<>("heat", HeatConductorProperties.class);
+    public static final PropertyKey<OpticalCableProperties> OPTICAL_CABLE = new PropertyKey<>("optical_cable",
+            OpticalCableProperties.class);
     public static final PropertyKey<WoodProperty> WOOD = new PropertyKey<>("wood", WoodProperty.class);
+    public static final PropertyKey<AlloyBlastProperty> ALLOY_BLAST = new PropertyKey<>("blast_alloy",
+            AlloyBlastProperty.class);
+    public static final PropertyKey<CoolantProperty> COOLANT = new PropertyKey<>("coolant", CoolantProperty.class);
+    public static final PropertyKey<ModeratorProperty> MODERATOR = new PropertyKey<>("moderator", ModeratorProperty.class);
+
+    public static final PropertyKey<ToxicProperty> TOXIC = new PropertyKey<>("toxic", ToxicProperty.class);
+    public static final PropertyKey<RadioactiveProperty> RADIOACTIVE = new PropertyKey<>("radioactive",
+            RadioactiveProperty.class);
+    public static final PropertyKey<ColdProperty> COLD = new PropertyKey<>("cold", ColdProperty.class);
 
     // Empty property used to allow property-less Materials without removing base type enforcement
     public static final PropertyKey<EmptyProperty> EMPTY = new PropertyKey<>("empty", EmptyProperty.class);

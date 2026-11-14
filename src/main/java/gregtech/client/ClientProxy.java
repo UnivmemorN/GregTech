@@ -14,18 +14,24 @@ import gregtech.api.util.GTLog;
 import gregtech.api.util.IBlockOre;
 import gregtech.api.util.Mods;
 import gregtech.api.util.input.KeyBind;
+import gregtech.client.event.CreativeSprayClientHandler;
 import gregtech.client.model.customtexture.CustomTextureModelHandler;
 import gregtech.client.model.customtexture.MetadataSectionCTM;
 import gregtech.client.renderer.handler.FacadeRenderer;
 import gregtech.client.renderer.handler.MetaTileEntityRenderer;
+import gregtech.client.renderer.handler.multiblock.MoverRotationKeyHandler;
+import gregtech.client.renderer.handler.multiblock.MultiblockMoverPreviewRenderer;
+import gregtech.client.renderer.handler.multiblock.MultiblockToolModeKeyHandler;
 import gregtech.client.renderer.pipe.CableRenderer;
 import gregtech.client.renderer.pipe.FluidPipeRenderer;
+import gregtech.client.renderer.pipe.HeatConductorRenderer;
 import gregtech.client.renderer.pipe.ItemPipeRenderer;
 import gregtech.client.renderer.pipe.LaserPipeRenderer;
 import gregtech.client.renderer.pipe.OpticalPipeRenderer;
 import gregtech.client.renderer.pipe.PipeRenderer;
 import gregtech.client.renderer.texture.Textures;
 import gregtech.client.utils.ItemRenderCompat;
+import gregtech.client.utils.RenderUtil;
 import gregtech.client.utils.TooltipHelper;
 import gregtech.common.CommonProxy;
 import gregtech.common.ConfigHolder;
@@ -35,6 +41,9 @@ import gregtech.common.blocks.BlockFrame;
 import gregtech.common.blocks.MetaBlocks;
 import gregtech.common.items.MetaItems;
 import gregtech.common.items.ToolItems;
+import gregtech.common.items.behaviors.spray.CreativeSprayBehavior;
+import gregtech.common.network.multiblock.ClearMoverPreviewPacket;
+import gregtech.common.network.multiblock.StartMoverPreviewPacket;
 
 import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
@@ -47,7 +56,6 @@ import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.client.resources.SimpleReloadableResourceManager;
 import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.init.Items;
 import net.minecraft.inventory.ContainerPlayer;
 import net.minecraft.inventory.ContainerWorkbench;
@@ -59,6 +67,8 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraftforge.client.GuiIngameForge;
+import net.minecraftforge.client.event.GuiOpenEvent;
+import net.minecraftforge.client.event.GuiScreenEvent;
 import net.minecraftforge.client.event.ModelBakeEvent;
 import net.minecraftforge.client.event.ModelRegistryEvent;
 import net.minecraftforge.client.event.MouseEvent;
@@ -88,42 +98,16 @@ import java.util.Optional;
 @Mod.EventBusSubscriber(Side.CLIENT)
 public class ClientProxy extends CommonProxy {
 
-    public void onPreLoad() {
-        super.onPreLoad();
-
-        SoundSystemConfig.setNumberNormalChannels(ConfigHolder.client.maxNumSounds);
-
-        if (!Mods.CTM.isModLoaded()) {
-            Minecraft.getMinecraft().metadataSerializer.registerMetadataSectionType(new MetadataSectionCTM.Serializer(),
-                    MetadataSectionCTM.class);
-            MinecraftForge.EVENT_BUS.register(CustomTextureModelHandler.INSTANCE);
-            ((SimpleReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
-                    .registerReloadListener(CustomTextureModelHandler.INSTANCE);
-        }
-
-        MetaTileEntityRenderer.preInit();
-        CableRenderer.INSTANCE.preInit();
-        FluidPipeRenderer.INSTANCE.preInit();
-        ItemPipeRenderer.INSTANCE.preInit();
-        OpticalPipeRenderer.INSTANCE.preInit();
-        LaserPipeRenderer.INSTANCE.preInit();
-        MetaEntities.initRenderers();
-
-        MinecraftForge.EVENT_BUS.register(KeyBind.class);
-    }
-
-    @Override
-    public void onLoad() {
-        super.onLoad();
-        registerColors();
-    }
-
-    @Override
-    public void onPostLoad() {
-        super.onPostLoad();
-        ItemRenderCompat.init();
-        FacadeRenderer.init();
-    }
+    private static final String[] clearRecipes = new String[] {
+            "quantum_tank",
+            "quantum_chest",
+            "super_chest",
+            "super_tank",
+            "drum.",
+            "_tank",
+            "fluid_cell"
+    };
+    public static boolean isGUIClosingPermanently = false;
 
     public static void registerColors() {
         MetaBlocks.registerColors();
@@ -138,10 +122,12 @@ public class ClientProxy extends CommonProxy {
         Textures.register(map);
         PipeRenderer.initializeRestrictor(map);
         CableRenderer.INSTANCE.registerIcons(map);
+        HeatConductorRenderer.INSTANCE.registerIcons(map);
         FluidPipeRenderer.INSTANCE.registerIcons(map);
         ItemPipeRenderer.INSTANCE.registerIcons(map);
         OpticalPipeRenderer.INSTANCE.registerIcons(map);
         LaserPipeRenderer.INSTANCE.registerIcons(map);
+        RenderUtil.clearTextureCache();
     }
 
     @SubscribeEvent
@@ -182,8 +168,7 @@ public class ClientProxy extends CommonProxy {
         // Test for Items
         UnificationEntry unificationEntry = OreDictUnifier.getUnificationEntry(itemStack);
 
-        if (itemStack.getItem() instanceof MetaOreDictItem) { // Test for OreDictItems
-            MetaOreDictItem oreDictItem = (MetaOreDictItem) itemStack.getItem();
+        if (itemStack.getItem() instanceof MetaOreDictItem oreDictItem) { // Test for OreDictItems
             Optional<String> oreDictName = OreDictUnifier.getOreDictionaryNames(itemStack).stream().findFirst();
             if (oreDictName.isPresent() && oreDictItem.OREDICT_TO_FORMULA.containsKey(oreDictName.get()) &&
                     !oreDictItem.OREDICT_TO_FORMULA.get(oreDictName.get()).isEmpty()) {
@@ -214,7 +199,7 @@ public class ClientProxy extends CommonProxy {
                 }
             }
         } else if (itemStack.getItem().equals(Items.WATER_BUCKET)) { // Water and Lava buckets have a separate registry
-                                                                     // name from other buckets
+            // name from other buckets
             tooltips = FluidTooltipUtil.getFluidTooltip(Materials.Water.getFluid());
         } else if (itemStack.getItem().equals(Items.LAVA_BUCKET)) {
             tooltips = FluidTooltipUtil.getFluidTooltip(Materials.Lava.getFluid());
@@ -227,16 +212,6 @@ public class ClientProxy extends CommonProxy {
             }
         }
     }
-
-    private static final String[] clearRecipes = new String[] {
-            "quantum_tank",
-            "quantum_chest",
-            "super_chest",
-            "super_tank",
-            "drum.",
-            "_tank",
-            "fluid_cell"
-    };
 
     @SubscribeEvent
     public static void addNBTClearingTooltip(ItemTooltipEvent event) {
@@ -350,13 +325,25 @@ public class ClientProxy extends CommonProxy {
         return tooltip.contains(TextFormatting.DARK_GRAY + "" + TextFormatting.ITALIC + "Press CTRL for Advanced Info");
     }
 
-    @Override
-    public boolean isFancyGraphics() {
-        return Minecraft.getMinecraft().gameSettings.fancyGraphics;
+    @SubscribeEvent(priority = EventPriority.HIGH)
+    public static void onGuiMouseInput(GuiScreenEvent.MouseInputEvent.Pre event) {
+        int dwheel = org.lwjgl.input.Mouse.getEventDWheel();
+        if (dwheel != 0 && (org.lwjgl.input.Keyboard.isKeyDown(org.lwjgl.input.Keyboard.KEY_LCONTROL) ||
+                org.lwjgl.input.Keyboard.isKeyDown(org.lwjgl.input.Keyboard.KEY_RCONTROL))) {
+            gregtech.integration.jei.recipe.GTRecipeWrapper.handleOCScroll(dwheel);
+            event.setCanceled(true);
+        }
     }
 
     @SubscribeEvent(priority = EventPriority.HIGH)
     public static void onMouseEvent(@NotNull MouseEvent event) {
+        if (event.getDwheel() != 0 && (org.lwjgl.input.Keyboard.isKeyDown(org.lwjgl.input.Keyboard.KEY_LCONTROL) ||
+                org.lwjgl.input.Keyboard.isKeyDown(org.lwjgl.input.Keyboard.KEY_RCONTROL))) {
+            gregtech.integration.jei.recipe.GTRecipeWrapper.handleOCScroll(event.getDwheel());
+            event.setCanceled(true);
+            return;
+        }
+
         EntityPlayerSP player = Minecraft.getMinecraft().player;
 
         handleItemEvent(event, player, EnumHand.MAIN_HAND);
@@ -369,8 +356,8 @@ public class ClientProxy extends CommonProxy {
                                         @NotNull EnumHand hand) {
         ItemStack heldStack = playerClient.getHeldItem(hand);
         IMouseEventHandler mouseEventHandler = IMouseEventHandler.getHandler(heldStack);
-        if (mouseEventHandler != null) {
-            mouseEventHandler.handleMouseEventClient(event, playerClient, hand, heldStack);
+        if (mouseEventHandler instanceof CreativeSprayBehavior sprayBehavior) {
+            CreativeSprayClientHandler.handleMouseEvent(event, playerClient, hand, heldStack, sprayBehavior);
         }
     }
 
@@ -386,6 +373,7 @@ public class ClientProxy extends CommonProxy {
             }
         }
     }
+
 
     private static void renderToolbeltHotbar(GuiIngameForge gui, ItemStack stack, ItemGTToolbelt toolbelt,
                                              ScaledResolution sr, float partialTicks) {
@@ -433,5 +421,66 @@ public class ClientProxy extends CommonProxy {
             GlStateManager.disableRescaleNormal();
             GlStateManager.disableBlend();
         }
+    }
+
+    @SubscribeEvent
+    public static void onGuiChange(GuiOpenEvent event) {
+        isGUIClosingPermanently = (event.getGui() == null);
+    }
+
+    public void onPreLoad() {
+        super.onPreLoad();
+
+        SoundSystemConfig.setNumberNormalChannels(ConfigHolder.client.maxNumSounds);
+
+        if (!Mods.CTM.isModLoaded()) {
+            Minecraft.getMinecraft().metadataSerializer.registerMetadataSectionType(new MetadataSectionCTM.Serializer(),
+                    MetadataSectionCTM.class);
+            MinecraftForge.EVENT_BUS.register(CustomTextureModelHandler.INSTANCE);
+            ((SimpleReloadableResourceManager) Minecraft.getMinecraft().getResourceManager())
+                    .registerReloadListener(CustomTextureModelHandler.INSTANCE);
+        }
+
+        MetaTileEntityRenderer.preInit();
+        CableRenderer.INSTANCE.preInit();
+        HeatConductorRenderer.INSTANCE.preInit();
+        FluidPipeRenderer.INSTANCE.preInit();
+        ItemPipeRenderer.INSTANCE.preInit();
+        OpticalPipeRenderer.INSTANCE.preInit();
+        LaserPipeRenderer.INSTANCE.preInit();
+        MetaEntities.initRenderers();
+
+        MinecraftForge.EVENT_BUS.register(KeyBind.class);
+        MinecraftForge.EVENT_BUS.register(new MultiblockMoverPreviewRenderer());
+        MoverRotationKeyHandler.init();
+        MultiblockToolModeKeyHandler.init();
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        registerColors();
+    }
+
+    @Override
+    public void onPostLoad() {
+        super.onPostLoad();
+        ItemRenderCompat.init();
+        FacadeRenderer.init();
+    }
+
+    @Override
+    public boolean isFancyGraphics() {
+        return Minecraft.getMinecraft().gameSettings.fancyGraphics;
+    }
+
+    @Override
+    public void startMultiblockMoverPreview(StartMoverPreviewPacket packet) {
+        MultiblockMoverPreviewRenderer.start(packet);
+    }
+
+    @Override
+    public void clearMultiblockMoverPreview(ClearMoverPreviewPacket packet) {
+        MultiblockMoverPreviewRenderer.clear(packet.getSessionId());
     }
 }

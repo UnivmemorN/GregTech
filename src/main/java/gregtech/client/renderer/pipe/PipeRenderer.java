@@ -25,7 +25,6 @@ import net.minecraft.client.renderer.block.model.ModelResourceLocation;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
-import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.EnumBlockRenderType;
@@ -200,7 +199,7 @@ public abstract class PipeRenderer implements ICCBlockRenderer, IItemRenderer {
             for (EnumFacing side : EnumFacing.VALUES) {
                 sideMask[side.getIndex()] = state.shouldSideBeRendered(world, pos, side);
             }
-            Textures.RENDER_STATE.set(new CubeRendererState(renderLayer, sideMask, world));
+            Textures.RENDER_STATE.set(new CubeRendererState(renderLayer, sideMask, world, pos));
             if (canRenderInLayer(renderLayer)) {
                 renderState.lightMatrix.locate(world, pos);
                 PipeRenderContext renderContext = new PipeRenderContext(pos, renderState.lightMatrix, connectedSidesMap,
@@ -440,8 +439,8 @@ public abstract class PipeRenderer implements ICCBlockRenderer, IItemRenderer {
 
     public static class PipeRenderContext {
 
-        private final BlockPos pos;
-        private final LightMatrix lightMatrix;
+        public final BlockPos pos;
+        public final LightMatrix lightMatrix;
         protected final List<IVertexOperation[]> openFaceRenderer = new ArrayList<>();
         protected final List<IVertexOperation[]> pipeSideRenderer = new ArrayList<>();
         // Blocked overlay is used for the pipe connector cube, not the main cube
@@ -502,7 +501,7 @@ public abstract class PipeRenderer implements ICCBlockRenderer, IItemRenderer {
             return new ColourMultiplier(color);
         }
 
-        protected IVertexOperation[] getBaseVertexOperation() {
+        public IVertexOperation[] getBaseVertexOperation() {
             if (pos == null) {
                 return lightMatrix == null ? new IVertexOperation[0] : new IVertexOperation[] { lightMatrix };
             }

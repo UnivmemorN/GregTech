@@ -5,6 +5,7 @@ import gregtech.api.GregTechAPI;
 import gregtech.api.block.machines.BlockMachine;
 import gregtech.api.capability.GregtechDataCodes;
 import gregtech.api.capability.GregtechTileCapabilities;
+import gregtech.api.capability.IActiveOutputSide;
 import gregtech.api.capability.IControllable;
 import gregtech.api.capability.IDataStickIntractable;
 import gregtech.api.capability.IEnergyContainer;
@@ -17,21 +18,29 @@ import gregtech.api.cover.CoverHolder;
 import gregtech.api.cover.CoverRayTracer;
 import gregtech.api.cover.CoverSaveHandler;
 import gregtech.api.cover.CoverUtil;
+import gregtech.api.cover.CoverWithUI;
 import gregtech.api.gui.ModularUI;
 import gregtech.api.items.itemhandlers.GTItemStackHandler;
 import gregtech.api.items.toolitem.ToolClasses;
 import gregtech.api.items.toolitem.ToolHelper;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
+import gregtech.api.metatileentity.interfaces.IPollution;
 import gregtech.api.metatileentity.interfaces.ISyncedTileEntity;
+import gregtech.api.metatileentity.multiblock.MultiblockControllerBase;
 import gregtech.api.metatileentity.registry.MTERegistry;
+import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuiTheme;
 import gregtech.api.mui.GregTechGuiScreen;
 import gregtech.api.mui.factory.MetaTileEntityGuiFactory;
+import gregtech.api.mui.widget.SidePanel;
+import gregtech.api.mui.widget.UpgradeSlotsPanel;
+import gregtech.api.mui.widget.WorldPreviewPanel;
+import gregtech.api.pipenet.tile.TileEntityPipeBase;
 import gregtech.api.recipes.RecipeMap;
 import gregtech.api.util.GTLog;
 import gregtech.api.util.GTTransferUtils;
 import gregtech.api.util.GTUtility;
-import gregtech.api.util.Mods;
+import gregtech.api.util.TaskScheduler;
 import gregtech.client.renderer.texture.Textures;
 import gregtech.client.utils.BloomEffectUtil;
 import gregtech.client.utils.RenderUtil;
@@ -67,6 +76,7 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.SoundEvent;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextComponentTranslation;
+import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.World;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ICapabilityProvider;
@@ -75,16 +85,12 @@ import net.minecraftforge.fluids.FluidActionResult;
 import net.minecraftforge.fluids.FluidUtil;
 import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
 import net.minecraftforge.fluids.capability.IFluidHandler;
-import net.minecraftforge.fml.common.Optional.Method;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import net.minecraftforge.items.CapabilityItemHandler;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
 
-import appeng.api.util.AECableType;
-import appeng.api.util.AEPartLocation;
-import appeng.me.helpers.AENetworkProxy;
 import codechicken.lib.raytracer.CuboidRayTraceResult;
 import codechicken.lib.raytracer.IndexedCuboid6;
 import codechicken.lib.render.CCRenderState;
@@ -93,10 +99,23 @@ import codechicken.lib.render.pipeline.IVertexOperation;
 import codechicken.lib.vec.Cuboid6;
 import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.IGuiHolder;
+import com.cleanroommc.modularui.api.drawable.IKey;
+import com.cleanroommc.modularui.api.widget.ITooltip;
+import com.cleanroommc.modularui.api.widget.IWidget;
+import com.cleanroommc.modularui.drawable.GuiTextures;
+import com.cleanroommc.modularui.drawable.ItemDrawable;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.ModularScreen;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
+import com.cleanroommc.modularui.widget.ParentWidget;
+import com.cleanroommc.modularui.widget.Widget;
+import com.cleanroommc.modularui.widgets.ButtonWidget;
+import com.cleanroommc.modularui.widgets.PageButton;
+import com.cleanroommc.modularui.widgets.PagedWidget;
+import com.cleanroommc.modularui.widgets.SlotGroupWidget;
+import com.cleanroommc.modularui.widgets.layout.Flow;
 import com.google.common.base.Preconditions;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -119,56 +138,54 @@ import java.util.function.Consumer;
 
 import static gregtech.api.capability.GregtechDataCodes.*;
 
-public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, IVoidable, IGuiHolder<PosGuiData> {
+public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, IVoidable, IPollution, IGuiHolder<PosGuiData> {
 
     public static final IndexedCuboid6 FULL_CUBE_COLLISION = new IndexedCuboid6(null, Cuboid6.full);
 
     public static final String TAG_KEY_PAINTING_COLOR = "PaintingColor";
     public static final String TAG_KEY_MUFFLED = "Muffled";
-
-    private final MTERegistry registry;
-
+    public static final String TAG_KEY_WATERPROOF = "Waterproof";
+    public static final int TOOLTIP_DELAY = 0;
     public final ResourceLocation metaTileEntityId;
-    IGregTechTileEntity holder;
-
-    protected IItemHandlerModifiable importItems;
-    protected IItemHandlerModifiable exportItems;
-
-    protected IItemHandler itemInventory;
-
-    protected FluidTankList importFluids;
-    protected FluidTankList exportFluids;
-
-    protected IFluidHandler fluidInventory;
-
+    private final MTERegistry registry;
     private final Map<String, MTETrait> mteTraits = new Object2ObjectOpenHashMap<>();
     private final Int2ObjectMap<MTETrait> mteTraitByNetworkId = new Int2ObjectOpenHashMap<>();
-
-    protected EnumFacing frontFacing = EnumFacing.NORTH;
-    private int paintingColor = -1;
-
     private final int[] sidedRedstoneOutput = new int[6];
     private final int[] sidedRedstoneInput = new int[6];
-    private int cachedLightValue;
-
-    private boolean wasExploded = false;
-
     private final EnumMap<EnumFacing, Cover> covers = new EnumMap<>(EnumFacing.class);
-
+    protected final Set<CreativeTabs> creativeTabs = new ObjectArraySet<>();
+    protected IItemHandlerModifiable importItems;
+    protected IItemHandlerModifiable exportItems;
+    protected IItemHandler itemInventory;
+    protected FluidTankList importFluids;
+    protected FluidTankList exportFluids;
+    protected IFluidHandler fluidInventory;
+    protected EnumFacing frontFacing = EnumFacing.NORTH;
     protected List<IItemHandlerModifiable> notifiedItemOutputList = new ArrayList<>();
     protected List<IItemHandlerModifiable> notifiedItemInputList = new ArrayList<>();
     protected List<IFluidHandler> notifiedFluidInputList = new ArrayList<>();
     protected List<IFluidHandler> notifiedFluidOutputList = new ArrayList<>();
-
     protected boolean muffled = false;
-
+    /**
+     * ItemStack currently being rendered by this meta tile entity Use this to obtain itemstack-specific data like
+     * contained fluid, painting color Generally useful in combination with
+     * {@link #writeItemStackData(net.minecraft.nbt.NBTTagCompound)}
+     */
+    @SideOnly(Side.CLIENT)
+    protected ItemStack renderContextStack;
+    IGregTechTileEntity holder;
+    private int paintingColor = -1;
+    private boolean waterproof = false;
+    private int cachedLightValue;
+    private boolean wasExploded = false;
     private int playSoundCooldown = 0;
-    private int lastTick = 0;
+
+    /** Overload warning countdown. When > 0, machine is about to explode. */
+    private int overloadTicks = 0;
+    private float pendingExplosionPower = 0;
 
     @Nullable
     private UUID owner = null;
-
-    private final Set<CreativeTabs> creativeTabs = new ObjectArraySet<>();
 
     {
         creativeTabs.add(CreativeTabs.SEARCH);
@@ -179,6 +196,17 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
         this.metaTileEntityId = metaTileEntityId;
         this.registry = GregTechAPI.mteManager.getRegistry(metaTileEntityId.getNamespace());
         initializeInventory();
+    }
+
+    public static void clearInventory(@NotNull List<@NotNull ItemStack> itemBuffer,
+                                      @NotNull IItemHandlerModifiable inventory) {
+        for (int i = 0; i < inventory.getSlots(); i++) {
+            ItemStack stackInSlot = inventory.getStackInSlot(i);
+            if (!stackInSlot.isEmpty()) {
+                inventory.setStackInSlot(i, ItemStack.EMPTY);
+                itemBuffer.add(stackInSlot);
+            }
+        }
     }
 
     protected void initializeInventory() {
@@ -250,20 +278,20 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     }
 
     /**
-     * Override this to add extended tool information to the "Hold SHIFT to show Tool Info" tooltip section.
-     * ALWAYS CALL SUPER LAST!
-     * Intended ordering:
-     * - Screwdriver
-     * - Wrench
-     * - Wire Cutter
-     * - Soft Hammer
-     * - Hammer
-     * - Crowbar
-     * - Others
+     * Override this to add structure information shown when SHIFT is held.
+     * This is mutually exclusive with {@link #addInformation} - only one will be displayed at a time.
+     * For multiblocks, this typically includes structure description (block counts, hatch requirements, dimensions).
+     */
+    @SideOnly(Side.CLIENT)
+    public void addStructureInformation(ItemStack stack, @Nullable World world, @NotNull List<String> tooltip,
+                                        boolean advanced) {}
+
+    /**
+     * Override this to add extended tool information to the "Hold SHIFT to show Tool Info" tooltip section. ALWAYS CALL
+     * SUPER LAST! Intended ordering: - Screwdriver - Wrench - Wire Cutter - Soft Hammer - Hammer - Crowbar - Others
      * <br>
-     * The super method automatically handles Hammer muffling and Crowbar cover removal.
-     * If you have extended usages of these tools in your addon, let us know and we can amend
-     * this default appended tooltip information.
+     * The super method automatically handles Hammer muffling and Crowbar cover removal. If you have extended usages of
+     * these tools in your addon, let us know and we can amend this default appended tooltip information.
      */
     @SideOnly(Side.CLIENT)
     public void addToolUsages(ItemStack stack, @Nullable World world, List<String> tooltip, boolean advanced) {
@@ -285,23 +313,14 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
         return Pair.of(RenderUtil.getMissingSprite(), 0xFFFFFF);
     }
 
-    /**
-     * ItemStack currently being rendered by this meta tile entity
-     * Use this to obtain itemstack-specific data like contained fluid, painting color
-     * Generally useful in combination with {@link #writeItemStackData(net.minecraft.nbt.NBTTagCompound)}
-     */
-    @SideOnly(Side.CLIENT)
-    protected ItemStack renderContextStack;
-
     @SideOnly(Side.CLIENT)
     public void setRenderContextStack(ItemStack itemStack) {
         this.renderContextStack = itemStack;
     }
 
     /**
-     * Renders this meta tile entity
-     * Note that you shouldn't refer to world-related information in this method, because it
-     * will be called on ItemStacks too
+     * Renders this meta tile entity Note that you shouldn't refer to world-related information in this method, because
+     * it will be called on ItemStacks too
      *
      * @param renderState render state (either chunk batched or item)
      * @param pipeline    default set of pipeline transformations
@@ -317,12 +336,56 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
         }
     }
 
+    /**
+     * Returns the {@link net.minecraft.block.state.IBlockState} representing this machine's casing
+     * for Connected Textures (CTM). Returning {@code null} (default) disables CTM.
+     */
+    @SideOnly(Side.CLIENT)
+    public IBlockState getCasingBlock() {
+        return null;
+    }
+
     @SideOnly(Side.CLIENT)
     public boolean canRenderInLayer(BlockRenderLayer renderLayer) {
-        return renderLayer == BlockRenderLayer.CUTOUT_MIPPED ||
-                renderLayer == BloomEffectUtil.getEffectiveBloomLayer() ||
-                (renderLayer == BlockRenderLayer.TRANSLUCENT &&
-                        !getWorld().getBlockState(getPos()).getValue(BlockMachine.OPAQUE));
+        return canRenderInLayer(renderLayer, null);
+    }
+
+    /**
+     * Same as {@link #canRenderInLayer(BlockRenderLayer)}, but uses the given state to determine machine opacity.
+     * <p>
+     * The state in the world is not always the machine state: JEI structure previews draw candidate machines on top of
+     * a fallback block (for example a casing), and the machine is not placed in that world at all. Reading the world
+     * state in that case would either crash on a missing {@link BlockMachine#OPAQUE} property or fall back to an
+     * unrelated block, so callers that render a specific state have to pass it in here.
+     *
+     * @param renderLayer the layer being rendered
+     * @param blockState  the state being rendered, or {@code null} to read it from the world
+     */
+    @SideOnly(Side.CLIENT)
+    public boolean canRenderInLayer(BlockRenderLayer renderLayer, @Nullable IBlockState blockState) {
+        IBlockState casing = getCasingBlock();
+        if (casing != null && casing.getBlock().canRenderInLayer(casing, renderLayer)) {
+            return true;
+        }
+        if (renderLayer == BlockRenderLayer.CUTOUT_MIPPED ||
+                renderLayer == BloomEffectUtil.getEffectiveBloomLayer()) {
+            return true;
+        }
+        if (renderLayer != BlockRenderLayer.TRANSLUCENT) {
+            return false;
+        }
+        IBlockState machineState = blockState;
+        if (machineState == null) {
+            World world = getWorld();
+            BlockPos pos = getPos();
+            if (world != null && pos != null && world.isBlockLoaded(pos)) {
+                machineState = world.getBlockState(pos);
+            }
+        }
+        // Only BlockMachine states carry the opacity flag. Anything else (preview fallbacks, unloaded chunks)
+        // cannot be inspected, so keep the machine visible instead of silently dropping it from this layer.
+        return !(machineState != null && machineState.getBlock() instanceof BlockMachine) ||
+                !machineState.getValue(BlockMachine.OPAQUE);
     }
 
     @Override
@@ -338,8 +401,8 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     }
 
     /**
-     * Used to display things like particles on random display ticks
-     * This method is typically used by torches or nether portals, as an example use-case
+     * Used to display things like particles on random display ticks This method is typically used by torches or nether
+     * portals, as an example use-case
      */
     @SideOnly(Side.CLIENT)
     public void randomDisplayTick() {}
@@ -352,8 +415,8 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     public void initFromItemStackData(NBTTagCompound itemStack) {}
 
     /**
-     * Called to write MTE specific data when it is destroyed to save it's state
-     * into itemblock, which can be placed later to get {@link #initFromItemStackData} called
+     * Called to write MTE specific data when it is destroyed to save it's state into itemblock, which can be placed
+     * later to get {@link #initFromItemStackData} called
      *
      * @param itemStack itemstack from which this MTE is being placed
      */
@@ -365,13 +428,14 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
 
     /**
      * Check if this MTE belongs in certain creative tab. To add machines in custom creative tab, the creative tab
-     * should be registered via {@link gregtech.api.block.machines.MachineItemBlock#addCreativeTab(CreativeTabs)
+     * should be registered via
+     * {@link gregtech.api.block.machines.MachineItemBlock#addCreativeTab(CreativeTabs)
      * MachineItemBlock#addCreativeTab(CreativeTabs)} beforehand.
      *
      * @param creativeTab The creative tab to check
      * @return Whether this MTE belongs in the creative tab or not
      * @see gregtech.api.block.machines.MachineItemBlock#addCreativeTab(CreativeTabs)
-     *      MachineItemBlock#addCreativeTab(CreativeTabs)
+     * MachineItemBlock#addCreativeTab(CreativeTabs)
      */
     public boolean isInCreativeTab(CreativeTabs creativeTab) {
         return creativeTabs.contains(creativeTab);
@@ -387,6 +451,14 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
 
     public String getMetaName() {
         return String.format("%s.machine.%s", metaTileEntityId.getNamespace(), metaTileEntityId.getPath());
+    }
+
+    /**
+     * @param stack the ItemStack to determine the name for
+     * @return the unlocalized name base (without ".name" suffix)
+     */
+    public String getMetaName(@NotNull ItemStack stack) {
+        return getMetaName();
     }
 
     public final String getMetaFullName() {
@@ -421,9 +493,8 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     }
 
     /**
-     * Adds a trait to this meta tile entity.
-     * Traits are objects linked with meta tile entity and performing certain actions.
-     * Usually traits implement capabilities there can be only one trait for a given name
+     * Adds a trait to this meta tile entity. Traits are objects linked with meta tile entity and performing certain
+     * actions. Usually traits implement capabilities there can be only one trait for a given name
      *
      * @param trait trait object to add
      */
@@ -487,12 +558,395 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
         return new GregTechGuiScreen(mainPanel, getUITheme());
     }
 
+    /**
+     * 侧边栏的入口：由 {@code MetaTileEntityGuiFactory} 在机器主界面构建完成后调用。
+     *
+     * <p>
+     * 这里只负责“建注册器 → 收集按钮 → 挂到主面板”，具体有哪些按钮由
+     * {@link #registerSidePanelButtons} 决定。
+     */
+    public void initSidePanel(@NotNull PosGuiData guiData, @NotNull PanelSyncManager syncManager,
+                              @NotNull ModularPanel mainPanel) {
+        // 覆盖板入口（侧栏按钮或顶部页签里的索引格子）共用这一个动作。
+        registerCoverOpenAction(syncManager);
+        SidePanel sidePanel = new SidePanel(guiData, syncManager);
+        registerSidePanelButtons(sidePanel);
+        sidePanel.attachTo(mainPanel);
+    }
+
+    /**
+     * 注册“打开覆盖板界面”的同步动作：客户端点格子时只发包，服务端按面索引找回覆盖板并打开它自己的界面。
+     *
+     * <p>
+     * 必须在任何覆盖板入口构建之前注册；{@link #initSidePanel} 每次建界面都会调用一次，两端都会执行。
+     */
+    private void registerCoverOpenAction(@NotNull PanelSyncManager syncManager) {
+        syncManager.registerSyncedAction("open_cover", false, true, buffer -> {
+            int index = buffer.readByte();
+            if (index < 0 || index >= EnumFacing.VALUES.length) return;
+            EntityPlayer player = syncManager.getPlayer();
+            if (!(player instanceof EntityPlayerMP playerMP)) return;
+            Cover cover = getCoverAtSide(EnumFacing.VALUES[index]);
+            if (!(cover instanceof CoverWithUI coverWithUI)) return;
+            if (!cover.getCoverableView().isValid()) return;
+            if (player.world != cover.getWorld()) return;
+            coverWithUI.openUI(playerMP);
+        });
+    }
+
+    /**
+     * 侧边按钮的<b>唯一注册入口</b>。
+     *
+     * <p>
+     * 每个按钮来源都是一个独立的 {@code createXxxButton} 方法，返回 {@code null} 表示这台机器
+     * 这次不显示该按钮；{@link SidePanel#add} 负责判空，注册顺序就是从上到下的显示顺序。
+     *
+     * <p>
+     * 子类/外部要加按钮就覆写这里、先调 {@code super}，再 {@code sidePanel.add(...)}：
+     *
+     * <pre>{@code
+     * @Override
+     * protected void registerSidePanelButtons(@NotNull SidePanel sidePanel) {
+     *     super.registerSidePanelButtons(sidePanel);
+     *     sidePanel.add(createMyButton(sidePanel.getSyncManager()));
+     * }
+     * }</pre>
+     *
+     * <p>
+     * 需要改这一列的布局（位置、背景）时用 {@link SidePanel#getColumn()}，不要另建一列。
+     */
+    protected void registerSidePanelButtons(@NotNull SidePanel sidePanel) {
+        // 多方块控制器的页签由 MultiblockUIFactory 提供，覆盖板/朝向预览留在侧边栏；
+        // 其它机器（单方块机器、仓）把这两类入口做成窗口顶部的页签，见 attachTabs。
+        if (this instanceof MultiblockControllerBase) {
+            sidePanel.add(createWorldPreviewButton(sidePanel.getSyncManager()));
+            sidePanel.add(createUpgradeSlotsButton(sidePanel.getSyncManager()));
+            sidePanel.addAll(createCoverButtons(sidePanel.getGuiData(), sidePanel.getSyncManager()));
+            return;
+        }
+        sidePanel.add(createUpgradeSlotsButton(sidePanel.getSyncManager()));
+    }
+
+    /**
+     * 把覆盖板与朝向预览做成窗口顶部的页签（单方块机器、仓使用）。
+     *
+     * <p>
+     * 页 0 是机器原本的界面，后面依次是覆盖板页、朝向预览页，页签条与多方块控制器外观一致
+     * （悬在面板上沿外）。没有覆盖板、也没有可用的朝向预览时什么都不做，界面保持原样。
+     *
+     * <p>
+     * 必须在 {@link #initSidePanel} <b>之前</b>调用：这里会把面板现有子控件整体搬进页 0，
+     * 而侧边栏是直接挂在面板上的，顺序反了会把侧栏一起搬进去。
+     */
+    public void attachTabs(@NotNull ModularPanel panel, @NotNull PosGuiData guiData,
+                           @NotNull PanelSyncManager syncManager) {
+        // 多方块控制器已有自己的信息/仓室/朝向页签，不能再套一层。
+        if (this instanceof MultiblockControllerBase) return;
+
+        List<IWidget> coverCells = createCoverIndexCells(syncManager);
+
+        List<IWidget> children = new ArrayList<>(panel.getChildren());
+        // 玩家背包槽位是附着在面板上的槽位组，切页时不能跟着页 0 一起消失。
+        List<IWidget> persistentChildren = new ArrayList<>();
+        children.removeIf(child -> {
+            if (child instanceof SlotGroupWidget) {
+                persistentChildren.add(child);
+                return true;
+            }
+            return false;
+        });
+
+        // 背包高 76、底部边距 7；预览页按这个预留高度动态计算正方形边长。
+        int previewReserve = persistentChildren.isEmpty() ? 0 : 76 + 7;
+        IWidget previewPage = createWorldPreviewPage(syncManager, previewReserve);
+        if (coverCells.isEmpty() && previewPage == null) return;
+
+        panel.removeAll();
+
+        PagedWidget.Controller controller = new PagedWidget.Controller();
+        PagedWidget<?> pages = new PagedWidget<>().name("mte_pages").sizeRel(1f).controller(controller);
+
+        ParentWidget<?> machinePage = new ParentWidget<>().name("mte_page_machine").sizeRel(1f);
+        for (IWidget child : children) {
+            machinePage.child(child);
+        }
+        pages.addPage(machinePage);
+
+        Flow tabRow = Flow.row().name("mte_tab_row")
+                .widthRel(1f)
+                .leftRel(0.5f)
+                .margin(3, 0)
+                .coverChildrenHeight()
+                .topRel(0f, 3, 1f)
+                .child(new PageButton(0, controller).tab(GuiTextures.TAB_TOP, 0)
+                        .addTooltipLine(IKey.lang("gregtech.mui.mte.tab.machine"))
+                        .overlay(new ItemDrawable(getStackForm()).asIcon().size(16)));
+
+        int pageIndex = 1;
+        if (!coverCells.isEmpty()) {
+            pages.addPage(createCoverPage(coverCells));
+            tabRow.child(new PageButton(pageIndex++, controller).tab(GuiTextures.TAB_TOP, 0)
+                    .addTooltipLine(IKey.lang("gregtech.mui.mte.tab.covers"))
+                    .overlay(new ItemDrawable(new ItemStack(Blocks.CHEST)).asIcon().size(16)));
+        }
+        if (previewPage != null) {
+            pages.addPage(previewPage);
+            tabRow.child(new PageButton(pageIndex, controller).tab(GuiTextures.TAB_TOP, 0)
+                    .addTooltipLine(IKey.lang("gregtech.mui.mte.tab.preview"))
+                    .overlay(GTGuiTextures.BUTTON_STRUCTURE.asIcon().size(16)));
+        }
+
+        panel.child(pages);
+        for (IWidget child : persistentChildren) {
+            panel.child(child);
+        }
+        panel.child(tabRow);
+    }
+
+    /**
+     * 覆盖板页：与多方块的仓室页一样，是一份覆盖板索引。
+     *
+     * <p>
+     * 每个格子是覆盖板自己的物品图标，鼠标悬停显示名称与所在面；点击格子打开该覆盖板的界面
+     * （没有独立界面的覆盖板也会列出来，只是点击没有反应）。每行 {@value #COVER_INDEX_COLUMNS} 个，
+     * 与仓室索引的网格保持一致。
+     */
+    private @NotNull IWidget createCoverPage(@NotNull List<IWidget> coverCells) {
+        Flow grid = Flow.column().name("cover_grid").pos(6, 6).childPadding(1).coverChildren();
+        for (int start = 0; start < coverCells.size(); start += COVER_INDEX_COLUMNS) {
+            Flow row = Flow.row().name("cover_row:" + (start / COVER_INDEX_COLUMNS))
+                    .childPadding(1)
+                    .coverChildren();
+            int end = Math.min(start + COVER_INDEX_COLUMNS, coverCells.size());
+            for (int i = start; i < end; i++) {
+                row.child(coverCells.get(i));
+            }
+            grid.child(row);
+        }
+        return new ParentWidget<>().name("mte_page_covers").sizeRel(1f).child(grid);
+    }
+
+    /**
+     * 覆盖板索引的格子，按 {@link EnumFacing#VALUES} 的顺序排列。
+     *
+     * <p>
+     * 覆盖板的图标就是它自己的物品，提示里带上所在面；有独立界面的覆盖板点击后打开界面，
+     * 没有界面的只作为索引项列出。
+     */
+    protected @NotNull List<IWidget> createCoverIndexCells(@NotNull PanelSyncManager syncManager) {
+        List<IWidget> cells = new ArrayList<>();
+        for (EnumFacing side : EnumFacing.VALUES) {
+            Cover cover = getCoverAtSide(side);
+            if (cover == null) continue;
+
+            try {
+                ItemStack stack = cover.getDefinition().getDropItemStack();
+                if (stack.isEmpty()) continue;
+
+                IWidget cell = createCoverIndexCell(syncManager, cover, side, stack);
+                if (cell != null) {
+                    cells.add(cell);
+                }
+            } catch (Throwable t) {
+                if (ConfigHolder.misc.debug)
+                    GTLog.logger.error("[Cover Index] 为 {} 面的覆盖板 {} 构建索引格子失败",
+                            side, cover.getClass().getName(), t);
+            }
+        }
+        return cells;
+    }
+
+    /**
+     * 覆盖板索引的一个格子。
+     *
+     * <p>
+     * 实现了 {@link CoverWithUI} 的覆盖板，点击时在服务端调用 {@link CoverWithUI#openUI}，
+     * 也就是和右键覆盖板一样打开它自己的完整界面；没有完整界面的覆盖板只作为索引项显示
+     * （悬停提示里注明没有独立界面）。
+     */
+    private @Nullable IWidget createCoverIndexCell(@NotNull PanelSyncManager syncManager,
+                                                   @NotNull Cover cover, @NotNull EnumFacing side,
+                                                   @NotNull ItemStack stack) {
+        if (cover instanceof CoverWithUI) {
+            if (!cover.getCoverableView().isValid()) return null;
+            return createCoverOpenButton(syncManager, cover, side, stack);
+        }
+
+        ButtonWidget<?> cell = new ButtonWidget<>()
+                .size(18, 18)
+                .overlay(new ItemDrawable(stack).asIcon().size(16));
+        addCoverIndexTooltip(cell, stack, side);
+        cell.addTooltipLine(IKey.lang("gregtech.mui.cover.no_ui").style(TextFormatting.DARK_GRAY));
+        return cell;
+    }
+
+    /**
+     * 打开覆盖板完整界面的按钮：图标是覆盖板物品，点击只在客户端发包，服务端由
+     * {@code open_cover} 同步动作执行 {@link CoverWithUI#openUI}。
+     */
+    protected @NotNull ButtonWidget<?> createCoverOpenButton(@NotNull PanelSyncManager syncManager,
+                                                             @NotNull Cover cover, @NotNull EnumFacing side,
+                                                             @NotNull ItemStack stack) {
+        ButtonWidget<?> button = new ButtonWidget<>()
+                .size(18, 18)
+                .overlay(new ItemDrawable(stack).asIcon().size(16))
+                .onMousePressed(clickedButton -> {
+                    if (clickedButton != 0) return false;
+                    syncManager.callSyncedAction("open_cover", buffer -> buffer.writeByte(side.getIndex()));
+                    return true;
+                });
+        addCoverIndexTooltip(button, stack, side);
+        return button;
+    }
+
+    private void addCoverIndexTooltip(@NotNull ITooltip<?> tooltip, @NotNull ItemStack stack,
+                                      @NotNull EnumFacing side) {
+        tooltip.addTooltipLine(stack.getDisplayName());
+        tooltip.addTooltipLine(IKey.lang("gregtech.mui.side." + side.getName()).style(TextFormatting.GRAY));
+    }
+
+    /** 覆盖板索引每行放几个，与仓室索引一致。 */
+    private static final int COVER_INDEX_COLUMNS = 9;
+
+
+    /**
+     * 朝向预览页；配置关闭或世界为空时返回 {@code null}。
+     *
+     * @param bottomReserve 页面底部要留给玩家背包的高度（没有背包传 0）
+     */
+    protected @Nullable IWidget createWorldPreviewPage(@NotNull PanelSyncManager syncManager, int bottomReserve) {
+        if (!ConfigHolder.client.enableMachineWorldPreview) return null;
+
+        World world = getWorld();
+        if (world == null) return null;
+
+        boolean outputSides = this instanceof IActiveOutputSide;
+        EnumFacing frontFacing = hasFrontFacing() ? getFrontFacing() : null;
+        EnumFacing itemsOutput = outputSides ? ((IActiveOutputSide) this).getOutputFacingItems() : null;
+        EnumFacing fluidsOutput = outputSides ? ((IActiveOutputSide) this).getOutputFacingFluids() : null;
+
+        return WorldPreviewPanel.createPage(syncManager, world, getPos(), getStackForm(), hasFrontFacing(),
+                outputSides, frontFacing, itemsOutput, fluidsOutput, this::applyFaceAction, 0, 0, bottomReserve);
+    }
+
+    /**
+     * 单方块机器放在玩家背包左上角正上方（也就是配方区左下角）的 LOGO。
+     *
+     * <p>
+     * 玩家背包固定是 4 行 18px 槽位（高 76px）、底边距面板 7px，所以无论食谱区占几行，
+     * LOGO 的底边都固定在同一位置：{@code 7 + 76 + 2 = 85}。
+     */
+    protected @NotNull IWidget createPlayerInventoryLogo(int size) {
+        return new Widget<>()
+                .size(size)
+                .left(7)
+                .bottom(7 + 76 + 2)
+                .background(GTGuiTextures.getLogo(getUITheme()));
+    }
+
+    /**
+     * 升级插件的入口按钮：只有实现了 {@link IUpgradeSlots} 的机器才有。
+     *
+     * <p>
+     * 返回 {@code null} 表示这台机器没有升级槽位；按钮和面板的细节都在 {@link UpgradeSlotsPanel} 里。
+     */
+    protected @Nullable IWidget createUpgradeSlotsButton(@NotNull PanelSyncManager syncManager) {
+        if (this instanceof IUpgradeSlots upgradeSlots) {
+            return UpgradeSlotsPanel.create(syncManager, upgradeSlots.getUpgradeInventory(), getStackForm());
+        }
+        return null;
+    }
+
+    /**
+     * 所有覆盖板的入口按钮，按 {@link EnumFacing#VALUES} 的顺序。
+     *
+     * <p>
+     * 只有实现了 {@link CoverWithUI} 的覆盖板才有可打开的界面；没有界面的覆盖板不生成按钮。
+     * 单块覆盖板构建失败只跳过那一块、不影响整列，所以这里逐块 try/catch。
+     */
+    protected @NotNull List<IWidget> createCoverButtons(@NotNull PosGuiData guiData,
+                                                        @NotNull PanelSyncManager syncManager) {
+        List<IWidget> buttons = new ArrayList<>();
+        for (EnumFacing side : EnumFacing.VALUES) {
+            Cover cover = getCoverAtSide(side);
+            if (cover == null) continue;
+
+            try {
+                if (!(cover instanceof CoverWithUI)) continue;
+                if (!cover.getCoverableView().isValid()) continue;
+
+                ItemStack stack = cover.getDefinition().getDropItemStack();
+                if (stack.isEmpty()) continue;
+
+                buttons.add(createCoverOpenButton(syncManager, cover, side, stack));
+            } catch (Throwable t) {
+                if (ConfigHolder.misc.debug)
+                    GTLog.logger.error("[SidePanel] 为 {} 面的覆盖板 {} 构建入口按钮失败",
+                            side, cover.getClass().getName(), t);
+            }
+        }
+        return buttons;
+    }
+
+    /**
+     * 世界预览的入口按钮：点开一个浮动面板，面板里是机器周围的 3x3x3 方向渲染和方向按钮。
+     *
+     * <p>
+     * 面板本体、按钮行、点选状态都在 {@link WorldPreviewPanel} 里；这里只负责把它挂到
+     * 左侧那一列，并把"怎么在这台机器上设置方向"告诉它。
+     *
+     * <p>
+     * 返回 {@code null} 表示这次不显示（配置关闭、世界为空）。
+     */
+    protected @Nullable IWidget createWorldPreviewButton(@NotNull PanelSyncManager syncManager) {
+        if (!ConfigHolder.client.enableMachineWorldPreview) return null;
+
+        World world = getWorld();
+        if (world == null) return null;
+
+        return WorldPreviewPanel.create(syncManager, world, getPos(), getStackForm(), hasFrontFacing(),
+                this instanceof IActiveOutputSide, this::applyFaceAction);
+    }
+
+    /**
+     * 执行一次方向设置。由 {@link WorldPreviewPanel} 的同步值触发，<b>两端都会被调用</b>，
+     * 所以这里先挡掉客户端那次，真正的修改只发生在服务端。
+     *
+     * <p>
+     * 校验照抄旧终端 {@code MachineConsoleWidget}：正面要过 {@link #isValidFrontFacing}，
+     * 输出面不能和正面是同一个面。
+     */
+    protected void applyFaceAction(@NotNull WorldPreviewPanel.FaceAction action, @NotNull EnumFacing facing) {
+        World world = getWorld();
+        if (world == null || world.isRemote) return;
+
+        switch (action) {
+            case FRONT -> {
+                if (hasFrontFacing() && isValidFrontFacing(facing)) {
+                    setFrontFacing(facing);
+                }
+            }
+            case ITEMS -> {
+                if (this instanceof IActiveOutputSide activeOutputSide &&
+                        !(hasFrontFacing() && getFrontFacing() == facing)) {
+                    activeOutputSide.setOutputFacingItems(facing);
+                }
+            }
+            case FLUIDS -> {
+                if (this instanceof IActiveOutputSide activeOutputSide &&
+                        !(hasFrontFacing() && getFrontFacing() == facing)) {
+                    activeOutputSide.setOutputFacingFluids(facing);
+                }
+            }
+        }
+    }
+
     public GTGuiTheme getUITheme() {
         return GTGuiTheme.STANDARD;
     }
 
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager panelSyncManager, UISettings settings) {
         return null;
     }
 
@@ -572,6 +1026,11 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
      */
     public final boolean onToolClick(EntityPlayer playerIn, @NotNull Set<String> toolClasses, EnumHand hand,
                                      CuboidRayTraceResult hitResult) {
+        // GT6 Connection: Relay tool clicks to neighboring blocks when sneaking
+        if (tryRelayToolClick(playerIn, toolClasses, hand, hitResult)) {
+            return true;
+        }
+
         // the side hit from the machine grid
         EnumFacing gridSideHit = CoverRayTracer.determineGridSideHit(hitResult);
         Cover cover = gridSideHit == null ? null : getCoverAtSide(gridSideHit);
@@ -603,6 +1062,104 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     }
 
     /**
+     * GT6 Connection: Relay tool clicks to neighboring blocks when the player is sneaking.
+     * <p>
+     * - Screwdriver: relay to neighbor's cover<br>
+     * - Wrench: relay to neighbor fluid/item pipe<br>
+     * - Wirecutter: relay to neighbor cable
+     *
+     * @return true if the relay was handled (normal tool processing should be skipped)
+     */
+    private boolean tryRelayToolClick(EntityPlayer playerIn, Set<String> toolClasses, EnumHand hand,
+                                      CuboidRayTraceResult hitResult) {
+        if (playerIn == null || !playerIn.isSneaking()) {
+            return false;
+        }
+
+        // Fast exit: non-screwdriver relay does not apply to pipe/cable MTEs (they have their own handling)
+        String thisName = this.getClass().getSimpleName();
+        if (!toolClasses.contains(ToolClasses.SCREWDRIVER)) {
+            if (thisName.equals("TileEntityCable") ||
+                    thisName.equals("TileEntityFluidPipeTickable") ||
+                    thisName.equals("TileEntityItemPipeTickable")) {
+                return false;
+            }
+        }
+
+        // Detect grid side hit
+        EnumFacing gridSideHit = CoverRayTracer.determineGridSideHit(hitResult);
+        if (gridSideHit == null) return false;
+
+        // Locate neighbor
+        BlockPos neighbourPos = getPos().offset(gridSideHit);
+        TileEntity te = getWorld().getTileEntity(neighbourPos);
+        if (te == null) return false;
+
+        String neighbourName = te.getClass().getSimpleName();
+        EnumFacing neighbourSide = gridSideHit.getOpposite();
+        boolean handled = false;
+
+        // --- Cover Relay (Screwdriver) ---
+        if (toolClasses.contains(ToolClasses.SCREWDRIVER)) {
+            CoverHolder holder = te.getCapability(GregtechTileCapabilities.CAPABILITY_COVER_HOLDER, neighbourSide);
+            if (holder != null) {
+                Cover cover = holder.getCoverAtSide(neighbourSide);
+                if (cover != null) {
+                    handled = cover.onScrewdriverClick(playerIn, hand, hitResult) == EnumActionResult.SUCCESS;
+                }
+            }
+        }
+
+        // --- Pipe Relay (Wrench) ---
+        if (!handled && toolClasses.contains(ToolClasses.WRENCH)) {
+            if (neighbourName.equals("TileEntityFluidPipeTickable") ||
+                    neighbourName.equals("TileEntityItemPipeTickable")) {
+                if (te instanceof IGregTechTileEntity) {
+                    MetaTileEntity neighbourMTE = ((IGregTechTileEntity) te).getMetaTileEntity();
+                    if (neighbourMTE != null) {
+                        EnumFacing originalSide = hitResult.sideHit;
+                        hitResult.sideHit = neighbourSide;
+                        handled = neighbourMTE.onWrenchClick(playerIn, hand, neighbourSide, hitResult);
+                        hitResult.sideHit = originalSide;
+                    }
+                } else if (te instanceof TileEntityPipeBase) {
+                    handled = toggleConnection((TileEntityPipeBase<?, ?>) te, neighbourSide);
+                }
+            }
+        }
+
+        // --- Wire/Cable Relay (Wirecutter) ---
+        if (!handled && toolClasses.contains(ToolClasses.WIRE_CUTTER)) {
+            if (neighbourName.equals("TileEntityCable")) {
+                if (te instanceof IGregTechTileEntity) {
+                    MetaTileEntity neighbourMTE = ((IGregTechTileEntity) te).getMetaTileEntity();
+                    if (neighbourMTE != null) {
+                        EnumFacing originalSide = hitResult.sideHit;
+                        hitResult.sideHit = neighbourSide;
+                        handled = neighbourMTE.onToolClick(playerIn, toolClasses, hand, hitResult);
+                        hitResult.sideHit = originalSide;
+                    }
+                } else if (te instanceof TileEntityPipeBase) {
+                    handled = toggleConnection((TileEntityPipeBase<?, ?>) te, neighbourSide);
+                }
+            }
+        }
+
+        return handled;
+    }
+
+    /**
+     * Toggle a pipe/cable connection on the given side.
+     */
+    private boolean toggleConnection(TileEntityPipeBase<?, ?> pipe, EnumFacing side) {
+        boolean isConnected = pipe.isConnected(side);
+        pipe.setConnection(side, !isConnected, true);
+        getWorld().notifyBlockUpdate(pipe.getPos(), getWorld().getBlockState(pipe.getPos()),
+                getWorld().getBlockState(pipe.getPos()), 3);
+        return true;
+    }
+
+    /**
      * Called when player clicks a wrench on specific side of this meta tile entity
      *
      * @return true if something happened, so the tool will get damaged and animation will be played
@@ -610,12 +1167,12 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     public boolean onWrenchClick(EntityPlayer playerIn, EnumHand hand, EnumFacing wrenchSide,
                                  CuboidRayTraceResult hitResult) {
         if (!needsSneakToRotate() || playerIn.isSneaking()) {
-            if (wrenchSide == getFrontFacing() || !isValidFrontFacing(wrenchSide) || !hasFrontFacing()) {
+            if (wrenchSide == null || !hasFrontFacing() || wrenchSide == getFrontFacing() ||
+                    !isValidFrontFacing(wrenchSide)) {
                 return false;
             }
-            if (wrenchSide != null && !getWorld().isRemote) {
-                setFrontFacing(wrenchSide);
-            }
+            setFrontFacing(wrenchSide);
+            scheduleRenderUpdate();
             return true;
         }
         return false;
@@ -769,9 +1326,17 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     }
 
     public void onLoad() {
-        for (EnumFacing side : EnumFacing.VALUES) {
-            this.sidedRedstoneInput[side.getIndex()] = GTUtility.getRedstonePower(getWorld(), getPos(), side);
-        }
+        World world = getWorld();
+        if (world == null || world.isRemote) return;
+        // Reading redstone here would happen while the chunk is still being loaded, so defer the initial
+        // read to the next tick when all neighbours are safely available.
+        TaskScheduler.scheduleTask(world, () -> {
+            if (!isValid()) return false;
+            for (EnumFacing side : EnumFacing.VALUES) {
+                this.sidedRedstoneInput[side.getIndex()] = GTUtility.getRedstonePower(world, getPos(), side);
+            }
+            return false;
+        });
     }
 
     public void onUnload() {}
@@ -846,14 +1411,6 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     }
 
     public void update() {
-        if (!allowTickAcceleration() && getWorld().getMinecraftServer() != null) {
-            int currentTick = getWorld().getMinecraftServer().getTickCounter();
-            if (currentTick == lastTick) {
-                return;
-            }
-            lastTick = currentTick;
-        }
-
         for (MTETrait mteTrait : this.mteTraits.values()) {
             if (shouldUpdate(mteTrait)) {
                 mteTrait.update();
@@ -862,8 +1419,19 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
 
         if (!getWorld().isRemote) {
             updateCovers();
+            // Overload explosion countdown (server side)
+            if (overloadTicks > 0) {
+                overloadTicks--;
+                if (overloadTicks == 0) {
+                    executeExplosion(pendingExplosionPower);
+                }
+            }
         } else {
             updateSound();
+            // Overload warning particles (client side)
+            if (overloadTicks > 0) {
+                spawnOverloadParticles();
+            }
         }
         if (getOffsetTimer() % 5 == 0L) {
             updateLightValue();
@@ -871,12 +1439,29 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     }
 
     /**
-     * @return Whether this machine is allowed to be tick accelerated by external means. This does NOT
-     *         apply to World Accelerators from GT, those will never work on machines. This refers to effects
-     *         like Time in a Bottle, or Torcherino, or similar.
+     * 如果是要写污染的附属自己mixin这个方法实现
+     * ConfigHolder.machines.enablePollution 是污染开关
+     * @param amount 污染的量
+     * @param ticks 污染的触发间隔
      */
-    public boolean allowTickAcceleration() {
-        return ConfigHolder.machines.allowTickAcceleration;
+    @Override
+    public void pollution(double amount , int ticks) {
+    }
+
+    /**
+     * 自己定义污染的量，默认是0（没有污染）
+     */
+    @Override
+    public double getPollutionAmount() {
+        return 0;
+    }
+
+    /**
+     * 获取污染的触发间隔，默认一秒触发一次
+     */
+    @Override
+    public int getPollutionTicks() {
+        return 20;
     }
 
     protected boolean shouldUpdate(MTETrait trait) {
@@ -892,11 +1477,16 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
         if (sound == null) {
             return;
         }
-        if (isValid() && isActive()) {
+        boolean canPlay = isValid() && isActive();
+        if (this instanceof IControllable controllable) {
+            canPlay &= controllable.isWorkingEnabled();
+        }
+        if (canPlay) {
             if (--playSoundCooldown > 0) {
                 return;
             }
-            GregTechAPI.soundManager.startTileSound(sound.getSoundName(), getVolume(), getPos());
+            float pitch = getSoundPitch();
+            GregTechAPI.soundManager.startTileSound(sound.getSoundName(), getVolume(), pitch, getPos());
             playSoundCooldown = 20;
         } else {
             GregTechAPI.soundManager.stopTileSound(getPos());
@@ -904,13 +1494,34 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
         }
     }
 
-    public final @NotNull ItemStack getStackForm(int amount) {
+    /**
+     * Computes sound pitch based on energy fill level.
+     * Empty buffer = 0.85 pitch (lower), full buffer = 1.15 pitch (higher).
+     * Override for custom pitch behavior.
+     */
+    @SideOnly(Side.CLIENT)
+    protected float getSoundPitch() {
+        // Try to find energy container for pitch modulation
+        for (MTETrait trait : this.mteTraits.values()) {
+            if (trait instanceof IEnergyContainer energy) {
+                long capacity = energy.getEnergyCapacity();
+                if (capacity > 0) {
+                    float fill = (float) energy.getEnergyStored() / capacity;
+                    // Map fill [0..1] to pitch [0.85..1.15]
+                    return 0.85F + fill * 0.3F;
+                }
+            }
+        }
+        return 1.0F;
+    }
+
+    public @NotNull ItemStack getStackForm(int amount) {
         int metaTileEntityIntId = registry.getIdByObjectName(metaTileEntityId);
         return new ItemStack(registry.getBlock(), amount, metaTileEntityIntId);
     }
 
     @Override
-    public final @NotNull ItemStack getStackForm() {
+    public @NotNull ItemStack getStackForm() {
         return getStackForm(1);
     }
 
@@ -929,11 +1540,11 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     public SoundType getSoundType() {
         return SoundType.METAL;
     }
+
     /**
-     * Add special drops which this meta tile entity contains here
-     * Meta tile entity item is ALREADY added into this list
-     * Do NOT add inventory contents in this list - it will be dropped automatically when breakBlock is called
-     * This will only be called if meta tile entity is broken with proper tool (i.e wrench)
+     * Add special drops which this meta tile entity contains here Meta tile entity item is ALREADY added into this list
+     * Do NOT add inventory contents in this list - it will be dropped automatically when breakBlock is called This will
+     * only be called if meta tile entity is broken with proper tool (i.e wrench)
      *
      * @param dropsList list of meta tile entity drops
      * @param harvester harvester of this meta tile entity, or null
@@ -976,8 +1587,8 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     }
 
     /**
-     * Called to obtain list of AxisAlignedBB used for collision testing, highlight rendering
-     * and ray tracing this meta tile entity's block in world
+     * Called to obtain list of AxisAlignedBB used for collision testing, highlight rendering and ray tracing this meta
+     * tile entity's block in world
      */
     public void addCollisionBoundingBox(List<IndexedCuboid6> collisionList) {
         collisionList.add(FULL_CUBE_COLLISION);
@@ -1096,9 +1707,16 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
             if (muffled) {
                 GregTechAPI.soundManager.stopTileSound(getPos());
             }
+        } else if (dataId == OVERLOAD_WARNING) {
+            this.overloadTicks = buf.readInt();
+            // Play warning sound on client
+            if (overloadTicks > 0 && getWorld() != null && getPos() != null) {
+                getWorld().playSound(getPos().getX() + 0.5, getPos().getY() + 0.5, getPos().getZ() + 0.5,
+                        net.minecraft.init.SoundEvents.ENTITY_GENERIC_EXPLODE,
+                        net.minecraft.util.SoundCategory.BLOCKS, 0.4F, 2.0F, false);
+            }
         }
     }
-
     public BlockFaceShape getCoverFaceShape(EnumFacing side) {
         if (getCoverAtSide(side) != null) {
             return BlockFaceShape.SOLID; // covers are always solid
@@ -1125,8 +1743,8 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
             return CapabilityFluidHandler.FLUID_HANDLER_CAPABILITY.cast(getFluidInventory());
         } else if (capability == CapabilityItemHandler.ITEM_HANDLER_CAPABILITY &&
                 getItemInventory().getSlots() > 0) {
-                    return CapabilityItemHandler.ITEM_HANDLER_CAPABILITY.cast(getItemInventory());
-                }
+            return CapabilityItemHandler.ITEM_HANDLER_CAPABILITY.cast(getItemInventory());
+        }
         T capabilityResult = null;
         for (MTETrait mteTrait : this.mteTraits.values()) {
             capabilityResult = mteTrait.getCapability(capability);
@@ -1134,8 +1752,7 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
                 break;
             }
         }
-        if (side != null && capabilityResult instanceof IEnergyContainer) {
-            IEnergyContainer energyContainer = (IEnergyContainer) capabilityResult;
+        if (side != null && capabilityResult instanceof IEnergyContainer energyContainer) {
             if (!energyContainer.inputsEnergy(side) && !energyContainer.outputsEnergy(side)) {
                 return null; // do not provide energy container if it can't input or output energy at all
             }
@@ -1267,23 +1884,6 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
         if (holder != null) holder.scheduleRenderUpdate();
     }
 
-    public void setFrontFacing(EnumFacing frontFacing) {
-        Preconditions.checkNotNull(frontFacing, "frontFacing");
-        this.frontFacing = frontFacing;
-        if (getWorld() != null && !getWorld().isRemote) {
-            notifyBlockUpdate();
-            markDirty();
-            writeCustomData(UPDATE_FRONT_FACING, buf -> buf.writeByte(frontFacing.getIndex()));
-            for (MTETrait mteTrait : this.mteTraits.values()) {
-                mteTrait.onFrontFacingSet(frontFacing);
-            }
-        }
-    }
-
-    public void setPaintingColor(int paintingColor) {
-        setPaintingColor(paintingColor, null);
-    }
-
     public void setPaintingColor(@Nullable EnumDyeColor color, @Nullable EnumFacing side) {
         setPaintingColor(color == null ? -1 : color.colorValue, side);
     }
@@ -1311,8 +1911,8 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     }
 
     /**
-     * @return true if this meta tile entity should serialize it's export and import inventories
-     *         Useful when you use your own unified inventory and don't need these dummies to be saved
+     * @return true if this meta tile entity should serialize it's export and import inventories Useful when you use
+     * your own unified inventory and don't need these dummies to be saved
      */
     protected boolean shouldSerializeInventories() {
         return true;
@@ -1324,6 +1924,9 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
             data.setInteger(TAG_KEY_PAINTING_COLOR, paintingColor);
         }
         data.setInteger("CachedLightValue", cachedLightValue);
+        if (waterproof) {
+            data.setBoolean(TAG_KEY_WATERPROOF, true);
+        }
 
         if (shouldSerializeInventories()) {
             GTUtility.writeItems(importItems, "ImportInventory", data);
@@ -1353,6 +1956,7 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
             this.paintingColor = data.getInteger(TAG_KEY_PAINTING_COLOR);
         }
         this.cachedLightValue = data.getInteger("CachedLightValue");
+        this.waterproof = data.getBoolean(TAG_KEY_WATERPROOF);
 
         if (shouldSerializeInventories()) {
             GTUtility.readItems(importItems, "ImportInventory", data);
@@ -1384,27 +1988,16 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
         clearInventory(itemBuffer, exportItems);
     }
 
-    public static void clearInventory(@NotNull List<@NotNull ItemStack> itemBuffer,
-                                      @NotNull IItemHandlerModifiable inventory) {
-        for (int i = 0; i < inventory.getSlots(); i++) {
-            ItemStack stackInSlot = inventory.getStackInSlot(i);
-            if (!stackInSlot.isEmpty()) {
-                inventory.setStackInSlot(i, ItemStack.EMPTY);
-                itemBuffer.add(stackInSlot);
-            }
-        }
-    }
-
     public int getItemStackLimit(ItemStack stack) {
         return 64;
     }
 
     /**
-     * Called whenever a MetaTileEntity is placed in world by {@link Block#onBlockPlacedBy},
-     * gives the MetaTileEntity an Owner by UUID
+     * Called whenever a MetaTileEntity is placed in world by {@link Block#onBlockPlacedBy}, gives the MetaTileEntity an
+     * Owner by UUID
      * <p>
-     * If placing an MTE with methods such as {@link World#setBlockState(BlockPos, IBlockState)},
-     * this should be manually called immediately afterwards
+     * If placing an MTE with methods such as {@link World#setBlockState(BlockPos, IBlockState)}, this should be
+     * manually called immediately afterwards
      */
     public void onPlacement(@Nullable EntityLivingBase placer) {
         if (placer instanceof EntityPlayer player) {
@@ -1413,20 +2006,20 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     }
 
     /**
-     * Called whenever a MetaTileEntity is placed in world by {@link Block#onBlockPlacedBy},
-     * gives the MetaTileEntity an Owner of Null
+     * Called whenever a MetaTileEntity is placed in world by {@link Block#onBlockPlacedBy}, gives the MetaTileEntity an
+     * Owner of Null
      * <p>
-     * If placing an MTE with methods such as {@link World#setBlockState(BlockPos, IBlockState)},
-     * this should be manually called immediately afterwards
+     * If placing an MTE with methods such as {@link World#setBlockState(BlockPos, IBlockState)}, this should be
+     * manually called immediately afterwards
      */
     public final void onPlacement() {
         onPlacement(null);
     }
 
     /**
-     * Called from breakBlock right before meta tile entity destruction
-     * at this stage tile entity inventory is already dropped on ground, but drops aren't fetched yet
-     * tile entity will still get getDrops called after this, if player broke block
+     * Called from breakBlock right before meta tile entity destruction at this stage tile entity inventory is already
+     * dropped on ground, but drops aren't fetched yet tile entity will still get getDrops called after this, if player
+     * broke block
      */
     public void onRemoval() {}
 
@@ -1449,8 +2042,25 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
         return frontFacing;
     }
 
+    public void setFrontFacing(EnumFacing frontFacing) {
+        Preconditions.checkNotNull(frontFacing, "frontFacing");
+        this.frontFacing = frontFacing;
+        if (getWorld() != null && !getWorld().isRemote) {
+            notifyBlockUpdate();
+            markDirty();
+            writeCustomData(UPDATE_FRONT_FACING, buf -> buf.writeByte(frontFacing.getIndex()));
+            for (MTETrait mteTrait : this.mteTraits.values()) {
+                mteTrait.onFrontFacingSet(frontFacing);
+            }
+        }
+    }
+
     public int getPaintingColor() {
         return paintingColor;
+    }
+
+    public void setPaintingColor(int paintingColor) {
+        setPaintingColor(paintingColor, null);
     }
 
     public IItemHandler getItemInventory() {
@@ -1507,9 +2117,8 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     }
 
     /**
-     * Override this if the MTE will keep its Item inventory on-break.
-     * If this is overridden to return True, you MUST take care to handle
-     * the ItemStacks in the MTE's inventory otherwise they will be voided on break.
+     * Override this if the MTE will keep its Item inventory on-break. If this is overridden to return True, you MUST
+     * take care to handle the ItemStacks in the MTE's inventory otherwise they will be voided on break.
      *
      * @return True if MTE inventory is kept as an ItemStack, false otherwise
      */
@@ -1525,15 +2134,24 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     public UUID getOwnerGT() {
         return owner;
     }
+
     public boolean canBeModifiedBy(@NotNull Entity entity) {
         UUID owner = getOwnerGT();
         if (owner == null) return true;
         return owner.equals(entity.getUniqueID());
     }
+
     public final void toggleMuffled() {
-        muffled = !muffled;
+        setMuffled(!muffled);
+    }
+
+    /** Sets the persisted machine sound suppression state. */
+    public final void setMuffled(boolean muffled) {
+        if (this.muffled == muffled) return;
+        this.muffled = muffled;
         if (!getWorld().isRemote) {
             writeCustomData(UPDATE_SOUND_MUFFLED, buf -> buf.writeBoolean(muffled));
+            markDirty();
         }
     }
 
@@ -1605,10 +2223,52 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     }
 
     public void doExplosion(float explosionPower) {
+        if (overloadTicks > 0) return; // already overloading
+        noticePlayer("[爆炸提醒]位于" + getPos() + "的" + getStackForm().getDisplayName() + "设备即将爆炸！！！");
+        overloadTicks = 40; // 2 second warning
+        pendingExplosionPower = explosionPower;
+        // Sync to client for particles/sound
+        writeCustomData(OVERLOAD_WARNING, buf -> buf.writeInt(overloadTicks));
+    }
+
+    /**
+     * Actually perform the explosion after the warning countdown.
+     */
+    private void executeExplosion(float explosionPower) {
+        noticePlayer("[爆炸提醒]位于" + getPos() + "的" + getStackForm().getDisplayName() + "设备发生爆炸！！！");
         setExploded();
         getWorld().setBlockToAir(getPos());
         getWorld().createExplosion(null, getPos().getX() + 0.5, getPos().getY() + 0.5, getPos().getZ() + 0.5,
                 explosionPower, ConfigHolder.machines.doesExplosionDamagesTerrain);
+    }
+
+    /**
+     * Client-side overload warning particles. Intensity escalates as countdown progresses.
+     */
+    @SideOnly(Side.CLIENT)
+    private void spawnOverloadParticles() {
+        if (getWorld() == null || getPos() == null) return;
+        BlockPos pos = getPos();
+        // Escalating intensity: more particles as we approach explosion
+        float progress = 1.0F - (overloadTicks / 40.0F); // 0.0 at start, 1.0 at explosion
+        int particleCount = 1 + (int) (progress * 5);
+        for (int i = 0; i < particleCount; i++) {
+            double x = pos.getX() + 0.2 + GTValues.RNG.nextDouble() * 0.6;
+            double y = pos.getY() + 0.2 + GTValues.RNG.nextDouble() * 0.6;
+            double z = pos.getZ() + 0.2 + GTValues.RNG.nextDouble() * 0.6;
+            double vx = (GTValues.RNG.nextDouble() - 0.5) * 0.1;
+            double vy = GTValues.RNG.nextDouble() * 0.15;
+            double vz = (GTValues.RNG.nextDouble() - 0.5) * 0.1;
+            getWorld().spawnParticle(net.minecraft.util.EnumParticleTypes.LAVA, x, y, z, vx, vy, vz);
+            if (progress > 0.3F) {
+                getWorld().spawnParticle(net.minecraft.util.EnumParticleTypes.FLAME, x, y, z, vx, vy * 0.5, vz);
+            }
+            if (progress > 0.7F) {
+                getWorld().spawnParticle(net.minecraft.util.EnumParticleTypes.SMOKE_LARGE, x, y, z, 0, 0.05, 0);
+            }
+        }
+        // Decrement client-side counter
+        overloadTicks--;
     }
 
     /**
@@ -1647,7 +2307,20 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
      * @return true if tile entity should not explode in these sources
      */
     public boolean getIsWeatherOrTerrainResistant() {
-        return false;
+        return waterproof;
+    }
+
+    /**
+     * @return whether this machine has been made waterproof with a waterproof spray can
+     * @see gregtech.common.items.behaviors.WaterproofSprayBehavior
+     */
+    public boolean isWaterproof() {
+        return waterproof;
+    }
+
+    /** Makes this machine immune to the weather and terrain explosions. The state is persisted with the machine. */
+    public void setWaterproof(boolean waterproof) {
+        this.waterproof = waterproof;
     }
 
     public boolean doTickProfileMessage() {
@@ -1655,7 +2328,7 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     }
 
     public boolean canRenderMachineGrid(@NotNull ItemStack mainHandStack, @NotNull ItemStack offHandStack) {
-        final String[] tools = { ToolClasses.WRENCH, ToolClasses.SCREWDRIVER };
+        final String[] tools = { ToolClasses.WRENCH, ToolClasses.SCREWDRIVER, ToolClasses.WIRE_CUTTER };
         return ToolHelper.isTool(mainHandStack, tools) ||
                 ToolHelper.isTool(offHandStack, tools);
     }
@@ -1673,21 +2346,6 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     public boolean canVoidRecipeFluidOutputs() {
         return false;
     }
-
-    @NotNull
-    @Method(modid = Mods.Names.APPLIED_ENERGISTICS2)
-    public AECableType getCableConnectionType(@NotNull AEPartLocation part) {
-        return AECableType.NONE;
-    }
-
-    @Nullable
-    @Method(modid = Mods.Names.APPLIED_ENERGISTICS2)
-    public AENetworkProxy getProxy() {
-        return null;
-    }
-
-    @Method(modid = Mods.Names.APPLIED_ENERGISTICS2)
-    public void gridChanged() {}
 
     /**
      * Add MTE to a creative tab. Ensure that the creative tab has been registered via
@@ -1729,4 +2387,30 @@ public abstract class MetaTileEntity implements ISyncedTileEntity, CoverHolder, 
     public Set<CreativeTabs> getCreativeTabs() {
         return Collections.unmodifiableSet(creativeTabs);
     }
+
+    public void noticePlayer(String s) {
+        EntityPlayer player = getOwnerPlayer();
+        if (player != null) {
+            noticePlayer(s, player);
+        }
+    }
+
+    public void noticePlayer(String s, EntityPlayer player) {
+        if (player == null) return;
+
+        player.sendMessage(new TextComponentTranslation(s));
+        MachineBlockHighlighter.highlight(player, getPos());
+    }
+
+    // 私有辅助方法
+    private EntityPlayer getOwnerPlayer() {
+        UUID ownerGT = this.getOwnerGT();
+        if (ownerGT == null) return null;
+
+        World world = this.getWorld();
+        if (world == null) return null;
+
+        return world.getPlayerEntityByUUID(ownerGT);
+    }
+
 }

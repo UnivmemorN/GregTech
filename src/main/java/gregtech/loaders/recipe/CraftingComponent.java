@@ -15,7 +15,9 @@ import gregtech.common.metatileentities.MetaTileEntities;
 import net.minecraft.init.Blocks;
 import net.minecraftforge.fluids.FluidStack;
 
+import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 
 import static gregtech.api.GTValues.*;
@@ -71,8 +73,9 @@ public class CraftingComponent {
     public static Component POWER_COMPONENT;
     public static Component VOLTAGE_COIL;
     public static Component SPRING;
+    public static Component SPRING_SMALL;
 
-    public static final Map<BlastProperty.GasTier, FluidStack> EBF_GASES = new EnumMap<>(BlastProperty.GasTier.class);
+    public static final Map<BlastProperty.GasTier, List<FluidStack>> EBF_GASES = new EnumMap<>(BlastProperty.GasTier.class);
 
     private CraftingComponent() {}
 
@@ -583,7 +586,7 @@ public class CraftingComponent {
                 .entry(HV, MetaItems.ELECTRIC_PISTON_HV)
                 .entry(EV, MetaItems.ELECTRIC_PISTON_EV)
                 .entry(IV, MetaItems.ELECTRIC_PISTON_IV)
-                .entry(LuV, MetaItems.ELECTRIC_PISTON_LUV)
+                .entry(LuV, MetaItems.ELECTRIC_PISTON_LuV)
                 .entry(ZPM, MetaItems.ELECTRIC_PISTON_ZPM)
                 .entry(UV, MetaItems.ELECTRIC_PISTON_UV)
                 .build();
@@ -810,10 +813,35 @@ public class CraftingComponent {
                 .entry(UHV, OrePrefix.spring, Materials.Europium)
                 .build();
 
-        EBF_GASES.put(BlastProperty.GasTier.LOW, Materials.Nitrogen.getFluid(1000));
-        EBF_GASES.put(BlastProperty.GasTier.MID, Materials.Helium.getFluid(100));
-        EBF_GASES.put(BlastProperty.GasTier.HIGH, Materials.Argon.getFluid(50));
-        EBF_GASES.put(BlastProperty.GasTier.HIGHER, Materials.Neon.getFluid(25));
-        EBF_GASES.put(BlastProperty.GasTier.HIGHEST, Materials.Krypton.getFluid(10));
+        SPRING_SMALL  = new Component.Builder()
+                .entry(ULV, OrePrefix.springSmall, Materials.Lead)
+                .entry(LV, OrePrefix.springSmall, Materials.Tin)
+                .entry(MV, OrePrefix.springSmall, Materials.Copper)
+                .entry(HV, OrePrefix.springSmall, Materials.Gold)
+                .entry(EV, OrePrefix.springSmall, Materials.Aluminium)
+                .entry(IV, OrePrefix.springSmall, Materials.Tungsten)
+                .entry(LuV, OrePrefix.springSmall, Materials.NiobiumTitanium)
+                .entry(ZPM, OrePrefix.springSmall, Materials.VanadiumGallium)
+                .entry(UV, OrePrefix.springSmall, Materials.YttriumBariumCuprate)
+                .entry(UHV, OrePrefix.springSmall, Materials.Europium)
+                .build();
+
+
+        EBF_GASES.computeIfAbsent(BlastProperty.GasTier.LOW, k -> new ArrayList<>())
+                .add(Materials.Nitrogen.getFluid(1000));
+        EBF_GASES.computeIfAbsent(BlastProperty.GasTier.MID, k -> new ArrayList<>())
+                .add(Materials.Helium.getFluid(750));
+        EBF_GASES.computeIfAbsent(BlastProperty.GasTier.HIGH, k -> new ArrayList<>())
+                .add(Materials.Argon.getFluid(500));
+        EBF_GASES.computeIfAbsent(BlastProperty.GasTier.HIGH, k -> new ArrayList<>())
+                .add(Materials.Radon.getFluid(250));
+        EBF_GASES.computeIfAbsent(BlastProperty.GasTier.HIGHER, k -> new ArrayList<>())
+                .add(Materials.Neon.getFluid(100));
+        EBF_GASES.computeIfAbsent(BlastProperty.GasTier.HIGHER, k -> new ArrayList<>())
+                .add(Materials.Krypton.getFluid(50));
+        EBF_GASES.computeIfAbsent(BlastProperty.GasTier.HIGHEST, k -> new ArrayList<>())
+                .add(Materials.Xenon.getFluid(20));
+        EBF_GASES.computeIfAbsent(BlastProperty.GasTier.HIGHEST, k -> new ArrayList<>())
+                .add(Materials.Oganesson.getFluid(10));
     }
 }

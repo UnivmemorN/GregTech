@@ -21,6 +21,7 @@ import gregtech.api.unification.material.properties.PropertyKey;
 import gregtech.api.unification.material.properties.ToolProperty;
 import gregtech.api.unification.ore.OrePrefix;
 import gregtech.api.unification.stack.UnificationEntry;
+import gregtech.api.util.GTLog;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.Mods;
 import gregtech.api.util.TextFormattingUtil;
@@ -64,7 +65,6 @@ import net.minecraftforge.fml.common.Optional;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
-import appeng.api.implementations.items.IAEWrench;
 import buildcraft.api.tools.IToolWrench;
 import cofh.api.item.IToolHammer;
 import com.cleanroommc.modularui.api.drawable.IKey;
@@ -72,11 +72,11 @@ import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.factory.HandGuiData;
 import com.cleanroommc.modularui.factory.ItemGuiFactory;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
-import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.layout.Flow;
 import com.enderio.core.common.interfaces.IOverlayRenderAware;
 import com.google.common.collect.HashMultimap;
@@ -92,7 +92,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -105,8 +108,6 @@ import static gregtech.api.items.toolitem.ToolHelper.*;
  * Backing of every variation of a GT Tool
  */
 @Optional.InterfaceList({
-        @Optional.Interface(modid = Mods.Names.APPLIED_ENERGISTICS2,
-                            iface = "appeng.api.implementations.items.IAEWrench"),
         @Optional.Interface(modid = Mods.Names.BUILD_CRAFT_CORE,
                             iface = "buildcraft.api.tools.IToolWrench"),
         @Optional.Interface(modid = Mods.Names.COFH_CORE,
@@ -121,8 +122,8 @@ import static gregtech.api.items.toolitem.ToolHelper.*;
                             iface = "mods.railcraft.api.items.IToolCrowbar"),
         @Optional.Interface(modid = Mods.Names.ENDER_CORE,
                             iface = "com.enderio.core.common.interfaces.IOverlayRenderAware") })
-public interface IGTTool extends ItemUIFactory, IAEWrench, IToolWrench, IToolHammer, ITool, IToolGrafter,
-                         IOverlayRenderAware, IScrewdriver, IToolCrowbar {
+public interface IGTTool extends ItemUIFactory, IToolWrench, IToolHammer, ITool, IToolGrafter,
+                                 IOverlayRenderAware, IScrewdriver, IToolCrowbar {
 
     /**
      * @return the modid of the tool
@@ -451,6 +452,17 @@ public interface IGTTool extends ItemUIFactory, IAEWrench, IToolWrench, IToolHam
         return true;
     }
 
+    default boolean definition$itemInteractionForEntity(ItemStack stack, EntityPlayer player, EntityLivingBase entity,
+                                                        EnumHand hand) {
+        for (IToolBehavior behavior : getToolStats().getBehaviors()) {
+            if (behavior.onEntityInteract(stack, player, entity, hand)) {
+                damageItem(stack, player, getToolStats().getToolDamagePerAttack(stack));
+                return true;
+            }
+        }
+        return false;
+    }
+
     default boolean definition$onBlockStartBreak(ItemStack stack, BlockPos pos, EntityPlayer player) {
         if (player.world.isRemote) return false;
         getBehaviors(stack).forEach(behavior -> behavior.onBlockStartBreak(stack, pos, player));
@@ -649,7 +661,7 @@ public interface IGTTool extends ItemUIFactory, IAEWrench, IToolWrench, IToolHam
     default double definition$getDurabilityForDisplay(ItemStack stack) {
         int damage = stack.getItem().getDamage(stack);
         int maxDamage = stack.getItem().getMaxDamage(stack);
-        return GTUtility.calculateDurabilityFromDamageTaken(damage, maxDamage);
+        return (double) damage / (double) maxDamage;
     }
 
     @Nullable
@@ -718,12 +730,54 @@ public interface IGTTool extends ItemUIFactory, IAEWrench, IToolWrench, IToolHam
     }
 
     default void definition$getSubItems(@NotNull NonNullList<ItemStack> items) {
-        if (getMarkerItem() != null) {
-            items.add(getMarkerItem().get());
-        } else if (isElectric()) {
-            items.add(get(Materials.Iron, Integer.MAX_VALUE));
-        } else {
-            items.add(get(Materials.Iron));
+        Supplier<ItemStack> markerItem = getMarkerItem();
+        if (markerItem != null) {
+            items.add(markerItem.get());
+            return;
+        }
+
+        items.addAll(ToolSubItemCache.get(this));
+    }
+
+    /**
+     * Tool sub-items are descriptors, not inventory stacks. Sharing them prevents recipe viewers from rebuilding a
+     * full NBT tool set every time an ore-dictionary ingredient is expanded.
+     */
+    final class ToolSubItemCache {
+
+        private static final Map<IGTTool, List<ItemStack>> CACHED_SUB_ITEMS = new IdentityHashMap<>();
+        private static int cachedMaterialCount = -1;
+
+        private ToolSubItemCache() {}
+
+        @NotNull
+        private static synchronized List<ItemStack> get(@NotNull IGTTool tool) {
+            Collection<Material> materials = GregTechAPI.materialManager.getRegisteredMaterials();
+            int materialCount = materials.size();
+
+            // Late material registration must be reflected in the creative tab and recipe viewers.
+            if (cachedMaterialCount != materialCount) {
+                CACHED_SUB_ITEMS.clear();
+                cachedMaterialCount = materialCount;
+                GTLog.logger.debug("Initializing GT tool sub-item cache for {} registered materials", materialCount);
+            }
+
+            List<ItemStack> cachedItems = CACHED_SUB_ITEMS.get(tool);
+            if (cachedItems != null) {
+                return cachedItems;
+            }
+
+            List<ItemStack> generatedItems = new ArrayList<>();
+            boolean electric = tool.isElectric();
+            for (Material material : materials) {
+                if (material.hasProperty(PropertyKey.TOOL)) {
+                    generatedItems.add(electric ? tool.get(material, Long.MAX_VALUE) : tool.get(material));
+                }
+            }
+
+            cachedItems = Collections.unmodifiableList(generatedItems);
+            CACHED_SUB_ITEMS.put(tool, cachedItems);
+            return cachedItems;
         }
     }
 
@@ -947,7 +1001,7 @@ public interface IGTTool extends ItemUIFactory, IAEWrench, IToolWrench, IToolHam
     }
 
     @Override
-    default ModularPanel buildUI(HandGuiData guiData, PanelSyncManager manager) {
+    default ModularPanel buildUI(HandGuiData guiData, PanelSyncManager manager, UISettings settings) {
         final var usedStack = guiData.getUsedItemStack();
         final var behaviorsTag = getBehaviorsTag(usedStack);
         final var defaultDefinition = getMaxAoEDefinition(usedStack);
@@ -1006,14 +1060,15 @@ public interface IGTTool extends ItemUIFactory, IAEWrench, IToolWrench, IToolHam
 
         return Flow.column()
                 .coverChildren()
-                .child(new TextWidget(IKey.lang("item.gt.tool.aoe." + lang))
+                .child(IKey.lang("item.gt.tool.aoe." + lang)
+                        .asWidget()
                         .marginBottom(5))
                 .child(Flow.row()
                         .coverChildren()
                         .marginBottom(5)
                         .child(increaseButton)
                         .child(decreaseButton))
-                .child(new TextWidget(display)
+                .child(display.asWidget()
                         .alignment(Alignment.Center)
                         .widthRel(1f));
     }
@@ -1021,20 +1076,6 @@ public interface IGTTool extends ItemUIFactory, IAEWrench, IToolWrench, IToolHam
     Set<String> getToolClasses(ItemStack stack);
 
     // Extended Interfaces
-
-    // IAEWrench
-
-    /**
-     * Check if the wrench can be used.
-     *
-     * @param player wrenching player
-     * @param pos    of block.
-     * @return true if wrench can be used
-     */
-    @Override
-    default boolean canWrench(ItemStack wrench, EntityPlayer player, BlockPos pos) {
-        return get().getToolClasses(wrench).contains(ToolClasses.WRENCH);
-    }
 
     // IToolWrench
 

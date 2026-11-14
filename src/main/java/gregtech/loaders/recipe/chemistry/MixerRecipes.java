@@ -1,6 +1,8 @@
 package gregtech.loaders.recipe.chemistry;
 
 import gregtech.api.recipes.ModHandler;
+import gregtech.api.recipes.RecipeMaps;
+import gregtech.api.recipes.ingredients.IntCircuitIngredient;
 import gregtech.api.unification.OreDictUnifier;
 import gregtech.api.unification.stack.UnificationEntry;
 
@@ -11,7 +13,7 @@ import static gregtech.api.recipes.RecipeMaps.CHEMICAL_RECIPES;
 import static gregtech.api.recipes.RecipeMaps.MIXER_RECIPES;
 import static gregtech.api.unification.material.Materials.*;
 import static gregtech.api.unification.ore.OrePrefix.dust;
-import static gregtech.api.util.Mods.Names.GTQT_CORE;
+import static gregtech.api.util.Mods.Names.GTQT_TEST;
 
 public class MixerRecipes {
 
@@ -39,7 +41,7 @@ public class MixerRecipes {
                 .fluidInputs(Water.getFluid(1000))
                 .fluidOutputs(SaltWater.getFluid(1000))
                 .duration(40).EUt(VA[ULV]).buildAndRegister();
-        if (!Loader.isModLoaded(GTQT_CORE)) {
+        if (!Loader.isModLoaded(GTQT_TEST)) {
             MIXER_RECIPES.recipeBuilder()
                     .fluidInputs(BioDiesel.getFluid(1000))
                     .fluidInputs(Tetranitromethane.getFluid(40))
@@ -64,7 +66,7 @@ public class MixerRecipes {
                 .fluidOutputs(RocketFuel.getFluid(6000))
                 .duration(60).EUt(16).buildAndRegister();
 
-        if (!Loader.isModLoaded(GTQT_CORE)) {
+        if (!Loader.isModLoaded(GTQT_TEST)) {
             MIXER_RECIPES.recipeBuilder()
                     .fluidInputs(LightFuel.getFluid(5000))
                     .fluidInputs(HeavyFuel.getFluid(1000))
@@ -169,13 +171,6 @@ public class MixerRecipes {
                 .input(dust, Antimony)
                 .circuitMeta(3)
                 .output(dust, SolderingAlloy, 10)
-                .buildAndRegister();
-
-        MIXER_RECIPES.recipeBuilder().duration(200).EUt(VA[ULV])
-                .input(dust, Gallium)
-                .input(dust, Arsenic)
-                .circuitMeta(1)
-                .output(dust, GalliumArsenide, 2)
                 .buildAndRegister();
 
         MIXER_RECIPES.recipeBuilder().duration(200).EUt(VA[ULV])
@@ -646,5 +641,35 @@ public class MixerRecipes {
                 .circuitMeta(4)
                 .output(dust, Inconel718, 11)
                 .buildAndRegister();
+
+        RecipeMaps.MIXER_RECIPES.recipeBuilder()
+                .input(dust, Titanium)
+                .input(dust, Carbon)
+                .notConsumable(new IntCircuitIngredient(1))
+                .output(dust, TitaniumCarbide, 2)
+                .duration(160).EUt(VA[EV]).buildAndRegister();
+
+        RecipeMaps.MIXER_RECIPES.recipeBuilder()
+                .input(dust, Tantalum)
+                .input(dust, Carbon)
+                .notConsumable(new IntCircuitIngredient(1))
+                .output(dust, TantalumCarbide, 2)
+                .duration(150).EUt(VA[EV]).buildAndRegister();
+
+        RecipeMaps.MIXER_RECIPES.recipeBuilder()
+                .input(dust, Molybdenum)
+                .input(dust, Silicon, 2)
+                .notConsumable(new IntCircuitIngredient(1))
+                .output(dust, MolybdenumDisilicide, 3)
+                .duration(180).EUt(VA[EV]).buildAndRegister();
+
+        RecipeMaps.MIXER_RECIPES.recipeBuilder()
+                .input(dust, Invar, 2)
+                .input(dust, Vanadium, 1)
+                .input(dust, Titanium, 1)
+                .input(dust, Molybdenum, 1)
+                .notConsumable(new IntCircuitIngredient(1))
+                .output(dust, HSLASteel, 5)
+                .duration(140).EUt(VA[HV]).buildAndRegister();
     }
 }

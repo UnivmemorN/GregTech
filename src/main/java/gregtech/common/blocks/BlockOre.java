@@ -44,19 +44,24 @@ import java.util.stream.Collectors;
 
 public class BlockOre extends Block implements IBlockOre {
 
-    public final PropertyStoneType STONE_TYPE;
+    public PropertyStoneType STONE_TYPE;
     public final Material material;
 
+    private static StoneType[] $values;
+
     public BlockOre(Material material, StoneType[] allowedValues) {
-        super(net.minecraft.block.material.Material.ROCK);
+        super(material($values = allowedValues));
         setTranslationKey("ore_block");
         setSoundType(SoundType.STONE);
         setHardness(3.0f);
         setResistance(5.0f);
         this.material = Objects.requireNonNull(material, "Material in BlockOre can not be null!");
-        STONE_TYPE = PropertyStoneType.create("stone_type", allowedValues);
-        initBlockState();
+        // STONE_TYPE and blockState already initialized in createBlockState() during super() call
         setCreativeTab(GTCreativeTabs.TAB_GREGTECH_ORES);
+    }
+
+    private static net.minecraft.block.material.Material material(StoneType[] v) {
+        return net.minecraft.block.material.Material.ROCK;
     }
 
     @NotNull
@@ -73,28 +78,20 @@ public class BlockOre extends Block implements IBlockOre {
     @NotNull
     @Override
     protected final BlockStateContainer createBlockState() {
-        return new BlockStateContainer(this);
-    }
-
-    protected void initBlockState() {
-        BlockStateContainer stateContainer = createStateContainer();
-        this.blockState = stateContainer;
-        setDefaultState(stateContainer.getBaseState());
+        this.STONE_TYPE = PropertyStoneType.create("stone_type", $values);
+        return new BlockStateContainer(this, STONE_TYPE);
     }
 
     @NotNull
     @Override
     public Item getItemDropped(@NotNull IBlockState state, @NotNull Random rand, int fortune) {
-        // 获取当前方块状态对应的 StoneType
         StoneType stoneType = state.getValue(STONE_TYPE);
 
-        // 直接返回粗矿物品，忽略原分支逻辑
         ItemStack rawOreStack = OreDictUnifier.get(OrePrefix.rawOre, this.material);
         if (!rawOreStack.isEmpty()) {
-            return rawOreStack.getItem(); // 返回粗矿物品（忽略元数据）
+            return rawOreStack.getItem();
         }
 
-        // 粗矿不存在时回退到原逻辑
         if (stoneType.shouldBeDroppedAsItem || StoneType.STONE_TYPE_REGISTRY.getIDForObject(stoneType) < 16) {
             return super.getItemDropped(state, rand, fortune);
         } else {
@@ -103,20 +100,15 @@ public class BlockOre extends Block implements IBlockOre {
         }
     }
 
-    // 新增方法：处理掉落数量和元数据
     @Override
     public int damageDropped(@NotNull IBlockState state) {
-        // 返回粗矿对应的元数据值
         ItemStack rawOreStack = OreDictUnifier.get(OrePrefix.rawOre, this.material);
         return rawOreStack.isEmpty() ? 0 : rawOreStack.getItemDamage();
     }
 
     @Override
-    public int quantityDropped(IBlockState state, int fortune, @NotNull Random random) {
-        // 基础掉落数量 = 1 + 时运增幅
+    public int quantityDropped(@NotNull IBlockState state, int fortune, @NotNull Random random) {
         int base = 1 + random.nextInt(Math.min(fortune,3) + 1);
-
-        // 粗矿处理：时运每级增加 1 个额外掉落
         ItemStack rawOreStack = OreDictUnifier.get(OrePrefix.rawOre, this.material);
         return rawOreStack.isEmpty() ? super.quantityDropped(state, fortune, random) : base;
     }
@@ -198,10 +190,6 @@ public class BlockOre extends Block implements IBlockOre {
     public boolean canRenderInLayer(@NotNull IBlockState state, @NotNull BlockRenderLayer layer) {
         return layer == BlockRenderLayer.CUTOUT_MIPPED ||
                 material.getProperty(PropertyKey.ORE).isEmissive() && layer == BloomEffectUtil.getEffectiveBloomLayer();
-    }
-
-    private BlockStateContainer createStateContainer() {
-        return new BlockStateContainer(this, STONE_TYPE);
     }
 
     @Override

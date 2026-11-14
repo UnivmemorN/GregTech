@@ -46,7 +46,6 @@ import net.minecraftforge.fml.common.Optional;
 import com.cleanroommc.groovyscript.api.GroovyLog;
 import com.cleanroommc.groovyscript.api.IIngredient;
 import com.cleanroommc.groovyscript.helper.ingredient.OreDictIngredient;
-import crafttweaker.CraftTweakerAPI;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import org.apache.commons.lang3.builder.ToStringBuilder;
@@ -79,6 +78,8 @@ public class RecipeBuilder<R extends RecipeBuilder<R>> {
     protected final List<FluidStack> fluidOutputs;
     protected final List<ChancedFluidOutput> chancedFluidOutputs;
 
+    protected final List<ItemStack> mufflerDustList;
+
     protected ChancedOutputLogic chancedOutputLogic = ChancedOutputLogic.OR;
     protected ChancedOutputLogic chancedFluidOutputLogic = ChancedOutputLogic.OR;
 
@@ -86,7 +87,6 @@ public class RecipeBuilder<R extends RecipeBuilder<R>> {
     protected long EUt;
     protected boolean hidden = false;
     protected GTRecipeCategory category;
-    protected boolean isCTRecipe = false;
     protected int parallel = 0;
     protected EnumValidationResult recipeStatus = EnumValidationResult.VALID;
     protected RecipePropertyStorage recipePropertyStorage = RecipePropertyStorage.EMPTY;
@@ -105,6 +105,7 @@ public class RecipeBuilder<R extends RecipeBuilder<R>> {
         this.fluidInputs = new ArrayList<>();
         this.fluidOutputs = new ArrayList<>();
         this.chancedFluidOutputs = new ArrayList<>();
+        this.mufflerDustList = new ArrayList<>();
     }
 
     public RecipeBuilder(Recipe recipe, RecipeMap<R> recipeMap) {
@@ -115,6 +116,7 @@ public class RecipeBuilder<R extends RecipeBuilder<R>> {
         this.fluidInputs = new ArrayList<>(recipe.getFluidInputs());
         this.fluidOutputs = GTUtility.copyFluidList(recipe.getFluidOutputs());
         this.chancedFluidOutputs = new ArrayList<>(recipe.getChancedFluidOutputs().getChancedEntries());
+        this.mufflerDustList = new ArrayList<>(recipe.getMufflerDustList());
         this.duration = recipe.getDuration();
         this.EUt = recipe.getEUt();
         this.hidden = recipe.isHidden();
@@ -131,6 +133,7 @@ public class RecipeBuilder<R extends RecipeBuilder<R>> {
         this.fluidInputs = new ArrayList<>(recipeBuilder.getFluidInputs());
         this.fluidOutputs = GTUtility.copyFluidList(recipeBuilder.getFluidOutputs());
         this.chancedFluidOutputs = new ArrayList<>(recipeBuilder.chancedFluidOutputs);
+        this.mufflerDustList = new ArrayList<>(recipeBuilder.getMuffererDustList());
         this.chancedOutputLogic = recipeBuilder.chancedOutputLogic;
         this.chancedFluidOutputLogic = recipeBuilder.chancedFluidOutputLogic;
         this.duration = recipeBuilder.duration;
@@ -482,6 +485,14 @@ public class RecipeBuilder<R extends RecipeBuilder<R>> {
         return (R) this;
     }
 
+    public R notConsumable(String oredict) {
+        return input(new GTRecipeOreInput(oredict).setNonConsumable());
+    }
+
+    public R notConsumable(String oredict, int count) {
+        return input(new GTRecipeOreInput(oredict, count).setNonConsumable());
+    }
+
     public R notConsumable(GTRecipeInput gtRecipeIngredient) {
         return input(gtRecipeIngredient.setNonConsumable());
     }
@@ -592,6 +603,35 @@ public class RecipeBuilder<R extends RecipeBuilder<R>> {
 
     public R clearOutputs() {
         this.outputs.clear();
+        return (R) this;
+    }
+    public R mufflerDust(Material material) {
+        return mufflerDust(OreDictUnifier.get(OrePrefix.dustTiny, material, 1));
+    }
+    public R mufflerDust(Material material, int count) {
+        return mufflerDust(OreDictUnifier.get(OrePrefix.dustTiny, material, count));
+    }
+    public R mufflerDust(OrePrefix orePrefix, Material material) {
+        return mufflerDust(OreDictUnifier.get(orePrefix, material, 1));
+    }
+
+    public R mufflerDust(OrePrefix orePrefix, Material material, int count) {
+        return mufflerDust(OreDictUnifier.get(orePrefix, material, count));
+    }
+
+    public R mufflerDust(ItemStack dustStack) {
+        if (dustStack != null && !dustStack.isEmpty()) {
+            this.mufflerDustList.add(dustStack);
+        }
+        return (R) this;
+    }
+    public R mufflerDust(ItemStack... outputs) {
+        return mufflerDust(Arrays.asList(outputs));
+    }
+    public R mufflerDust(Collection<ItemStack> outputs) {
+        outputs = new ArrayList<>(outputs);
+        outputs.removeIf(stack -> stack == null || stack.isEmpty());
+        this.mufflerDustList.addAll(outputs);
         return (R) this;
     }
 
@@ -995,11 +1035,6 @@ public class RecipeBuilder<R extends RecipeBuilder<R>> {
         return (R) this;
     }
 
-    public R isCTRecipe() {
-        this.isCTRecipe = true;
-        return (R) this;
-    }
-
     public R setRecipeMap(RecipeMap<R> recipeMap) {
         this.recipeMap = recipeMap;
         return (R) this;
@@ -1039,8 +1074,8 @@ public class RecipeBuilder<R extends RecipeBuilder<R>> {
         return ValidationResult.newResult(result, new Recipe(inputs, outputs,
                 new ChancedOutputList<>(this.chancedOutputLogic, chancedOutputs),
                 fluidInputs, fluidOutputs,
-                new ChancedOutputList<>(this.chancedFluidOutputLogic, chancedFluidOutputs),
-                duration, EUt, hidden, isCTRecipe, recipePropertyStorage, category));
+                new ChancedOutputList<>(this.chancedFluidOutputLogic, chancedFluidOutputs),mufflerDustList,
+                duration, EUt, hidden, recipePropertyStorage, category));
     }
 
     protected EnumValidationResult validate() {
@@ -1051,31 +1086,18 @@ public class RecipeBuilder<R extends RecipeBuilder<R>> {
         }
         if (EUt == 0) {
             GTLog.logger.error("EU/t cannot be equal to 0", new Throwable());
-            if (isCTRecipe) {
-                CraftTweakerAPI.logError("EU/t cannot be equal to 0", new Throwable());
-            }
             recipeStatus = EnumValidationResult.INVALID;
         }
         if (duration <= 0) {
             GTLog.logger.error("Duration cannot be less or equal to 0", new Throwable());
-            if (isCTRecipe) {
-                CraftTweakerAPI.logError("Duration cannot be less or equal to 0", new Throwable());
-            }
             recipeStatus = EnumValidationResult.INVALID;
         }
         if (recipeMap != null) { // recipeMap can be null in tests
             if (category == null) {
                 GTLog.logger.error("Recipes must have a category", new Throwable());
-                if (isCTRecipe) {
-                    CraftTweakerAPI.logError("Recipes must have a category", new Throwable());
-                }
                 recipeStatus = EnumValidationResult.INVALID;
             } else if (category.getRecipeMap() != this.recipeMap) {
                 GTLog.logger.error("Cannot apply Category with incompatible RecipeMap", new Throwable());
-                if (isCTRecipe) {
-                    CraftTweakerAPI.logError("Cannot apply Category with incompatible RecipeMap",
-                            new Throwable());
-                }
                 recipeStatus = EnumValidationResult.INVALID;
             }
         }
@@ -1215,6 +1237,10 @@ public class RecipeBuilder<R extends RecipeBuilder<R>> {
         return fluidOutputs;
     }
 
+    public List<ItemStack> getMuffererDustList() {
+        return mufflerDustList;
+    }
+
     public long getEUt() {
         return EUt;
     }
@@ -1258,6 +1284,7 @@ public class RecipeBuilder<R extends RecipeBuilder<R>> {
                 .append("chancedFluidOutputs", chancedFluidOutputs)
                 .append("fluidInputs", fluidInputs)
                 .append("fluidOutputs", fluidOutputs)
+                .append("mufflerDustList", mufflerDustList)
                 .append("duration", duration)
                 .append("EUt", EUt)
                 .append("hidden", hidden)

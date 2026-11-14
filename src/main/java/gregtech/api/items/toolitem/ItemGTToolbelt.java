@@ -3,6 +3,7 @@ package gregtech.api.items.toolitem;
 import gregtech.api.GregTechAPI;
 import gregtech.api.items.IDyeableItem;
 import gregtech.api.items.gui.ItemUIFactory;
+import gregtech.api.items.metaitem.stats.IMouseEventHandler;
 import gregtech.api.items.toolitem.behavior.IToolBehavior;
 import gregtech.api.metatileentity.MetaTileEntityHolder;
 import gregtech.api.mui.GTGuiTextures;
@@ -14,11 +15,9 @@ import gregtech.api.util.LocalizationUtils;
 import gregtech.api.util.TextFormattingUtil;
 import gregtech.client.utils.TooltipHelper;
 import gregtech.common.ConfigHolder;
-import gregtech.api.items.metaitem.stats.IMouseEventHandler;
 import gregtech.common.items.behaviors.spray.AbstractSprayBehavior;
 import gregtech.common.metatileentities.multi.multiblockpart.MetaTileEntityMaintenanceHatch;
 import gregtech.core.network.packets.PacketToolbeltSelectionChange;
-
 import gregtech.core.sound.GTSoundEvents;
 
 import net.minecraft.block.state.IBlockState;
@@ -37,6 +36,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemTool;
 import net.minecraft.item.crafting.Ingredient;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.EnumActionResult;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
@@ -60,10 +60,11 @@ import net.minecraftforge.oredict.OreIngredient;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.factory.HandGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.SyncHandlers;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.layout.Grid;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.cleanroommc.modularui.widgets.slot.SlotGroup;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multimap;
@@ -82,7 +83,7 @@ import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 import static gregtech.api.items.toolitem.ToolHelper.MATERIAL_KEY;
-import net.minecraft.network.PacketBuffer;
+
 public class ItemGTToolbelt extends ItemGTTool implements IDyeableItem, IMouseEventHandler {
 
     private static final ThreadLocal<Integer> lastSlot = ThreadLocal.withInitial(() -> -999);
@@ -115,12 +116,12 @@ public class ItemGTToolbelt extends ItemGTTool implements IDyeableItem, IMouseEv
     }
 
     @Override
-    public ModularPanel buildUI(HandGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(HandGuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
         final var usedStack = guiData.getUsedItemStack();
         final var handler = getHandler(usedStack);
         final var selected = handler.getSelectedStack();
         if (!selected.isEmpty() && selected.getItem() instanceof ItemUIFactory factory) {
-            return factory.buildUI(guiData, guiSyncManager);
+            return factory.buildUI(guiData, guiSyncManager, settings);
         }
 
         int heightBonus = (handler.getSlots() / 9) * 18;
@@ -143,7 +144,7 @@ public class ItemGTToolbelt extends ItemGTTool implements IDyeableItem, IMouseEv
                         .top(7 + 12)
                         .coverChildren()
                         .mapTo(group.getRowSize(), slots, (index, value) -> value
-                                .slot(SyncHandlers.itemSlot(handler, index)
+                                .slot(new ModularSlot(handler, index)
                                         .slotGroup(group)
                                         .changeListener(
                                                 (newItem, onlyAmountChanged, client, init) -> handler
@@ -503,32 +504,22 @@ public class ItemGTToolbelt extends ItemGTTool implements IDyeableItem, IMouseEv
                                                     @NotNull BlockPos pos, @NotNull EnumFacing side, float hitX,
                                                     float hitY, float hitZ, @NotNull EnumHand hand) {
         EnumActionResult result = IDyeableItem.super.onItemUseFirst(player, world, pos, side, hitX, hitY, hitZ, hand);
-        if (result == EnumActionResult.PASS) {
-            ItemStack stack = player.getHeldItem(hand);
-            ToolStackHandler handler = getHandler(stack);
-            if (handler.getSelectedStack().isEmpty() &&
-                    world.getTileEntity(pos) instanceof MetaTileEntityHolder holder &&
-                    holder.getMetaTileEntity() instanceof MetaTileEntityMaintenanceHatch maintenance) {
-                maintenance.fixMaintenanceProblemsWithToolbelt(player, this, stack);
-                return EnumActionResult.SUCCESS;
-            }
-            return super.onItemUseFirst(player, world, pos, side, hitX, hitY, hitZ, hand);
-        } else return result;
-    }
+        if (result != EnumActionResult.PASS) return result;
 
-    @Override
-    public @NotNull EnumActionResult onItemUse(@NotNull EntityPlayer player, @NotNull World world,
-                                               @NotNull BlockPos pos, @NotNull EnumHand hand,
-                                               @NotNull EnumFacing facing, float hitX, float hitY, float hitZ) {
-        ToolStackHandler handler = getHandler(player.getHeldItem(hand));
-        ItemStack selected = handler.getSelectedStack();
-        if (!selected.isEmpty()) {
-            EnumActionResult result = AbstractSprayBehavior.handleExternalSpray(player, world, pos, facing, selected);
-            if (result != EnumActionResult.PASS) {
-                return result;
-            }
+        ItemStack thisToolBelt = player.getHeldItem(hand);
+        ToolStackHandler handler = getHandler(thisToolBelt);
+        ItemStack selectedToolBeltStack = handler.getSelectedStack();
+        if (selectedToolBeltStack.isEmpty() && world.getTileEntity(pos) instanceof MetaTileEntityHolder holder &&
+                holder.getMetaTileEntity() instanceof MetaTileEntityMaintenanceHatch maintenance) {
+            java.util.List<ItemStack> stacks = new java.util.ArrayList<>();
+            stacks.add(thisToolBelt);
+            maintenance.fixMaintenanceProblemsWithTools(player, stacks);
+            return EnumActionResult.SUCCESS;
+        } else if (AbstractSprayBehavior.isSprayCan(selectedToolBeltStack)) {
+            return AbstractSprayBehavior.handleExternalSpray(player, world, pos, side, selectedToolBeltStack);
         }
-        return super.onItemUse(player, world, pos, hand, facing, hitX, hitY, hitZ);
+
+        return super.onItemUseFirst(player, world, pos, side, hitX, hitY, hitZ, hand);
     }
 
     @Override
@@ -640,7 +631,7 @@ public class ItemGTToolbelt extends ItemGTTool implements IDyeableItem, IMouseEv
 
     protected static final ToolStackHandler FALLBACK = new ToolStackHandler(0);
 
-    protected static class ToolStackHandler extends ItemStackHandler {
+    public static class ToolStackHandler extends ItemStackHandler {
 
         private static final Set<String> EMPTY = ImmutableSet.of();
 

@@ -4,7 +4,6 @@ import gregtech.api.GregTechAPI;
 import gregtech.api.block.machines.BlockMachine;
 import gregtech.api.capability.GregtechDataCodes;
 import gregtech.api.cover.Cover;
-import gregtech.api.cover.IAECover;
 import gregtech.api.gui.IUIHolder;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.metatileentity.registry.MTERegistry;
@@ -18,6 +17,7 @@ import gregtech.core.network.packets.PacketRecoverMTE;
 
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.EnumFacing;
@@ -33,21 +33,12 @@ import net.minecraft.util.text.TextComponentTranslation;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.IWorldNameable;
 import net.minecraft.world.World;
+import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.util.Constants.NBT;
-import net.minecraftforge.fml.common.Optional.Interface;
-import net.minecraftforge.fml.common.Optional.InterfaceList;
-import net.minecraftforge.fml.common.Optional.Method;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
-import appeng.api.networking.IGridNode;
-import appeng.api.networking.security.IActionHost;
-import appeng.api.util.AECableType;
-import appeng.api.util.AEPartLocation;
-import appeng.api.util.DimensionalCoord;
-import appeng.me.helpers.AENetworkProxy;
-import appeng.me.helpers.IGridProxyable;
 import com.google.common.base.Preconditions;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -57,16 +48,8 @@ import java.util.ArrayList;
 
 import static gregtech.api.capability.GregtechDataCodes.INITIALIZE_MTE;
 
-@InterfaceList(value = {
-        @Interface(iface = "appeng.api.networking.security.IActionHost",
-                   modid = Mods.Names.APPLIED_ENERGISTICS2,
-                   striprefs = true),
-        @Interface(iface = "appeng.me.helpers.IGridProxyable",
-                   modid = Mods.Names.APPLIED_ENERGISTICS2,
-                   striprefs = true) })
 public class MetaTileEntityHolder extends TickableTileEntityBase implements IGregTechTileEntity, IUIHolder,
-                                                                            IWorldNameable, IActionHost,
-                                                                            IGridProxyable {
+                                                                            IWorldNameable {
 
     public static final int TRACKED_TICKS = 20;
     protected static final DecimalFormat tricorderFormat = new DecimalFormat("#.#########");
@@ -79,6 +62,10 @@ public class MetaTileEntityHolder extends TickableTileEntityBase implements IGre
     private int timeStatisticsIndex = 0;
     private int lagWarningCount = 0;
 
+    // --- Windowed lag broadcast state ---
+    private long windowStartTick = -1;
+    private int windowLagCount = 0;
+
     public MetaTileEntity getMetaTileEntity() {
         return metaTileEntity;
     }
@@ -90,11 +77,16 @@ public class MetaTileEntityHolder extends TickableTileEntityBase implements IGre
      */
     @Override
     public MetaTileEntity setMetaTileEntity(@NotNull MetaTileEntity sampleMetaTileEntity,
-                                            @Nullable NBTTagCompound tagCompound) {
+                                            @Nullable NBTTagCompound tagCompound,
+                                            @Nullable NBTTagCompound itemStackData) {
         Preconditions.checkNotNull(sampleMetaTileEntity, "metaTileEntity");
         setRawMetaTileEntity(sampleMetaTileEntity.createMetaTileEntity(this));
         if (tagCompound != null && !tagCompound.isEmpty())
             getMetaTileEntity().readFromNBT(tagCompound);
+        // Apply ItemStack data (e.g. variant ordinal) before sending initial sync,
+        // so the client receives the correct variant in the first packet.
+        if (itemStackData != null && !itemStackData.isEmpty())
+            getMetaTileEntity().initFromItemStackData(itemStackData);
         if (hasWorld() && !getWorld().isRemote) {
             updateBlockOpacity();
             writeCustomData(INITIALIZE_MTE, buffer -> {
@@ -143,14 +135,11 @@ public class MetaTileEntityHolder extends TickableTileEntityBase implements IGre
                 setRawMetaTileEntity(sampleMetaTileEntity.createMetaTileEntity(this));
                 /*
                  * Note: NBTs need to be read before onAttached is run, since NBTs may contain important information
-                 * about the composition of the BlockPattern that onAttached may generate.
+                 * about the structure definition that onAttached may generate.
                  */
                 this.metaTileEntity.readFromNBT(metaTileEntityData);
             } else {
                 GTLog.logger.error("Failed to load MetaTileEntity with invalid ID {}", metaTileEntityIdRaw);
-            }
-            if (Mods.AppliedEnergistics2.isModLoaded()) {
-                readFromNBT_AENetwork(compound);
             }
         }
     }
@@ -165,9 +154,6 @@ public class MetaTileEntityHolder extends TickableTileEntityBase implements IGre
             NBTTagCompound metaTileEntityData = new NBTTagCompound();
             metaTileEntity.writeToNBT(metaTileEntityData);
             compound.setTag("MetaTileEntity", metaTileEntityData);
-            if (Mods.AppliedEnergistics2.isModLoaded()) {
-                writeToNBT_AENetwork(compound);
-            }
         }
         return compound;
     }
@@ -178,9 +164,6 @@ public class MetaTileEntityHolder extends TickableTileEntityBase implements IGre
             metaTileEntity.invalidate();
         }
         super.invalidate();
-        if (Mods.AppliedEnergistics2.isModLoaded()) {
-            invalidateAE();
-        }
     }
 
     @Override
@@ -221,10 +204,15 @@ public class MetaTileEntityHolder extends TickableTileEntityBase implements IGre
                 timeStatistics[timeStatisticsIndex] = (int) tickTime;
                 timeStatisticsIndex = (timeStatisticsIndex + 1) % timeStatistics.length;
             }
-            if (tickTime > 100_000_000L && getMetaTileEntity().doTickProfileMessage() && lagWarningCount++ < 10)
-                GTLog.logger.warn("WARNING: Possible Lag Source at [" + getPos().getX() + ", " + getPos().getY() +
-                        ", " + getPos().getZ() + "] in Dimension " + world.provider.getDimension() + " with " +
-                        tickTime + "ns caused by an instance of " + getMetaTileEntity().getClass());
+            if (tickTime > 100_000_000L && getMetaTileEntity().doTickProfileMessage()) {
+                if (lagWarningCount++ < 10) {
+                    GTLog.logger.warn("WARNING: Possible Lag Source at [" + getPos().getX() + ", " + getPos().getY() +
+                            ", " + getPos().getZ() + "] in Dimension " + world.provider.getDimension() + " with " +
+                            tickTime + "ns caused by an instance of " + getMetaTileEntity().getClass());
+                }
+                // Windowed lag broadcast to all online players
+                handleLagBroadcast(tickTime);
+            }
         }
 
         // increment only after current tick, so meta tile entities will get first tick as timer == 0
@@ -301,6 +289,59 @@ public class MetaTileEntityHolder extends TickableTileEntityBase implements IGre
             return new double[] { averageTickTime, worstTickTime };
         }
         return null;
+    }
+
+    /**
+     * Handles the windowed lag broadcast logic.
+     * Accumulates lag events within a configurable time window, and when the threshold
+     * is reached, broadcasts a warning to all online players and resets the window.
+     *
+     * @param tickTimeNs the tick time in nanoseconds that triggered this call
+     */
+    private void handleLagBroadcast(long tickTimeNs) {
+        if (!ConfigHolder.misc.lagBroadcastEnabled) return;
+
+        long currentWorldTick = world.getTotalWorldTime();
+        int windowSize = ConfigHolder.misc.lagBroadcastWindowTicks;
+        int threshold = ConfigHolder.misc.lagBroadcastThreshold;
+
+        // Reset window if expired
+        if (windowStartTick < 0 || (currentWorldTick - windowStartTick) > windowSize) {
+            windowStartTick = currentWorldTick;
+            windowLagCount = 0;
+        }
+
+        windowLagCount++;
+
+        if (windowLagCount >= threshold) {
+            // Broadcast to all online players
+            ITextComponent message = new TextComponentTranslation(
+                    "gregtech.machine.lag_broadcast",
+                    new TextComponentString(String.valueOf(getPos().getX()))
+                            .setStyle(new Style().setColor(TextFormatting.YELLOW)),
+                    new TextComponentString(String.valueOf(getPos().getY()))
+                            .setStyle(new Style().setColor(TextFormatting.YELLOW)),
+                    new TextComponentString(String.valueOf(getPos().getZ()))
+                            .setStyle(new Style().setColor(TextFormatting.YELLOW)),
+                    new TextComponentString(String.valueOf(world.provider.getDimension()))
+                            .setStyle(new Style().setColor(TextFormatting.AQUA)),
+                    new TextComponentString(getMetaTileEntity().getClass().getSimpleName())
+                            .setStyle(new Style().setColor(TextFormatting.RED)),
+                    new TextComponentString(String.valueOf(windowLagCount))
+                            .setStyle(new Style().setColor(TextFormatting.RED)),
+                    new TextComponentString(String.format("%.0f", windowSize / 20.0))
+                            .setStyle(new Style().setColor(TextFormatting.GOLD)));
+
+            if (world instanceof WorldServer worldServer) {
+                for (EntityPlayerMP player : worldServer.getMinecraftServer().getPlayerList().getPlayers()) {
+                    player.sendMessage(message);
+                }
+            }
+
+            // Reset window after broadcast
+            windowStartTick = currentWorldTick;
+            windowLagCount = 0;
+        }
     }
 
     @Override
@@ -388,9 +429,6 @@ public class MetaTileEntityHolder extends TickableTileEntityBase implements IGre
         super.onChunkUnload();
         if (metaTileEntity != null) {
             metaTileEntity.onUnload();
-        }
-        if (Mods.AppliedEnergistics2.isModLoaded()) {
-            onChunkUnloadAE();
         }
     }
 
@@ -517,106 +555,4 @@ public class MetaTileEntityHolder extends TickableTileEntityBase implements IGre
                         new TextComponentString(this.getName());
     }
 
-    @Nullable
-    @Override
-    @Method(modid = Mods.Names.APPLIED_ENERGISTICS2)
-    public IGridNode getGridNode(@NotNull AEPartLocation part) {
-        MetaTileEntity te = this.getMetaTileEntity();
-        if (te != null) {
-            Cover cover = te.getCoverAtSide(part.getFacing());
-            if (cover != null) {
-                if (cover instanceof IAECover aeCover && aeCover.getGridNode(part) != null) {
-                    return aeCover.getGridNode(part);
-                }
-            }
-        }
-
-        // Forbid it connects the faces it shouldn't connect.
-        if (this.getCableConnectionType(part) == AECableType.NONE) {
-            return null;
-        }
-        AENetworkProxy proxy = getProxy();
-        return proxy == null ? null : proxy.getNode();
-    }
-
-    @NotNull
-    @Override
-    @Method(modid = Mods.Names.APPLIED_ENERGISTICS2)
-    public AECableType getCableConnectionType(@NotNull AEPartLocation part) {
-        MetaTileEntity te = this.getMetaTileEntity();
-        if (te != null) {
-            Cover cover = te.getCoverAtSide(part.getFacing());
-            if (cover != null) {
-                if (cover instanceof IAECover aeCover && aeCover.getCableConnectionType(part) != AECableType.NONE) {
-                    return aeCover.getCableConnectionType(part);
-                }
-            }
-        }
-
-        return metaTileEntity == null ? AECableType.NONE : metaTileEntity.getCableConnectionType(part);
-    }
-
-    @Override
-    @Method(modid = Mods.Names.APPLIED_ENERGISTICS2)
-    public void securityBreak() {}
-
-    @NotNull
-    @Override
-    @Method(modid = Mods.Names.APPLIED_ENERGISTICS2)
-    public IGridNode getActionableNode() {
-        AENetworkProxy proxy = getProxy();
-        return proxy == null ? null : proxy.getNode();
-    }
-
-    @Override
-    @Method(modid = Mods.Names.APPLIED_ENERGISTICS2)
-    public AENetworkProxy getProxy() {
-        return metaTileEntity == null ? null : metaTileEntity.getProxy();
-    }
-
-    @Override
-    @Method(modid = Mods.Names.APPLIED_ENERGISTICS2)
-    public DimensionalCoord getLocation() {
-        return new DimensionalCoord(this);
-    }
-
-    @Override
-    @Method(modid = Mods.Names.APPLIED_ENERGISTICS2)
-    public void gridChanged() {
-        if (metaTileEntity != null) {
-            metaTileEntity.gridChanged();
-        }
-    }
-
-    @Method(modid = Mods.Names.APPLIED_ENERGISTICS2)
-    public void readFromNBT_AENetwork(NBTTagCompound data) {
-        AENetworkProxy proxy = getProxy();
-        if (proxy != null) {
-            proxy.readFromNBT(data);
-        }
-    }
-
-    @Method(modid = Mods.Names.APPLIED_ENERGISTICS2)
-    public void writeToNBT_AENetwork(NBTTagCompound data) {
-        AENetworkProxy proxy = getProxy();
-        if (proxy != null) {
-            proxy.writeToNBT(data);
-        }
-    }
-
-    @Method(modid = Mods.Names.APPLIED_ENERGISTICS2)
-    void onChunkUnloadAE() {
-        AENetworkProxy proxy = getProxy();
-        if (proxy != null) {
-            proxy.onChunkUnload();
-        }
-    }
-
-    @Method(modid = Mods.Names.APPLIED_ENERGISTICS2)
-    void invalidateAE() {
-        AENetworkProxy proxy = getProxy();
-        if (proxy != null) {
-            proxy.invalidate();
-        }
-    }
 }

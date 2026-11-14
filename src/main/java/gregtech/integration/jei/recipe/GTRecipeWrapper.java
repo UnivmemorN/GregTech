@@ -1,6 +1,7 @@
 package gregtech.integration.jei.recipe;
 
 import gregtech.api.GTValues;
+import gregtech.api.GregTechAPI;
 import gregtech.api.gui.GuiTextures;
 import gregtech.api.gui.widgets.TankWidget;
 import gregtech.api.items.metaitem.MetaItem;
@@ -29,11 +30,13 @@ import gregtech.client.utils.TooltipHelper;
 import gregtech.integration.RecipeCompatUtil;
 import gregtech.integration.jei.utils.AdvancedRecipeWrapper;
 import gregtech.integration.jei.utils.JeiButton;
+import gregtech.integration.jei.utils.JeiInteractableText;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.text.TextComponentString;
+import net.minecraft.util.text.TextFormatting;
 import net.minecraftforge.fluids.FluidStack;
 
 import mezz.jei.api.ingredients.IIngredients;
@@ -42,6 +45,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -54,9 +58,12 @@ public class GTRecipeWrapper extends AdvancedRecipeWrapper {
 
     private final RecipeMap<?> recipeMap;
     private final Recipe recipe;
-
     private final List<GTRecipeInput> sortedInputs;
     private final List<GTRecipeInput> sortedFluidInputs;
+
+    private static int ocScrollOffset = 0;
+    private int infoAreaY = 0;
+    private int infoAreaHeight = 0;
 
     public GTRecipeWrapper(RecipeMap<?> recipeMap, Recipe recipe) {
         this.recipeMap = recipeMap;
@@ -66,6 +73,8 @@ public class GTRecipeWrapper extends AdvancedRecipeWrapper {
         this.sortedInputs.sort(GTRecipeInput.RECIPE_INPUT_COMPARATOR);
         this.sortedFluidInputs = new ArrayList<>(recipe.getFluidInputs());
         this.sortedFluidInputs.sort(GTRecipeInput.RECIPE_INPUT_COMPARATOR);
+
+        initExtras();
     }
 
     public Recipe getRecipe() {
@@ -76,13 +85,11 @@ public class GTRecipeWrapper extends AdvancedRecipeWrapper {
     public void getIngredients(@NotNull IIngredients ingredients) {
         // Inputs
         if (!sortedInputs.isEmpty()) {
-            List<List<ItemStack>> list = new ArrayList<>();
+            List<List<ItemStack>> list = new ArrayList<>(sortedInputs.size());
             for (GTRecipeInput input : sortedInputs) {
-                List<ItemStack> stacks = new ArrayList<>();
-                for (ItemStack stack : input.getInputStacks()) {
-                    stacks.add(stack.copy());
-                }
-                list.add(stacks);
+                // Recipe inputs are immutable after registration. Copying them here makes HEI retain a
+                // distinct, deep-NBT ItemStack in its hash cache for every recipe occurrence.
+                list.add(Arrays.asList(input.getInputStacks()));
             }
             ingredients.setInputLists(VanillaTypes.ITEM, list);
         }
@@ -98,9 +105,7 @@ public class GTRecipeWrapper extends AdvancedRecipeWrapper {
 
         // Outputs
         if (!recipe.getOutputs().isEmpty() || !recipe.getChancedOutputs().getChancedEntries().isEmpty()) {
-            List<ItemStack> recipeOutputs = recipe.getOutputs()
-                    .stream().map(ItemStack::copy)
-                    .collect(Collectors.toList());
+            List<ItemStack> recipeOutputs = new ArrayList<>(recipe.getOutputs());
 
             List<ItemStack> scannerPossibilities = null;
             if (this.recipeMap instanceof IScannerRecipeMap) {
@@ -159,6 +164,10 @@ public class GTRecipeWrapper extends AdvancedRecipeWrapper {
 
             ingredients.setOutputs(VanillaTypes.FLUID, recipeOutputs);
         }
+
+        for (var entry : recipe.propertyStorage().entrySet()) {
+            entry.getKey().addRecipeIngredients(ingredients, entry.getValue());
+        }
     }
 
     public void addItemTooltip(int slotIndex, boolean input, Object ingredient, List<String> tooltip) {
@@ -202,7 +211,7 @@ public class GTRecipeWrapper extends AdvancedRecipeWrapper {
     public void addIngredientTooltips(@NotNull Collection<String> tooltip, boolean notConsumed, boolean input,
                                       @Nullable Object ingredient, @Nullable Object ingredient2) {
         if (ingredient2 instanceof ChancedOutputLogic logic) {
-            if (ingredient instanceof BoostableChanceEntry<?>entry) {
+            if (ingredient instanceof BoostableChanceEntry<?> entry) {
                 double chance = entry.getChance() / 100.0;
                 double boost = entry.getChanceBoost() / 100.0;
                 if (logic != ChancedOutputLogic.NONE && logic != ChancedOutputLogic.OR) {
@@ -211,6 +220,19 @@ public class GTRecipeWrapper extends AdvancedRecipeWrapper {
                 } else {
                     tooltip.add(TooltipHelper.BLINKING_CYAN + I18n.format("gregtech.recipe.chance",
                             chance, boost));
+                }
+
+                // Add the total chance to the tooltip
+                if (recipeMap.jeiOverclockButtonEnabled()) {
+                    if (jeiTexts.isEmpty()) initJeiTexts();
+                    int tier = jeiTexts.get(0).getState();
+                    int recipeTier = Math.max(GTValues.LV, GTUtility.getTierByVoltage(recipe.getEUt()));
+                    int tierDifference = tier - recipeTier;
+
+                    // The total chance may or may not max out at 100%.
+                    // TODO possibly change in the future.
+                    double totalChance = Math.min(chance + boost * tierDifference, 100);
+                    tooltip.add(I18n.format("gregtech.recipe.chance_total", GTValues.VOCNF[tier], totalChance));
                 }
             }
         } else if (notConsumed) {
@@ -222,7 +244,7 @@ public class GTRecipeWrapper extends AdvancedRecipeWrapper {
             // check for "normal" data items
             if (stack.getItem() instanceof IDataItem) return;
             // check for metaitem data items
-            if (stack.getItem() instanceof MetaItem<?>metaItem) {
+            if (stack.getItem() instanceof MetaItem<?> metaItem) {
                 for (IItemBehaviour behaviour : metaItem.getBehaviours(stack)) {
                     if (behaviour instanceof IDataItem) {
                         return;
@@ -243,44 +265,84 @@ public class GTRecipeWrapper extends AdvancedRecipeWrapper {
         var properties = storage.values();
         boolean drawTotalEU = properties.isEmpty() || properties.stream().noneMatch(RecipeProperty::hideTotalEU);
         boolean drawEUt = properties.isEmpty() || properties.stream().noneMatch(RecipeProperty::hideEUt);
+        boolean drawCalorific = recipeMap.isGenerator();
         boolean drawDuration = properties.isEmpty() || properties.stream().noneMatch(RecipeProperty::hideDuration);
+        boolean drawMufflerDust = recipe.isHasSpecialMufflerDust();
 
         int defaultLines = 0;
         if (drawTotalEU) defaultLines++;
-        if (drawEUt) defaultLines++;
+        if (drawEUt) {
+            defaultLines++;
+            if (drawCalorific)
+                defaultLines++;
+        }
         if (drawDuration) defaultLines++;
+        if (drawMufflerDust) defaultLines++;
 
         int unhiddenCount = (int) storage.entrySet().stream()
                 .filter((property) -> !property.getKey().isHidden())
                 .count();
         int yPosition = recipeHeight - ((unhiddenCount + defaultLines) * 10 - 3);
+        infoAreaY = yPosition;
 
+        // [EUt, duration, color]
+        long[] overclockResult = calculateJeiOverclock();
+
+        long totalEU = 0;
         // Default entries
         if (drawTotalEU) {
-            long eu = recipe.getEUt() * recipe.getDuration();
             // sadly we still need a custom override here, since computation uses duration and EU/t very differently
-            if (storage.contains(TotalComputationProperty.getInstance()) &&
-                    storage.contains(ComputationProperty.getInstance())) {
-                int minimumCWUt = storage.get(ComputationProperty.getInstance(), 1);
+            if (recipe.hasProperty(TotalComputationProperty.getInstance()) &&
+                    recipe.hasProperty(ComputationProperty.getInstance())) {
+                long eu = Math.abs(recipe.getEUt()) * recipe.getDuration();
+                int minimumCWUt = recipe.getProperty(ComputationProperty.getInstance(), 1);
                 minecraft.fontRenderer.drawString(I18n.format("gregtech.recipe.max_eu", eu / minimumCWUt), 0, yPosition,
                         0x111111);
+                yPosition += LINE_HEIGHT;
             } else {
-                minecraft.fontRenderer.drawString(I18n.format("gregtech.recipe.total", eu), 0, yPosition, 0x111111);
+                totalEU = overclockResult[0] * overclockResult[1];
+                minecraft.fontRenderer.drawString(
+                        I18n.format("gregtech.recipe.total", totalEU), 0, yPosition,
+                        (int) overclockResult[2]);
+                yPosition += LINE_HEIGHT;
             }
         }
         if (drawEUt) {
+            // scuffed way of dealing with 2 eu/t recipes, just recomputing instead of checking if eu/t <= 2
             minecraft.fontRenderer.drawString(
-                    I18n.format(
-                            recipeMap.getRecipeMapUI().isGenerator() ? "gregtech.recipe.eu_inverted" :
-                                    "gregtech.recipe.eu",
-                            recipe.getEUt(), GTValues.VN[GTUtility.getTierByVoltage(recipe.getEUt())]),
-                    0, yPosition += LINE_HEIGHT, 0x111111);
+                    I18n.format(recipeMap.isGenerator() ? "gregtech.recipe.eu_inverted" : "gregtech.recipe.eu",
+                            overclockResult[0],
+                            GTValues.VOCNF[GTUtility.getOCTierByVoltage(overclockResult[0])]),
+                    0, yPosition, (int) overclockResult[2]);
+            yPosition += LINE_HEIGHT;
+
+            if (drawCalorific) {
+                if (totalEU == 0) {
+                    totalEU = overclockResult[0] * overclockResult[1];
+                }
+                //计算燃料数量
+                double value = (double) totalEU / getAmount();  // 确保浮点除法
+                String formattedValue = String.format("%.2f", value);
+                minecraft.fontRenderer.drawString(
+                        I18n.format("gregtech.recipe.eu_calorific", formattedValue),
+                        0, yPosition, (int) overclockResult[2]
+                );
+                yPosition += LINE_HEIGHT;
+            }
         }
         if (drawDuration) {
             minecraft.fontRenderer.drawString(
                     I18n.format("gregtech.recipe.duration",
-                            TextFormattingUtil.formatNumbers(recipe.getDuration() / 20.0)),
-                    0, yPosition += LINE_HEIGHT, 0x111111);
+                            TextFormattingUtil.formatNumbers(overclockResult[1] / 20D)),
+                    0, yPosition, (int) overclockResult[2]);
+            yPosition += LINE_HEIGHT;
+        }
+        if (drawMufflerDust) {
+            minecraft.fontRenderer.drawString(
+                    I18n.format("gregtech.recipe.muffler_dust"
+                            , recipe.getMufflerDustName()), 0,
+                    yPosition, 0x111111);
+            yPosition += LINE_HEIGHT;
         }
 
         // Property custom entries
@@ -288,16 +350,39 @@ public class GTRecipeWrapper extends AdvancedRecipeWrapper {
             if (!propertyEntry.getKey().isHidden()) {
                 RecipeProperty<?> property = propertyEntry.getKey();
                 var value = propertyEntry.getValue();
-                property.drawInfo(minecraft, 0, yPosition += property.getInfoHeight(value), 0x111111, value, mouseX,
+                property.drawInfo(minecraft, 0, yPosition, 0x111111, value, mouseX,
                         mouseY);
+                yPosition += property.getInfoHeight(value);
             }
         }
+
+        infoAreaHeight = (yPosition + LINE_HEIGHT) - infoAreaY;
+    }
+
+    private double getAmount() {
+        if (recipe.getInputs() != null && !recipe.getInputs().isEmpty()) {
+            return recipe.getInputs().stream()
+                    .mapToDouble(GTRecipeInput::getAmount)
+                    .average()
+                    .orElse(1);
+        } else if (recipe.getFluidInputs() != null && !recipe.getFluidInputs().isEmpty()) {
+            return recipe.getFluidInputs().stream()
+                    .mapToDouble(GTRecipeInput::getAmount)
+                    .average()
+                    .orElse(1);
+        }
+        return 1;
     }
 
     @NotNull
     @Override
     public List<String> getTooltipStrings(int mouseX, int mouseY) {
         List<String> tooltips = new ArrayList<>();
+
+        if (recipeMap.jeiOverclockButtonEnabled() && mouseX >= 0 && mouseX <= 100  && mouseY >= infoAreaY && mouseY <= infoAreaY + infoAreaHeight) {
+            buildOverclockTooltip(tooltips);
+        }
+
         for (var entry : recipe.propertyStorage().entrySet()) {
             if (!entry.getKey().isHidden()) {
                 RecipeProperty<?> property = entry.getKey();
@@ -308,6 +393,67 @@ public class GTRecipeWrapper extends AdvancedRecipeWrapper {
         return tooltips;
     }
 
+    private void buildOverclockTooltip(@NotNull List<String> tooltips) {
+        long recipeEUt = recipe.getEUt();
+        int recipeDuration = recipe.getDuration();
+        int recipeTier = GTUtility.getTierByVoltage(recipeEUt);
+
+        if (recipeTier >= GTValues.V.length - 1) return;
+
+        java.util.List<long[]> ocTiers = new java.util.ArrayList<>();
+
+        for (int tier = Math.max(0, recipeTier - 1); tier <= recipeTier; tier++) {
+            long newEUt = recipeEUt * (long) Math.pow(0.25, recipeTier - tier);
+            int newDuration = (int) (recipeDuration * Math.pow(2.0, recipeTier - tier));
+            if (newEUt >= GTValues.V[tier] && newDuration >= 1) {
+                ocTiers.add(new long[] { tier, newEUt, newDuration });
+            }
+        }
+
+        ocTiers.add(new long[] { recipeTier, recipeEUt, recipeDuration });
+        long eut = recipeEUt;
+        int duration = recipeDuration;
+        for (int tier = recipeTier + 1; tier < GTValues.V.length; tier++) {
+            long newEUt = eut * 4;
+            int newDuration = duration / 2;
+            if (newEUt > GTValues.V[tier] || newDuration < 1) break;
+            eut = newEUt;
+            duration = newDuration;
+            ocTiers.add(new long[] { tier, eut, duration });
+        }
+
+        if (ocTiers.size() <= 1) return;
+
+        int maxVisible = Math.min(6, ocTiers.size());
+        int scrollOffset = ocScrollOffset % ocTiers.size();
+        if (scrollOffset < 0) scrollOffset += ocTiers.size();
+
+        tooltips.add(TextFormatting.GOLD + I18n.format("gregtech.jei.overclock.title") +
+                TextFormatting.DARK_GRAY + " [Ctrl+Scroll]");
+
+        for (int i = 0; i < maxVisible; i++) {
+            int idx = (scrollOffset + i) % ocTiers.size();
+            long[] data = ocTiers.get(idx);
+            int tier = (int) data[0];
+            long tierEUt = data[1];
+            long tierDur = data[2];
+            String marker = idx == 0 ? TextFormatting.WHITE + "\u25B6 " : TextFormatting.GRAY + "  ";
+            tooltips.add(marker + GTValues.VNF[tier] +
+                    TextFormatting.DARK_GRAY + " | " + TextFormatting.WHITE +
+                    TextFormattingUtil.formatNumbers(tierEUt) + TextFormatting.GRAY + " EU/t " +
+                    TextFormatting.WHITE + TextFormattingUtil.formatNumbers(tierDur / 20.0) +
+                    TextFormatting.GRAY + "s");
+        }
+
+        if (ocTiers.size() > maxVisible) {
+            tooltips.add(TextFormatting.DARK_GRAY + "  +" + (ocTiers.size() - maxVisible) + " more");
+        }
+    }
+
+    public static void handleOCScroll(int delta) {
+        ocScrollOffset += (delta > 0) ? -1 : 1;
+    }
+
     @Override
     public void initExtras() {
         // do not add the info or X button if no tweaker mod is present
@@ -315,10 +461,8 @@ public class GTRecipeWrapper extends AdvancedRecipeWrapper {
 
         BooleanSupplier creativePlayerPredicate = () -> Minecraft.getMinecraft().player != null &&
                 Minecraft.getMinecraft().player.isCreative();
-        BooleanSupplier creativeTweaker = () -> creativePlayerPredicate.getAsBoolean() &&
-                (recipe.getIsCTRecipe() || recipe.isGroovyRecipe());
-        BooleanSupplier creativeDefault = () -> creativePlayerPredicate.getAsBoolean() && !recipe.getIsCTRecipe() &&
-                !recipe.isGroovyRecipe();
+        BooleanSupplier creativeTweaker = () -> creativePlayerPredicate.getAsBoolean() && recipe.isGroovyRecipe();
+        BooleanSupplier creativeDefault = () -> creativePlayerPredicate.getAsBoolean() && !recipe.isGroovyRecipe();
 
         // X Button
         buttons.add(new JeiButton(166, 2, 10, 10)
@@ -348,6 +492,68 @@ public class GTRecipeWrapper extends AdvancedRecipeWrapper {
                         LocalizationUtils.format("gregtech.jei.ct_recipe.tooltip")))
                 .setClickAction((mc, x, y, button) -> false)
                 .setActiveSupplier(creativeTweaker));
+
+        initJeiTexts();
+    }
+
+    public void initJeiTexts() {
+        if (recipeMap != null && recipeMap.jeiOverclockButtonEnabled()) {
+            int recipeTier = Math.max(GTValues.LV, GTUtility.getTierByVoltage(recipe.getEUt()));
+            // just here because if highTier is disabled, if a recipe is (incorrectly) registering
+            // UIV+ recipes, this allows it to go up to the recipe tier for that recipe only
+            int maxTier = Math.max(recipeTier, GregTechAPI.isHighTier() ? GTValues.UIV : GTValues.MAX_TRUE);
+            int minTier = Math.max(GTValues.LV, GTUtility.getTierByVoltage(recipe.getEUt()));
+            // scuffed positioning because we can't have good ui(until mui soontm)
+            jeiTexts.add(
+                    new JeiInteractableText(0, 90 - LINE_HEIGHT, GTValues.VOCNF[recipeTier], 0x111111, recipeTier, true)
+                            .setTooltipBuilder((state, tooltip) -> {
+                                tooltip.add(I18n.format("gregtech.jei.overclock_button", GTValues.VOCNF[state]));
+                                tooltip.add(TooltipHelper.BLINKING_CYAN + I18n.format("gregtech.jei.overclock_warn"));
+                            })
+                            .setClickAction((minecraft, text, mouseX, mouseY, mouseButton) -> {
+                                int state = text.getState();
+                                if (mouseButton == 0) {
+                                    // increment tier if left click
+                                    if (++state > maxTier) state = minTier;
+                                } else if (mouseButton == 1) {
+                                    // decrement tier if right click
+                                    if (--state < minTier) state = maxTier;
+                                } else if (mouseButton == 2) {
+                                    // reset tier if middle click
+                                    state = minTier;
+                                } else return false;
+                                text.setCurrentText(GTValues.VOCNF[state]);
+                                text.setState(state);
+                                return true;
+                            }));
+        }
+    }
+
+    public long[] calculateJeiOverclock() {
+        // simple case
+        if (!recipeMap.jeiOverclockButtonEnabled())
+            return new long[] { recipe.getEUt(), recipe.getDuration(), 0x111111 };
+
+        if (jeiTexts.isEmpty()) initJeiTexts();
+        // ULV doesn't overclock to LV, so treat ULV recipes as LV
+        int recipeTier = Math.max(GTValues.LV, GTUtility.getTierByVoltage(recipe.getEUt()));
+        // tier difference *should* not be negative here since at least displayOCTier() == recipeTier
+        int tierDifference = jeiTexts.get(0).getState() - recipeTier;
+        // there isn't any overclocking
+        if (tierDifference == 0) return new long[] { recipe.getEUt(), recipe.getDuration(), 0x111111 };
+
+        long[] result = new long[3];
+        // if duration is less than 0.5, that means even with one less overclock, the recipe would still 1 tick
+        // so add the yellow warning
+        // LCR and fusion get manual overrides for now
+        double duration = Math.floor(recipe.getDuration() /
+                Math.pow(2, tierDifference));
+        result[2] = duration <= 0.5 ? 0xFFFF55 : 0x111111;
+        result[0] = Math.abs(recipe.getEUt()) *
+                (int) Math.pow(4, tierDifference);
+        result[1] = Math.max(1, (int) duration);
+
+        return result;
     }
 
     public ChancedItemOutput getOutputChance(int slot) {

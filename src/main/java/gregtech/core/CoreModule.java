@@ -4,12 +4,14 @@ import gregtech.api.GTValues;
 import gregtech.api.GregTechAPI;
 import gregtech.api.GregTechAPIInternal;
 import gregtech.api.block.IHeatingCoilBlockStats;
+import gregtech.api.block.coil.CoilManager;
 import gregtech.api.capability.SimpleCapabilityManager;
+import gregtech.api.color.ColoredBlockContainer;
 import gregtech.api.cover.CoverDefinition;
-import gregtech.api.cover.CoverUIFactory;
 import gregtech.api.fluids.GTFluidRegistration;
 import gregtech.api.gui.UIFactory;
 import gregtech.api.items.gui.PlayerInventoryUIFactory;
+import gregtech.api.metatileentity.MachineBlockHighlighter;
 import gregtech.api.metatileentity.MetaTileEntityUIFactory;
 import gregtech.api.metatileentity.registry.MTEManager;
 import gregtech.api.metatileentity.registry.MTERegistry;
@@ -18,9 +20,12 @@ import gregtech.api.modules.IGregTechModule;
 import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuiTheme;
 import gregtech.api.mui.GTGuis;
+import gregtech.api.pattern.TemplatePool;
+import gregtech.api.pattern.casing.GTCasingGroups;
 import gregtech.api.recipes.ModHandler;
 import gregtech.api.recipes.RecipeMap;
 import gregtech.api.recipes.properties.impl.TemperatureProperty;
+import gregtech.api.terminal2.Terminal2;
 import gregtech.api.unification.OreDictUnifier;
 import gregtech.api.unification.material.Materials;
 import gregtech.api.unification.material.event.MaterialEvent;
@@ -28,11 +33,12 @@ import gregtech.api.unification.material.event.MaterialRegistryEvent;
 import gregtech.api.unification.material.event.PostMaterialEvent;
 import gregtech.api.unification.material.registry.MarkerMaterialRegistry;
 import gregtech.api.util.CapesRegistry;
-import gregtech.api.util.Mods;
 import gregtech.api.util.oreglob.OreGlob;
 import gregtech.api.util.virtualregistry.VirtualEnderRegistry;
 import gregtech.api.worldgen.bedrockFluids.BedrockFluidVeinHandler;
 import gregtech.api.worldgen.bedrockFluids.BedrockFluidVeinSaveData;
+import gregtech.api.worldgen.bedrockOres.BedrockOreVeinSaveData;
+import gregtech.api.worldgen.bedrockOres.VeinSystemInit;
 import gregtech.api.worldgen.config.WorldGenRegistry;
 import gregtech.common.CommonProxy;
 import gregtech.common.ConfigHolder;
@@ -44,12 +50,19 @@ import gregtech.common.blocks.MetaBlocks;
 import gregtech.common.command.CommandHand;
 import gregtech.common.command.CommandRecipeCheck;
 import gregtech.common.command.CommandShaders;
-import gregtech.common.command.worldgen.CommandWorldgen;
+import gregtech.common.command.CommandStructureTrace;
+import gregtech.common.command.MultiblockMoverRecoveryCommand;
+import gregtech.common.command.material.CommandMaterial;
+import gregtech.common.command.wireless.CommandWireless;
 import gregtech.common.covers.CoverBehaviors;
 import gregtech.common.covers.filter.oreglob.impl.OreGlobParser;
 import gregtech.common.items.MetaItems;
 import gregtech.common.items.ToolItems;
+import gregtech.common.items.behaviors.multiblock.mover.MoverSessionManager;
 import gregtech.common.metatileentities.MetaTileEntities;
+import gregtech.common.metatileentities.electric.MetaTileEntityAlarm;
+import gregtech.common.wireless.WirelessComputationServiceImpl;
+import gregtech.common.wireless.WirelessEnergyServiceImpl;
 import gregtech.common.worldgen.LootTableHelper;
 import gregtech.core.advancement.AdvancementTriggers;
 import gregtech.core.advancement.internal.AdvancementManager;
@@ -60,7 +73,6 @@ import gregtech.core.network.packets.PacketClipboard;
 import gregtech.core.network.packets.PacketClipboardNBTUpdate;
 import gregtech.core.network.packets.PacketClipboardUIWidgetUpdate;
 import gregtech.core.network.packets.PacketFluidVeinList;
-import gregtech.core.network.packets.PacketItemMouseEvent;
 import gregtech.core.network.packets.PacketKeysPressed;
 import gregtech.core.network.packets.PacketNotifyCapeChange;
 import gregtech.core.network.packets.PacketPluginSynced;
@@ -73,12 +85,11 @@ import gregtech.core.network.packets.PacketUIWidgetUpdate;
 import gregtech.core.sound.GTSoundEvents;
 import gregtech.core.sound.internal.SoundManager;
 import gregtech.core.unification.material.internal.MaterialRegistryManager;
-import gregtech.datafix.command.CommandDataFix;
-import gregtech.integration.bq.BQuDataFixer;
 import gregtech.loaders.dungeon.DungeonLootLoader;
 import gregtech.modules.GregTechModules;
 
 import net.minecraft.block.state.IBlockState;
+import net.minecraft.init.SoundEvents;
 import net.minecraft.world.World;
 import net.minecraftforge.classloading.FMLForgePlugin;
 import net.minecraftforge.common.MinecraftForge;
@@ -103,14 +114,16 @@ import java.util.Map;
 import static gregtech.api.GregTechAPI.*;
 
 @GregTechModule(
-                moduleID = GregTechModules.MODULE_CORE,
-                containerID = GTValues.MODID,
-                name = "GregTech Core",
-                description = "Core GregTech content. Disabling this disables the entire mod and all its addons.",
-                coreModule = true)
+        moduleID = GregTechModules.MODULE_CORE,
+        containerID = GTValues.MODID,
+        name = "GregTech Core",
+        description = "Core GregTech content. Disabling this disables the entire mod and all its addons.",
+        coreModule = true)
 public class CoreModule implements IGregTechModule {
 
     public static final Logger logger = LogManager.getLogger("GregTech Core");
+    private final WirelessEnergyServiceImpl wirelessEnergyService = new WirelessEnergyServiceImpl();
+    private final WirelessComputationServiceImpl wirelessComputationService = new WirelessComputationServiceImpl();
 
     @SidedProxy(modId = GTValues.MODID,
                 clientSide = "gregtech.client.ClientProxy",
@@ -133,13 +146,20 @@ public class CoreModule implements IGregTechModule {
     }
 
     @Override
-    public void preInit(@NotNull FMLPreInitializationEvent event) {
+    public void preInit(FMLPreInitializationEvent event) {
+        MoverSessionManager.init();
+        MinecraftForge.EVENT_BUS.register(wirelessEnergyService);
+        MinecraftForge.EVENT_BUS.register(wirelessComputationService);
         GregTechAPIInternal.preInit();
         GregTechAPI.advancementManager = AdvancementManager.getInstance();
         AdvancementTriggers.register();
 
         GregTechAPI.soundManager = SoundManager.getInstance();
         GTSoundEvents.register();
+        MetaTileEntityAlarm.addSound(GTSoundEvents.DEFAULT_ALARM);
+        MetaTileEntityAlarm.addSound(GTSoundEvents.ARC);
+        MetaTileEntityAlarm.addSound(SoundEvents.ENTITY_WOLF_HOWL);
+        MetaTileEntityAlarm.addSound(SoundEvents.ENTITY_ENDERMEN_DEATH);
 
         /* MUI Initialization */
         GTGuis.registerFactories();
@@ -151,7 +171,6 @@ public class CoreModule implements IGregTechModule {
         logger.info("Registering GTCEu UI Factories");
         MetaTileEntityUIFactory.INSTANCE.init();
         PlayerInventoryUIFactory.INSTANCE.init();
-        CoverUIFactory.INSTANCE.init();
         logger.info("Registering addon UI Factories");
         MinecraftForge.EVENT_BUS.post(new GregTechAPI.RegisterEvent<>(UI_FACTORY_REGISTRY, UIFactory.class));
         UI_FACTORY_REGISTRY.freeze();
@@ -186,6 +205,7 @@ public class CoreModule implements IGregTechModule {
         // Block entirely new Materials from being added in the Post event
         managerInternal.closeRegistries();
         MinecraftForge.EVENT_BUS.post(new PostMaterialEvent());
+        Materials.postMaterialLoad();
 
         // Freeze Material Registry before processing Items, Blocks, and Fluids
         managerInternal.freezeRegistries();
@@ -194,15 +214,19 @@ public class CoreModule implements IGregTechModule {
         // need to do this before MetaBlocks runs, to make sure all addons get their own BlockMachine
         /* Start MTE Registry Addition */
         GregTechAPI.mteManager = MTEManager.getInstance();
+        GregTechAPI.coilManager = CoilManager.getInstance();
         MinecraftForge.EVENT_BUS.post(new MTEManager.MTERegistryEvent());
         /* End MTE Registry Addition */
 
         OreDictUnifier.init();
 
+        GTFluidRegistration.INSTANCE.register();
         MetaBlocks.init();
+        logger.info("Registering Coils");
+        MinecraftForge.EVENT_BUS.post(new CoilManager.CoilRegistryEvent());
+
         MetaItems.init();
         ToolItems.init();
-        GTFluidRegistration.INSTANCE.register();
 
         /* Start CEu MetaTileEntity Registration */
         for (MTERegistry registry : mteManager.getRegistries()) {
@@ -216,7 +240,7 @@ public class CoreModule implements IGregTechModule {
         MetaEntities.init();
 
         /* Start API Block Registration */
-        for (BlockWireCoil.CoilType type : BlockWireCoil.CoilType.values()) {
+        for (BlockWireCoil.CoilType type : BlockWireCoil.getCoilTypes()) {
             HEATING_COILS.put(MetaBlocks.WIRE_COIL.getState(type), type);
         }
         for (BlockBatteryPart.BatteryPartType type : BlockBatteryPart.BatteryPartType.values()) {
@@ -228,10 +252,15 @@ public class CoreModule implements IGregTechModule {
         /* End API Block Registration */
 
         proxy.onPreLoad();
+
+        // 虚拟矿脉系统：注册 Capability + ChunkLoad 事件监听
+        // 必须在 preInit 完成，WorldGen 数据在 init() 阶段加载
+        VeinSystemInit.init();
     }
 
     @Override
     public void registerPackets() {
+        gregtech.common.network.NetworkHandler.registerMessages();
         GregTechAPI.networkHandler.registerPacket(PacketUIOpen.class);
         GregTechAPI.networkHandler.registerPacket(PacketUIWidgetUpdate.class);
         GregTechAPI.networkHandler.registerPacket(PacketUIClientAction.class);
@@ -245,12 +274,13 @@ public class CoreModule implements IGregTechModule {
         GregTechAPI.networkHandler.registerPacket(PacketNotifyCapeChange.class);
         GregTechAPI.networkHandler.registerPacket(PacketReloadShaders.class);
         GregTechAPI.networkHandler.registerPacket(PacketClipboardNBTUpdate.class);
+        GregTechAPI.networkHandler.registerPacket(MachineBlockHighlighter.PacketMachineHighlight.class);
         GregTechAPI.networkHandler.registerPacket(PacketToolbeltSelectionChange.Server.class);
-        GregTechAPI.networkHandler.registerPacket(PacketItemMouseEvent.class);
+        GregTechAPI.networkHandler.registerPacket(PacketToolbeltSelectionChange.Client.class);
     }
 
     @Override
-    public void init(@NotNull FMLInitializationEvent event) {
+    public void init(FMLInitializationEvent event) {
         // freeze once addon preInit is finished
         for (MTERegistry registry : mteManager.getRegistries()) {
             registry.freeze();
@@ -259,7 +289,7 @@ public class CoreModule implements IGregTechModule {
         if (RecipeMap.isFoundInvalidRecipe()) {
             logger.fatal("Seems like invalid recipe was found.");
             // crash if config setting is set to false, or we are in deobfuscated environment
-            if (!ConfigHolder.misc.ignoreErrorOrInvalidRecipes) {
+            if (!ConfigHolder.misc.ignoreErrorOrInvalidRecipes || !FMLForgePlugin.RUNTIME_DEOBF) {
                 logger.fatal(
                         "Loading cannot continue. Either fix or report invalid recipes, or enable ignoreErrorOrInvalidRecipes in the config as a temporary solution");
                 throw new LoaderException(
@@ -286,12 +316,19 @@ public class CoreModule implements IGregTechModule {
 
         DungeonLootLoader.init();
         MetaBlocks.registerWalkingSpeedBonus();
+
+        Terminal2.init();
     }
 
     @Override
-    public void postInit(@NotNull FMLPostInitializationEvent event) {
+    public void postInit(FMLPostInitializationEvent event) {
         proxy.onPostLoad();
         BedrockFluidVeinHandler.recalculateChances(true);
+
+        // 虚拟矿脉系统：WorldGenRegistry 已在 init() 阶段完成 JSON 解析，
+        // 此处读取所有 GT 矿脉定义并同步注册为虚拟矿脉
+        VeinSystemInit.postInit();
+
         // registers coil types for the BlastTemperatureProperty used in Blast Furnace Recipes
         // runs AFTER craftTweaker
         for (Map.Entry<IBlockState, IHeatingCoilBlockStats> entry : GregTechAPI.HEATING_COILS.entrySet()) {
@@ -304,11 +341,22 @@ public class CoreModule implements IGregTechModule {
         }
 
         ModHandler.postInit();
+        ColoredBlockContainer.registerCEuContainers();
     }
 
     @Override
-    public void loadComplete(@NotNull FMLLoadCompleteEvent event) {
+    public void loadComplete(FMLLoadCompleteEvent event) {
         proxy.onLoadComplete();
+
+        // Rebuild all casing groups and re-register indicators after all mods have finished
+        // registration (preInit/init/postInit). This ensures addon-added coils, casings, and
+        // glasses are included in channel ranges and indicator lookups.
+        GTCasingGroups.invalidateCache();
+        // Force re-initialization so indicators are re-registered immediately
+        GTCasingGroups.heatingCoils();
+        GTCasingGroups.machineCasings();
+        GTCasingGroups.borosilicateGlasses();
+        TemplatePool.getInstance().evictAll();
     }
 
     @Override
@@ -317,39 +365,46 @@ public class CoreModule implements IGregTechModule {
         GregTechAPI.commandManager = commandManager;
         commandManager.registerServerCommand(event);
 
-        GregTechAPI.commandManager.addCommand(new CommandWorldgen());
         GregTechAPI.commandManager.addCommand(new CommandHand());
+        GregTechAPI.commandManager.addCommand(new CommandMaterial());
         GregTechAPI.commandManager.addCommand(new CommandRecipeCheck());
         GregTechAPI.commandManager.addCommand(new CommandShaders());
-        GregTechAPI.commandManager.addCommand(new CommandDataFix());
+        GregTechAPI.commandManager.addCommand(new CommandStructureTrace());
+        GregTechAPI.commandManager.addCommand(new MultiblockMoverRecoveryCommand());
+        GregTechAPI.commandManager.addCommand(new CommandWireless());
         CapesRegistry.load();
-
-        if (Mods.BetterQuestingUnofficial.isModLoaded()) {
-            BQuDataFixer.onServerStarting(event.getServer());
-        }
     }
 
     @Override
-    public void serverStarted(@NotNull FMLServerStartedEvent event) {
+    public void serverStarted(FMLServerStartedEvent event) {
         if (FMLCommonHandler.instance().getEffectiveSide() == Side.SERVER) {
             World world = FMLCommonHandler.instance().getMinecraftServerInstance().getEntityWorld();
             if (!world.isRemote) {
                 BedrockFluidVeinSaveData saveData = (BedrockFluidVeinSaveData) world
-                        .loadData(BedrockFluidVeinSaveData.class, BedrockFluidVeinSaveData.dataName);
+                        .loadData(BedrockFluidVeinSaveData.class, BedrockFluidVeinSaveData.DATA_NAME);
                 if (saveData == null) {
-                    saveData = new BedrockFluidVeinSaveData(BedrockFluidVeinSaveData.dataName);
-                    world.setData(BedrockFluidVeinSaveData.dataName, saveData);
+                    saveData = new BedrockFluidVeinSaveData(BedrockFluidVeinSaveData.DATA_NAME);
+                    world.setData(BedrockFluidVeinSaveData.DATA_NAME, saveData);
                     // the save data does not yet exist, use the latest version number
                     BedrockFluidVeinHandler.saveDataVersion = BedrockFluidVeinHandler.MAX_FLUID_SAVE_DATA_VERSION;
                 }
                 BedrockFluidVeinSaveData.setInstance(saveData);
+
+                BedrockOreVeinSaveData oreSaveData = (BedrockOreVeinSaveData) world
+                        .loadData(BedrockOreVeinSaveData.class, BedrockOreVeinSaveData.DATA_NAME);
+                if (oreSaveData == null) {
+                    oreSaveData = new BedrockOreVeinSaveData(BedrockOreVeinSaveData.DATA_NAME);
+                    world.setData(BedrockOreVeinSaveData.DATA_NAME, oreSaveData);
+                }
+                BedrockOreVeinSaveData.setInstance(oreSaveData);
             }
         }
     }
 
     @Override
-    public void serverStopped(@NotNull FMLServerStoppedEvent event) {
+    public void serverStopped(FMLServerStoppedEvent event) {
         VirtualEnderRegistry.clearMaps();
         CapesRegistry.clearMaps();
+        gregtech.api.metatileentity.multiblock.AsyncStructureChecker.getInstance().stop();
     }
 }

@@ -24,21 +24,10 @@ public interface IParallelableRecipeLogic {
     default void applyParallelBonus(@NotNull RecipeBuilder<?> builder) {}
 
     /**
-     * Method which finds a recipe which can be parallelized, works by multiplying the recipe by the parallelization
-     * factor,
-     * and shrinking the recipe till its outputs can fit
-     *
-     * @param recipeMap     the recipe map
-     * @param currentRecipe recipe to be parallelized
-     * @param inputs        input item handler
-     * @param fluidInputs   input fluid handler
-     * @param outputs       output item handler
-     * @param fluidOutputs  output fluid handler
-     * @param parallelLimit the maximum number of parallel recipes to be performed
-     * @param maxVoltage    the voltage limit on the number of parallel recipes to be performed
-     * @param voidable      the voidable performing the parallel recipe
-     * @return the recipe builder with the parallelized recipe. returns null the recipe can't fit
+     * @deprecated Use {@link ParallelLogicType#CROSS_RECIPE} mode with CrossRecipeParallelScheduler instead.
+     * This method is only kept for backward compatibility with legacy parallel modes.
      */
+    @Deprecated
     default RecipeBuilder<?> findMultipliedParallelRecipe(@NotNull RecipeMap<?> recipeMap,
                                                           @NotNull Recipe currentRecipe,
                                                           @NotNull IItemHandlerModifiable inputs,
@@ -59,17 +48,10 @@ public interface IParallelableRecipeLogic {
     }
 
     /**
-     * Method which finds a recipe then multiplies it, then appends it to the builds up to the parallelization factor,
-     * or filling the output
-     *
-     * @param recipeMap     the recipe map
-     * @param inputs        input item handler
-     * @param outputs       output item handler
-     * @param parallelLimit the maximum number of parallel recipes to be performed
-     * @param maxVoltage    the voltage limit on the number of parallel recipes to be performed
-     * @param voidable      the voidable performing the parallel recipe
-     * @return the recipe builder with the parallelized recipe. returns null the recipe can't fit
+     * @deprecated Use {@link ParallelLogicType#CROSS_RECIPE} mode with CrossRecipeParallelScheduler instead.
+     * This method is only kept for backward compatibility with legacy parallel modes.
      */
+    @Deprecated
     default RecipeBuilder<?> findAppendedParallelItemRecipe(@NotNull RecipeMap<?> recipeMap,
                                                             @NotNull IItemHandlerModifiable inputs,
                                                             @NotNull IItemHandlerModifiable outputs, int parallelLimit,
@@ -83,17 +65,63 @@ public interface IParallelableRecipeLogic {
                 voidable);
     }
 
+    /**
+     * @deprecated Use {@link ParallelLogicType#CROSS_RECIPE} mode with CrossRecipeParallelScheduler instead.
+     * This method is only kept for backward compatibility with legacy parallel modes.
+     */
+    @Deprecated
+    default RecipeBuilder<?> findAppendedParallelFluidRecipe(@NotNull RecipeMap<?> recipeMap,
+                                                             @NotNull IMultipleTankHandler fluidInputs,
+                                                             @NotNull IMultipleTankHandler fluidOutputs,
+                                                             int parallelLimit,
+                                                             long maxVoltage, @NotNull IVoidable voidable) {
+        return ParallelLogic.appendFluidRecipes(
+                recipeMap,
+                fluidInputs,
+                fluidOutputs,
+                parallelLimit,
+                maxVoltage,
+                voidable);
+    }
+
+    /**
+     * @deprecated Use {@link ParallelLogicType#CROSS_RECIPE} mode with CrossRecipeParallelScheduler instead.
+     * This method is only kept for backward compatibility with legacy parallel modes.
+     */
+    @Deprecated
+    default RecipeBuilder<?> findAppendedParallelRecipe(@NotNull RecipeMap<?> recipeMap,
+                                                        @NotNull IItemHandlerModifiable inputs,
+                                                        @NotNull IMultipleTankHandler fluidInputs,
+                                                        @NotNull IItemHandlerModifiable outputs,
+                                                        @NotNull IMultipleTankHandler fluidOutputs, int parallelLimit,
+                                                        long maxVoltage, @NotNull IVoidable voidable) {
+        return ParallelLogic.appendParallelRecipes(
+                recipeMap,
+                inputs,
+                fluidInputs,
+                outputs,
+                fluidOutputs,
+                parallelLimit,
+                maxVoltage,
+                voidable);
+    }
+
     // Recipes passed in here should be already trimmed, if desired
+    @SuppressWarnings("deprecation")
     default Recipe findParallelRecipe(@NotNull Recipe currentRecipe, @NotNull IItemHandlerModifiable inputs,
                                       @NotNull IMultipleTankHandler fluidInputs,
                                       @NotNull IItemHandlerModifiable outputs,
                                       @NotNull IMultipleTankHandler fluidOutputs, long maxVoltage, int parallelLimit) {
         if (parallelLimit > 1 && getRecipeMap() != null) {
             RecipeBuilder<?> parallelBuilder = switch (getParallelLogicType()) {
-                case MULTIPLY -> findMultipliedParallelRecipe(getRecipeMap(), currentRecipe, inputs, fluidInputs,
-                        outputs, fluidOutputs, parallelLimit, maxVoltage, getMetaTileEntity());
+                case MULTIPLY, CROSS_RECIPE -> findMultipliedParallelRecipe(getRecipeMap(), currentRecipe, inputs,
+                        fluidInputs, outputs, fluidOutputs, parallelLimit, maxVoltage, getMetaTileEntity());
                 case APPEND_ITEMS -> findAppendedParallelItemRecipe(getRecipeMap(), inputs, outputs, parallelLimit,
                         maxVoltage, getMetaTileEntity());
+                case APPEND_FLUIDS -> findAppendedParallelFluidRecipe(getRecipeMap(), fluidInputs, fluidOutputs,
+                        parallelLimit, maxVoltage, getMetaTileEntity());
+                case APPEND_ALL -> findAppendedParallelRecipe(getRecipeMap(), inputs, fluidInputs, outputs, fluidOutputs,
+                        parallelLimit, maxVoltage, getMetaTileEntity());
             };
 
             // if the builder returned is null, no recipe was found.

@@ -1,15 +1,14 @@
 package gregtech.loaders.recipe.handlers;
 
-
 import gregtech.api.recipes.RecipeMaps;
 import gregtech.api.unification.material.Material;
 import gregtech.api.unification.material.properties.DustProperty;
 import gregtech.api.unification.material.properties.IngotProperty;
 import gregtech.api.unification.material.properties.PropertyKey;
 import gregtech.api.unification.ore.OrePrefix;
+import gregtech.api.util.GTUtility;
 
 import static gregtech.api.GTValues.*;
-import static gregtech.api.GTValues.ULV;
 import static gregtech.common.items.MetaItems.*;
 
 public class PartRecipeHandler1 {
@@ -72,7 +71,7 @@ public class PartRecipeHandler1 {
         if (material.hasFluid()) {
             RecipeMaps.FLUID_SOLIDFICATION_RECIPES.recipeBuilder()
                     .notConsumable(SHAPE_MOLD_ROUND)
-                    .fluidInputs(material.getFluid(L / 8))
+                    .fluidInputs(material.getFluid(L / 9))
                     .output(OrePrefix.round, material)
                     .EUt(VA[LV])
                     .duration(2 * SECOND + 5 * TICK)
@@ -84,9 +83,9 @@ public class PartRecipeHandler1 {
         if (material.hasFluid()) {
             RecipeMaps.FLUID_SOLIDFICATION_RECIPES.recipeBuilder()
                     .notConsumable(SHAPE_MOLD_SCREW)
-                    .fluidInputs(material.getFluid(L / 8))
+                    .fluidInputs(material.getFluid(L / 9))
                     .output(OrePrefix.screw, material)
-                    .EUt(Math.max(VA[MV], 4 * getVoltageMultiplier(material)))
+                    .EUt(GTUtility.scaleVoltage(VA[ULV], material.getWorkingTier()))
                     .duration(2 * SECOND + 5 * TICK)
                     .buildAndRegister();
         }
@@ -110,7 +109,7 @@ public class PartRecipeHandler1 {
                     .notConsumable(SHAPE_MOLD_ROD_LONG)
                     .fluidInputs(material.getFluid(L))
                     .output(OrePrefix.stickLong, material)
-                    .EUt(Math.max(VA[MV], 16 * getVoltageMultiplier(material)))
+                    .EUt(GTUtility.scaleVoltage(VA[ULV], material.getWorkingTier()))
                     .duration(15 * SECOND)
                     .buildAndRegister();
         }
@@ -122,7 +121,7 @@ public class PartRecipeHandler1 {
                     .notConsumable(SHAPE_MOLD_TURBINE_BLADE)
                     .fluidInputs(material.getFluid(L * 10))
                     .output(OrePrefix.turbineBlade, material)
-                    .EUt(Math.max(VA[MV], 6 * getVoltageMultiplier(material)))
+                    .EUt(GTUtility.scaleVoltage(VA[ULV], material.getWorkingTier()))
                     .duration(20 * SECOND)
                     .buildAndRegister();
         }
@@ -134,9 +133,5 @@ public class PartRecipeHandler1 {
                 .EUt(VA[MV])
                 .duration(20 * SECOND)
                 .buildAndRegister();
-    }
-
-    private static int getVoltageMultiplier(Material material) {
-        return material.getBlastTemperature() > 2800 ? VA[LV] : VA[ULV];
     }
 }

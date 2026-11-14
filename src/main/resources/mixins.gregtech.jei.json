@@ -15,6 +15,9 @@
     "ModRegistryMixin",
     "StackHelperMixin"
   ],
-  "client": [],
+  "client": [
+    "GuiIngredientAccessor",
+    "MultiblockRecipeLayoutMixin"
+  ],
   "server": []
 }

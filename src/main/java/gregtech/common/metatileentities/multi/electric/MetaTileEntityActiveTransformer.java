@@ -11,10 +11,10 @@ import gregtech.api.metatileentity.multiblock.IMultiblockPart;
 import gregtech.api.metatileentity.multiblock.MultiblockAbility;
 import gregtech.api.metatileentity.multiblock.MultiblockWithDisplayBase;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIBuilder;
-import gregtech.api.pattern.BlockPattern;
-import gregtech.api.pattern.FactoryBlockPattern;
-import gregtech.api.pattern.PatternMatchContext;
-import gregtech.api.pattern.TraceabilityPredicate;
+import gregtech.api.pattern.FormedStructureView;
+import gregtech.api.pattern.casing.DeclarativePatternBuilder;
+import gregtech.api.pattern.element.StructureDefinition;
+import gregtech.api.util.GTUtility;
 import gregtech.api.util.KeyUtil;
 import gregtech.client.renderer.ICubeRenderer;
 import gregtech.client.renderer.texture.Textures;
@@ -48,6 +48,19 @@ import java.util.List;
 
 public class MetaTileEntityActiveTransformer extends MultiblockWithDisplayBase implements IControllable {
 
+    private static final StructureDefinition<?> STRUCTURE_DEFINITION = StructureDefinition.getOrBuild(
+            "gregtech:active_transformer", () -> DeclarativePatternBuilder.start()
+                    .aisle("XXX", "XXX", "XXX")
+                    .aisle("XXX", "XCX", "XXX")
+                    .aisle("XXX", "XSX", "XXX")
+                    .self('S', MetaTileEntityActiveTransformer.class)
+                    .block('C',
+                            MetaBlocks.FUSION_CASING.getState(BlockFusionCasing.CasingType.SUPERCONDUCTOR_COIL))
+                    .casing('X', MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.HIGH_POWER_CASING))
+                    .universalEnergyInput(1, 4)
+                    .universalEnergyOutput(1, 4)
+                    .buildStructureDefinition());
+
     private boolean isWorkingEnabled = false;
     private IEnergyContainer powerOutput;
     private IEnergyContainer powerInput;
@@ -59,6 +72,10 @@ public class MetaTileEntityActiveTransformer extends MultiblockWithDisplayBase i
         super(metaTileEntityId);
         this.powerOutput = new EnergyContainerList(new ArrayList<>());
         this.powerInput = new EnergyContainerList(new ArrayList<>());
+    }
+
+    public static IBlockState getCasingState() {
+        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.HIGH_POWER_CASING);
     }
 
     @Override
@@ -84,8 +101,8 @@ public class MetaTileEntityActiveTransformer extends MultiblockWithDisplayBase i
     }
 
     @Override
-    protected void formStructure(PatternMatchContext context) {
-        super.formStructure(context);
+    protected void formStructure(@NotNull FormedStructureView formed) {
+        formStructureWithDisplay(formed);
         List<IEnergyContainer> powerInput = new ArrayList<>(getAbilities(MultiblockAbility.INPUT_ENERGY));
         powerInput.addAll(getAbilities(MultiblockAbility.SUBSTATION_INPUT_ENERGY));
 
@@ -107,31 +124,17 @@ public class MetaTileEntityActiveTransformer extends MultiblockWithDisplayBase i
     @Override
     public void invalidateStructure() {
         super.invalidateStructure();
+        if (isWorkingEnabled()) {
+            explodeMultiblock(GTUtility.getTierByVoltage(averageIOLastSec) * 2);
+        }
         this.powerOutput = new EnergyContainerList(new ArrayList<>());
         this.powerInput = new EnergyContainerList(new ArrayList<>());
         setActive(false);
     }
 
     @Override
-    protected @NotNull BlockPattern createStructurePattern() {
-        return FactoryBlockPattern.start()
-                .aisle("XXX", "XXX", "XXX")
-                .aisle("XXX", "XCX", "XXX")
-                .aisle("XXX", "XSX", "XXX")
-                .where('X', states(getCasingState()).setMinGlobalLimited(12).or(getHatchPredicates()))
-                .where('S', selfPredicate())
-                .where('C', states(MetaBlocks.FUSION_CASING.getState(BlockFusionCasing.CasingType.SUPERCONDUCTOR_COIL)))
-                .build();
-    }
-
-    private TraceabilityPredicate getHatchPredicates() {
-        // preview could be revised
-        return abilities(MultiblockAbility.INPUT_ENERGY).setPreviewCount(1)
-                .or(abilities(MultiblockAbility.OUTPUT_ENERGY).setPreviewCount(2))
-                .or(abilities(MultiblockAbility.SUBSTATION_INPUT_ENERGY).setPreviewCount(1))
-                .or(abilities(MultiblockAbility.SUBSTATION_OUTPUT_ENERGY).setPreviewCount(1))
-                .or(abilities(MultiblockAbility.INPUT_LASER).setPreviewCount(1))
-                .or(abilities(MultiblockAbility.OUTPUT_LASER).setPreviewCount(1));
+    protected @NotNull StructureDefinition<?> createStructureDefinition() {
+        return STRUCTURE_DEFINITION;
     }
 
     @Override
@@ -143,10 +146,6 @@ public class MetaTileEntityActiveTransformer extends MultiblockWithDisplayBase i
     @Override
     public ICubeRenderer getBaseTexture(IMultiblockPart sourcePart) {
         return Textures.HIGH_POWER_CASING;
-    }
-
-    protected IBlockState getCasingState() {
-        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.HIGH_POWER_CASING);
     }
 
     @SideOnly(Side.CLIENT)
@@ -284,8 +283,10 @@ public class MetaTileEntityActiveTransformer extends MultiblockWithDisplayBase i
                                boolean advanced) {
         tooltip.add(I18n.format("gregtech.machine.active_transformer.tooltip1"));
         tooltip.add(I18n.format("gregtech.machine.active_transformer.tooltip2"));
-        tooltip.add(I18n.format("gregtech.machine.active_transformer.tooltip3") + TooltipHelper.RAINBOW_SLOW +
-                I18n.format("gregtech.machine.active_transformer.tooltip3.5"));
+        tooltip.add(I18n.format("gregtech.machine.active_transformer.tooltip3"));
+        tooltip.add(I18n.format("gregtech.machine.active_transformer.tooltip4"));
+        tooltip.add(I18n.format("gregtech.machine.active_transformer.tooltip5") + TooltipHelper.BLINKING_RED +
+                I18n.format("gregtech.machine.active_transformer.tooltip5.5"));
     }
 
     public long getAverageIOLastSec() {

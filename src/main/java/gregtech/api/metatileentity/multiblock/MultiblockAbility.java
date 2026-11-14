@@ -1,6 +1,25 @@
 package gregtech.api.metatileentity.multiblock;
 
-import gregtech.api.capability.*;
+import gregtech.api.capability.IAccelerateHatch;
+import gregtech.api.capability.IDataAccessHatch;
+import gregtech.api.capability.IEnergyContainer;
+import gregtech.api.capability.IHPCAComponentHatch;
+import gregtech.api.capability.IHeat;
+import gregtech.api.capability.IHeatable;
+import gregtech.api.capability.ILaserContainer;
+import gregtech.api.capability.IMaintenanceHatch;
+import gregtech.api.capability.IMufflerHatch;
+import gregtech.api.capability.IObjectHolder;
+import gregtech.api.capability.IOpticalComputationHatch;
+import gregtech.api.capability.IOpticalDataAccessHatch;
+import gregtech.api.capability.IOverclockHatch;
+import gregtech.api.capability.IParallelHatch;
+import gregtech.api.capability.IQCComponentHatch;
+import gregtech.api.capability.IQCUncertaintyHatch;
+import gregtech.api.capability.IRotorHolder;
+import gregtech.api.capability.IThreadHatch;
+import gregtech.api.capability.IWirelessController;
+import gregtech.api.metatileentity.ITieredMetaTileEntity;
 import gregtech.api.metatileentity.MetaTileEntity;
 
 import net.minecraftforge.fluids.IFluidTank;
@@ -33,10 +52,24 @@ public class MultiblockAbility<T> {
     public static final MultiblockAbility<IEnergyContainer> OUTPUT_ENERGY = ability(
             "output_energy", IEnergyContainer.class);
 
+
+    public static final MultiblockAbility<IHeatable> INPUT_HEAT = ability(
+            "input_heat", IHeatable.class);
+    public static final MultiblockAbility<IHeatable> OUTPUT_HEAT = ability(
+            "output_heat", IHeatable.class);
+    public static final MultiblockAbility<IHeat> HEAT_SENSOR = ability(
+            "heat_sensor", IHeat.class);
+
     public static final MultiblockAbility<IEnergyContainer> SUBSTATION_INPUT_ENERGY = ability(
             "substation_input_energy", IEnergyContainer.class);
     public static final MultiblockAbility<IEnergyContainer> SUBSTATION_OUTPUT_ENERGY = ability(
             "substation_output_energy", IEnergyContainer.class);
+    public static final MultiblockAbility<Object> INPUT_ENERGY_GROUP = ability(
+            "input_energy_group", Object.class);
+    public static final MultiblockAbility<Object> OUTPUT_ENERGY_GROUP = ability(
+            "output_energy_group", Object.class);
+    public static final MultiblockAbility<Object> ENERGY_IO_GROUP = ability(
+            "energy_io_group", Object.class);
 
     public static final MultiblockAbility<IRotorHolder> ROTOR_HOLDER = ability(
             "rotor_holder", IRotorHolder.class);
@@ -88,24 +121,29 @@ public class MultiblockAbility<T> {
 
     public static final MultiblockAbility<IHPCAComponentHatch> HPCA_COMPONENT = ability(
             "hpca_component", IHPCAComponentHatch.class);
+    public static final MultiblockAbility<IQCComponentHatch> QC_COMPONENT = ability(
+            "qc_component", IQCComponentHatch.class);
+    public static final MultiblockAbility<IQCUncertaintyHatch> QC_UNCERTAINTY = ability(
+            "qc_uncertainty", IQCUncertaintyHatch.class);
     public static final MultiblockAbility<IObjectHolder> OBJECT_HOLDER = ability(
             "object_holder", IObjectHolder.class);
 
-    //GTQT
-    public static final MultiblockAbility<DualHandler> DUAL_EXPORT = ability(
-            "dual_export", DualHandler.class);
-    public static final MultiblockAbility<DualHandler> DUAL_IMPORT = ability(
-            "dual_import", DualHandler.class);
-    public static final MultiblockAbility<DualHandler> COMPLEX_DUAL = ability(
-            "complex_dual", DualHandler.class);
+    public static final MultiblockAbility<IParallelHatch> PARALLEL_HATCH = new MultiblockAbility<>("parallel_hatch", IParallelHatch.class);
+
+    public static final MultiblockAbility<ITieredMetaTileEntity> TIERED_HATCH = new MultiblockAbility<>("tiered_hatch",ITieredMetaTileEntity.class);
+
+    public static final MultiblockAbility<IThreadHatch> THREAD_HATCH = new MultiblockAbility<>("thread_hatch", IThreadHatch.class);
+
+    public static final MultiblockAbility<IOverclockHatch> OVERCLOCK_HATCH = new MultiblockAbility<>("overclock_hatch", IOverclockHatch.class);
+
+    public static final MultiblockAbility<IAccelerateHatch> ACCELERATE_HATCH = new MultiblockAbility<>("accelerate_hatch", IAccelerateHatch.class);
 
     //无线管理
     public static final MultiblockAbility<IWirelessController> WIRELESS_CONTROLLER = ability(
             "wireless_controller", IWirelessController.class);
 
-
-    public static final MultiblockAbility<IThreadHatch> THREAD_HATCH = new MultiblockAbility<>("thread_hatch", IThreadHatch.class);
-
+    public static final MultiblockAbility<IGodforgeModule> GODFORGE_MODULE = ability(
+            "godforge_module", IGodforgeModule.class);
 
     public static void registerMultiblockAbility(MultiblockAbility<?> ability, MetaTileEntity part) {
         if (!REGISTRY.containsKey(ability)) {

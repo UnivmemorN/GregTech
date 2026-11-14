@@ -55,7 +55,10 @@ public class ComputationRecipeLogic extends MultiblockRecipeLogic {
         }
 
         IOpticalComputationProvider provider = getComputationProvider();
-        return provider.requestCWUt(recipeCWUt, true) >= recipeCWUt;
+        if(provider.requestCWUt(recipeCWUt, true) >= recipeCWUt)
+            return true;
+        else setWhyFailed("算力不足");
+        return false;
     }
 
     @Override
@@ -105,7 +108,7 @@ public class ComputationRecipeLogic extends MultiblockRecipeLogic {
             }
         } else if (recipeEUt > 0) {
             this.hasNotEnoughEnergy = true;
-            decreaseProgress();
+            decreaseProgress(true);
         }
     }
 
@@ -151,7 +154,7 @@ public class ComputationRecipeLogic extends MultiblockRecipeLogic {
     }
 
     /**
-     * @return Whether TOP / WAILA should show the recipe progress as duration or as total computation.
+     * @return Whether TOP should show the recipe progress as duration or as total computation.
      */
     public boolean shouldShowDuration() {
         return !isDurationTotalCWU;

@@ -14,9 +14,12 @@ import gregtech.api.metatileentity.TieredMetaTileEntity;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuis;
+import gregtech.api.mui.TextStandards;
+import gregtech.api.unification.OreDictUnifier;
+import gregtech.api.unification.material.Materials;
+import gregtech.api.unification.ore.OrePrefix;
 import gregtech.api.util.KeyUtil;
 import gregtech.client.renderer.texture.Textures;
-import gregtech.common.mui.widget.ScrollableTextWidget;
 import gregtech.core.sound.GTSoundEvents;
 
 import net.minecraft.client.resources.I18n;
@@ -24,7 +27,10 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
-import net.minecraft.util.*;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.EnumHand;
+import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.SoundEvent;
 import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentTranslation;
 import net.minecraft.util.text.TextFormatting;
@@ -42,14 +48,12 @@ import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
-import com.cleanroommc.modularui.utils.Alignment;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.SyncHandlers;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
-import com.cleanroommc.modularui.widgets.layout.Grid;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -62,9 +66,8 @@ public class MetaTileEntityMiner extends TieredMetaTileEntity implements IMiner,
 
     private final int inventorySize;
     private final long energyPerTick;
-    private boolean isInventoryFull = false;
-
     private final MinerLogic minerLogic;
+    private boolean isInventoryFull = false;
 
     public MetaTileEntityMiner(ResourceLocation metaTileEntityId, int tier, int speed, int maximumRadius, int fortune) {
         super(metaTileEntityId, tier);
@@ -95,13 +98,7 @@ public class MetaTileEntityMiner extends TieredMetaTileEntity implements IMiner,
     @SideOnly(Side.CLIENT)
     public void renderMetaTileEntity(CCRenderState renderState, Matrix4 translation, IVertexOperation[] pipeline) {
         super.renderMetaTileEntity(renderState, translation, pipeline);
-        Textures.SCREEN.renderSided(EnumFacing.UP, renderState, translation, pipeline);
-        for (EnumFacing renderSide : EnumFacing.HORIZONTALS) {
-            if (renderSide == getFrontFacing()) {
-                Textures.PIPE_OUT_OVERLAY.renderSided(renderSide, renderState, translation, pipeline);
-            } else
-                Textures.CHUNK_MINER_OVERLAY.renderSided(renderSide, renderState, translation, pipeline);
-        }
+        Textures.MINER_OVERLAY.renderOrientedState(renderState, translation, pipeline, getFrontFacing(), minerLogic.isActive(), minerLogic.isWorkingEnabled());
         minerLogic.renderPipe(renderState, translation, pipeline);
     }
 
@@ -112,10 +109,7 @@ public class MetaTileEntityMiner extends TieredMetaTileEntity implements IMiner,
 
     @SuppressWarnings("DuplicatedCode")
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager panelSyncManager) {
-        int rowSize = (int) Math.sqrt(inventorySize);
-        panelSyncManager.registerSlotGroup("export_items", rowSize);
-
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager panelSyncManager, UISettings settings) {
         IntSyncValue radiusSync = new IntSyncValue(() -> getWorkingArea(minerLogic.getCurrentRadius()));
         BooleanSyncValue isDoneSync = new BooleanSyncValue(minerLogic::isDone);
         BooleanSyncValue isWorkingSync = new BooleanSyncValue(minerLogic::isWorking);
@@ -140,51 +134,47 @@ public class MetaTileEntityMiner extends TieredMetaTileEntity implements IMiner,
                 .child(IKey.lang(getMetaFullName())
                         .asWidget()
                         .pos(5, 5))
-                .child(new ScrollableTextWidget()
-                        .pos(7 + 3, 15 + 3)
-                        .size(105 - 3 * 2, 75 - 3 * 2)
-                        .autoUpdate(true)
-                        .alignment(Alignment.TopLeft)
-                        .textBuilder(text -> {
-                            text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_at"));
-                            text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_pos_x",
-                                    xPosSync.getIntValue()));
-                            text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_pos_y",
-                                    yPosSync.getIntValue()));
-                            text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_pos_z",
-                                    zPosSync.getIntValue()));
+                .child(createMinerWidgets(panelSyncManager, exportItems, inventorySize, GTGuiTextures.DISPLAY, text -> {
+                    boolean isDone = isDoneSync.getBoolValue();
+                    boolean isWorking = isWorkingSync.getBoolValue();
+                    boolean isWorkingEnabled = isWorkingEnabledSync.getBoolValue();
+                    boolean isInventoryFull = isInventoryFullSync.getBoolValue();
+                    boolean hasEnoughEnergy = hasEnoughEnergySync.getBoolValue();
 
-                            text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.working_area",
-                                    radiusSync.getIntValue(), radiusSync.getIntValue()));
+                    if (isWorking) {
+                        text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_at"));
+                        text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_pos_x",
+                                xPosSync.getIntValue()));
+                        text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_pos_y",
+                                yPosSync.getIntValue()));
+                        text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_pos_z",
+                                zPosSync.getIntValue()));
+                    }
 
-                            if (isDoneSync.getBoolValue()) {
-                                text.addLine(KeyUtil.lang(TextFormatting.GREEN, "gregtech.machine.miner.done"));
-                            } else if (isWorkingSync.getBoolValue()) {
-                                text.addLine(KeyUtil.lang(TextFormatting.GOLD, "gregtech.machine.miner.working"));
-                            } else if (!isWorkingEnabledSync.getBoolValue()) {
-                                text.addLine(KeyUtil.lang("gregtech.multiblock.work_paused"));
-                            }
+                    text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.working_area",
+                            radiusSync.getIntValue(), radiusSync.getIntValue()));
 
-                            if (isInventoryFullSync.getBoolValue()) {
-                                text.addLine(KeyUtil.lang(TextFormatting.RED, "gregtech.machine.miner.invfull"));
-                            }
+                    if (isDone) {
+                        text.addLine(KeyUtil.lang(TextStandards.Colors.MACHINE_DONE, "gregtech.machine.miner.done"));
+                    } else if (isWorking) {
+                        text.addLine(KeyUtil.lang(TextStandards.Colors.MACHINE_WORKING,
+                                "gregtech.machine.miner.working"));
+                    } else if (!isWorkingEnabled) {
+                        text.addLine(TextStandards.Keys.MACHINE_PAUSED);
+                    }
 
-                            if (!hasEnoughEnergySync.getBoolValue()) {
-                                text.addLine(KeyUtil.lang(TextFormatting.RED, "gregtech.machine.miner.needspower"));
-                            }
-                        })
-                        .background(GTGuiTextures.DISPLAY.asIcon()
-                                .margin(-3)))
-                .child(new Grid()
-                        .pos(151 - 18 * 2, 15)
-                        .minElementMargin(0)
-                        .minColWidth(18)
-                        .minRowHeight(18)
-                        .mapTo(rowSize, inventorySize, index -> new ItemSlot()
-                                .slot(SyncHandlers.itemSlot(exportItems, index)
-                                        .slotGroup("export_items")
-                                        .accessibility(false, true))))
-                .child(SlotGroupWidget.playerInventory()
+                    if (isInventoryFull) {
+                        text.addLine(KeyUtil.lang(TextStandards.Colors.NO_OUTPUT_SPACE,
+                                "gregtech.machine.miner.invfull"));
+                    }
+
+                    if (!hasEnoughEnergy) {
+                        text.addLine(KeyUtil.lang(TextStandards.Colors.NO_POWER, "gregtech.machine.miner.needspower"));
+                    }
+                })
+                        .left(10)
+                        .top(18))
+                .child(SlotGroupWidget.playerInventory(false)
                         .left(7)
                         .bottom(7))
                 .child(new ItemSlot()
@@ -233,8 +223,13 @@ public class MetaTileEntityMiner extends TieredMetaTileEntity implements IMiner,
         super.update();
         this.minerLogic.performMining();
         if (!getWorld().isRemote) {
-            ((EnergyContainerHandler) this.energyContainer).dischargeOrRechargeEnergyContainers(chargerInventory, 0);
-
+            ItemStack stack = chargerInventory.getStackInSlot(0);
+            if (!stack.isEmpty() && energyContainer.getEnergyStored() < energyContainer.getEnergyCapacity()) {
+                if (stack.isItemEqual(OreDictUnifier.get(OrePrefix.dust, Materials.Redstone))) {
+                    stack.shrink(1);
+                    energyContainer.addEnergy(1920);
+                } else ((EnergyContainerHandler) this.energyContainer).dischargeOrRechargeEnergyContainers(stack);
+            }
             if (getOffsetTimer() % 5 == 0)
                 pushItemsIntoNearbyHandlers(getFrontFacing());
 

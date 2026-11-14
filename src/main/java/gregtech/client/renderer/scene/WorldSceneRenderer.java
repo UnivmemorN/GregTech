@@ -5,18 +5,23 @@ import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.util.Position;
 import gregtech.api.util.PositionedRect;
 import gregtech.api.util.Size;
+import gregtech.client.renderer.handler.MetaTileEntityRenderer;
 import gregtech.client.utils.RenderUtil;
 
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.*;
+import net.minecraft.client.renderer.BufferBuilder;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.RenderHelper;
+import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.renderer.tileentity.TileEntityRendererDispatcher;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.init.Blocks;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.BlockRenderLayer;
+import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.RayTraceResult;
 import net.minecraft.util.math.Vec3d;
@@ -29,19 +34,25 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import codechicken.lib.vec.Vector3;
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.util.glu.GLU;
 
+import javax.vecmath.Vector3f;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
-
-import javax.vecmath.Vector3f;
+import java.util.function.Predicate;
 
 /**
  * Created with IntelliJ IDEA.
@@ -63,11 +74,25 @@ public abstract class WorldSceneRenderer {
             .asFloatBuffer();
     protected static final FloatBuffer OBJECT_POS_BUFFER = ByteBuffer.allocateDirect(3 * 4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer();
+    // Reusable buffer for glClipPlane (4 doubles = 32 bytes)
+    protected static final DoubleBuffer CLIP_PLANE_BUFFER = ByteBuffer.allocateDirect(4 * 8)
+            .order(ByteOrder.nativeOrder()).asDoubleBuffer();
 
-    // In most cases this would be empty
-    protected static final Map<BlockPos, TileEntity> TILE_ENTITIES = new Object2ObjectArrayMap<>();
+    // Per-instance tile entity storage for TESR rendering
+    protected final Map<BlockPos, TileEntity> tileEntities = new Object2ObjectArrayMap<>();
     public final World world;
     public final Collection<BlockPos> renderedBlocks = new ObjectOpenHashSet<>();
+    /**
+     * Position whose block and tile entity are drawn by the scene owner as an overlay instead. Skipping it here keeps
+     * both copies from overlapping; picking still sees it because {@link #renderedBlocks} is not changed.
+     */
+    @Nullable
+    private BlockPos hiddenBlock;
+    /**
+     * Positions hidden as a group (for example a part type toggled off in the preview parts grid). Picking is
+     * unaffected, matching {@link #setHiddenBlock(BlockPos)}.
+     */
+    private final Set<BlockPos> hiddenBlocks = new HashSet<>();
     protected Consumer<WorldSceneRenderer> beforeRender;
     protected Consumer<WorldSceneRenderer> afterRender;
     private Consumer<RayTraceResult> onLookingAt;
@@ -77,9 +102,32 @@ public abstract class WorldSceneRenderer {
     private Vector3f lookAt = new Vector3f(0, 0, 0);
     private Vector3f worldUp = new Vector3f(0, 1, 0);
 
+    // TESR rendering limits
+    private int maxTileEntityRenderers = Integer.MAX_VALUE;
+    private double maxTileEntityRenderDistSq = Double.MAX_VALUE;
+    private Predicate<TileEntity> tileEntityFilter;
+
+    // Hit test throttling: reduce glReadPixels calls
+    private int hitTestInterval = 1;
+    private int frameCount;
+
+    // Internal block culling: remove blocks fully enclosed by other blocks
+    private boolean cullInternal;
+
+    // Y-axis clip planes for layer filtering (avoids VBO rebuild on layer switch)
+    private boolean clipEnabled;
+    private double clipMinY;
+    private double clipMaxY;
+
     public WorldSceneRenderer(World world) {
         this.world = world;
     }
+
+    /**
+     * Release renderer-owned resources when a preview is no longer active.
+     * Base renderers do not own GPU buffers; VBO/FBO implementations override this.
+     */
+    public void dispose() {}
 
     public WorldSceneRenderer setBeforeWorldRender(Consumer<WorldSceneRenderer> callback) {
         this.beforeRender = callback;
@@ -94,17 +142,47 @@ public abstract class WorldSceneRenderer {
     public WorldSceneRenderer addRenderedBlocks(@Nullable Collection<BlockPos> blocks) {
         if (blocks != null) {
             this.renderedBlocks.addAll(blocks);
-            TILE_ENTITIES.clear();
-            blocks.forEach(pos -> {
+
+            // Internal block culling: remove blocks fully enclosed by 6 non-air neighbors
+            if (cullInternal) {
+                List<BlockPos> toRemove = new ArrayList<>();
+                for (BlockPos pos : this.renderedBlocks) {
+                    if (isFullyEnclosed(pos)) {
+                        toRemove.add(pos);
+                    }
+                }
+                this.renderedBlocks.removeAll(toRemove);
+            }
+
+            tileEntities.clear();
+            this.renderedBlocks.forEach(pos -> {
                 TileEntity tile = world.getTileEntity(pos);
                 if (tile != null && (!(tile instanceof IGregTechTileEntity gtte) ||
                         // Put MTEs only when it has FastRenderer
                         gtte.getMetaTileEntity() instanceof IFastRenderMetaTileEntity)) {
-                    TILE_ENTITIES.put(pos, tile);
+                    tileEntities.put(pos, tile);
                 }
             });
         }
         return this;
+    }
+
+    /**
+     * Check if a block position is fully enclosed by opaque full-cube blocks on all 6 faces.
+     * A block is considered enclosed only if every neighbor is present in the rendered set,
+     * is not air, AND is a full cube (so transparent/partial blocks like glass or slabs
+     * do not count as occluders).
+     */
+    @SuppressWarnings("deprecation")
+    private boolean isFullyEnclosed(BlockPos pos) {
+        for (EnumFacing facing : EnumFacing.VALUES) {
+            BlockPos neighbor = pos.offset(facing);
+            if (!this.renderedBlocks.contains(neighbor)) return false;
+            IBlockState state = world.getBlockState(neighbor);
+            if (state.getBlock() == Blocks.AIR) return false;
+            if (!state.isFullCube()) return false;
+        }
+        return true;
     }
 
     public WorldSceneRenderer setOnLookingAt(Consumer<RayTraceResult> onLookingAt) {
@@ -112,8 +190,147 @@ public abstract class WorldSceneRenderer {
         return this;
     }
 
+    /**
+     * Set the maximum number of TileEntity renderers (TESR) that will be processed per frame.
+     * When the structure has more TEs than this limit, excess TEs are skipped.
+     * Default is Integer.MAX_VALUE (no limit).
+     *
+     * @param max maximum number of TESRs to render per frame
+     * @return this renderer for chaining
+     */
+    public WorldSceneRenderer setMaxTileEntityRenderers(int max) {
+        this.maxTileEntityRenderers = max;
+        return this;
+    }
+
+    /**
+     * Set the maximum distance (squared) from camera at which TESRs are rendered.
+     * TEs beyond this distance are skipped. Default is Double.MAX_VALUE (no limit).
+     *
+     * @param maxDist maximum render distance (not squared)
+     * @return this renderer for chaining
+     */
+    public WorldSceneRenderer setMaxTileEntityRenderDistance(double maxDist) {
+        this.maxTileEntityRenderDistSq = maxDist * maxDist;
+        return this;
+    }
+
+    /**
+     * Set a custom filter for which TileEntities should have their TESR rendered.
+     * Only TEs that pass this filter will be rendered. Default is null (all TEs rendered).
+     *
+     * @param filter predicate that returns true for TEs that should be rendered
+     * @return this renderer for chaining
+     */
+    public WorldSceneRenderer setTileEntityFilter(@Nullable Predicate<TileEntity> filter) {
+        this.tileEntityFilter = filter;
+        return this;
+    }
+
+    /**
+     * Set the hit test interval (in frames). The glReadPixels-based mouse hit detection
+     * will only run every N frames, reusing the previous result in between.
+     * This eliminates the GPU pipeline sync stall that occurs every frame.
+     * Default is 1 (every frame). Recommended: 3-5 for large structures.
+     *
+     * @param interval number of frames between hit tests (minimum 1)
+     * @return this renderer for chaining
+     */
+    public WorldSceneRenderer setHitTestInterval(int interval) {
+        this.hitTestInterval = Math.max(1, interval);
+        return this;
+    }
+
+    /**
+     * Enable internal block culling. When enabled, blocks that are fully enclosed
+     * (all 6 neighbors are non-air and present in the rendered set) are removed from
+     * the render list. This significantly reduces vertex count for large solid structures.
+     * Must be called BEFORE {@link #addRenderedBlocks(Collection)}.
+     *
+     * @param cull true to enable internal culling
+     * @return this renderer for chaining
+     */
+    public WorldSceneRenderer setCullInternalBlocks(boolean cull) {
+        this.cullInternal = cull;
+        return this;
+    }
+
+    /**
+     * Set Y-axis clip planes for layer filtering. When enabled, only geometry within
+     * [minY, maxY) is rendered. This uses GL clip planes and does NOT require VBO rebuild.
+     * Pass -1 for both to disable clipping (show all layers).
+     *
+     * @param minY lower Y boundary (inclusive)
+     * @param maxY upper Y boundary (exclusive)
+     * @return this renderer for chaining
+     */
+    public WorldSceneRenderer setClipPlanes(double minY, double maxY) {
+        this.clipEnabled = true;
+        this.clipMinY = minY;
+        this.clipMaxY = maxY;
+        return this;
+    }
+
+    /**
+     * Disable Y-axis clip planes, showing all layers.
+     *
+     * @return this renderer for chaining
+     */
+    public WorldSceneRenderer disableClipPlanes() {
+        this.clipEnabled = false;
+        return this;
+    }
+
+    /**
+     * @return true if Y-axis clip planes are currently active
+     */
+    public boolean isClipEnabled() {
+        return clipEnabled;
+    }
+
+    /**
+     * @return the minimum Y of the active clip range, only valid when {@link #isClipEnabled()} is true
+     */
+    public double getClipMinY() {
+        return clipMinY;
+    }
+
+    /**
+     * @return the maximum Y of the active clip range, only valid when {@link #isClipEnabled()} is true
+     */
+    public double getClipMaxY() {
+        return clipMaxY;
+    }
+
     public void setClearColor(int clearColor) {
         this.clearColor = clearColor;
+    }
+
+    /**
+     * Excludes one block position from block and tile entity rendering. The scene owner is expected to draw that
+     * position itself (for example a rotating candidate block); picking is unaffected.
+     */
+    public void setHiddenBlock(@Nullable BlockPos hiddenBlock) {
+        this.hiddenBlock = hiddenBlock;
+    }
+
+    @Nullable
+    public BlockPos getHiddenBlock() {
+        return hiddenBlock;
+    }
+
+    /**
+     * Replaces the group of positions skipped during block and tile entity rendering. Empty or null hides nothing.
+     */
+    public void setHiddenBlocks(@Nullable Collection<BlockPos> blocks) {
+        hiddenBlocks.clear();
+        if (blocks != null) {
+            hiddenBlocks.addAll(blocks);
+        }
+    }
+
+    protected boolean isBlockHidden(@NotNull BlockPos pos) {
+        return pos.equals(hiddenBlock) || hiddenBlocks.contains(pos);
     }
 
     public RayTraceResult getLastTraceResult() {
@@ -127,19 +344,41 @@ public abstract class WorldSceneRenderer {
         mouseX = mouse.position.x;
         mouseY = mouse.position.y;
         setupCamera(positionedRect);
+
+        // Enable Y-axis clip planes for layer filtering
+        if (clipEnabled) {
+            enableYClipPlanes(clipMinY, clipMaxY);
+        }
+
         // render TrackedDummyWorld
         drawWorld();
-        // check lookingAt
-        this.lastTraceResult = null;
-        if (onLookingAt != null && mouseX > positionedRect.position.x &&
-                mouseX < positionedRect.position.x + positionedRect.size.width && mouseY > positionedRect.position.y &&
-                mouseY < positionedRect.position.y + positionedRect.size.height) {
-            Vector3f hitPos = unProject(mouseX, mouseY);
-            RayTraceResult result = rayTrace(hitPos);
-            if (result != null) {
-                this.lastTraceResult = null;
-                this.lastTraceResult = result;
-                onLookingAt.accept(result);
+
+        // Disable clip planes before hit test (unProject needs unclipped depth buffer)
+        if (clipEnabled) {
+            disableYClipPlanes();
+        }
+
+        // check lookingAt (throttled: only run every hitTestInterval frames)
+        frameCount++;
+        if (frameCount % hitTestInterval == 0) {
+            this.lastTraceResult = null;
+            if (onLookingAt != null && mouseX > positionedRect.position.x &&
+                    mouseX < positionedRect.position.x + positionedRect.size.width &&
+                    mouseY > positionedRect.position.y &&
+                    mouseY < positionedRect.position.y + positionedRect.size.height) {
+                Vector3f hitPos = unProject(mouseX, mouseY);
+                RayTraceResult result = rayTrace(hitPos);
+                // Filter out hits outside clip range
+                if (result != null && clipEnabled && result.getBlockPos() != null) {
+                    int hitY = result.getBlockPos().getY();
+                    if (hitY < clipMinY || hitY >= clipMaxY) {
+                        result = null;
+                    }
+                }
+                if (result != null) {
+                    this.lastTraceResult = result;
+                    onLookingAt.accept(result);
+                }
             }
         }
         // resetCamera
@@ -280,16 +519,30 @@ public abstract class WorldSceneRenderer {
 
         BufferBuilder buffer = Tessellator.getInstance().getBuffer();
         buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
-        BlockRendererDispatcher blockrendererdispatcher = Minecraft.getMinecraft().getBlockRendererDispatcher();
 
         for (BlockPos pos : renderedBlocks) {
-            IBlockState state = world.getBlockState(pos);
-            Block block = state.getBlock();
-            state = state.getActualState(world, pos);
-            if (block == Blocks.AIR) continue;
-            if (block.canRenderInLayer(state, layer)) {
-                blockrendererdispatcher.renderBlock(state, pos, world, buffer);
-            }
+            renderBlock(layer, pos, buffer);
+        }
+    }
+
+    /**
+     * Appends one block to a supplied render buffer. VBO previews use this to spread an initial mesh upload across
+     * several JEI frames while retaining the same rendering path as immediate scenes.
+     */
+    protected void renderBlock(BlockRenderLayer layer, BlockPos pos, BufferBuilder buffer) {
+        if (isBlockHidden(pos)) {
+            return;
+        }
+        IBlockState state = world.getBlockState(pos);
+        Block block = state.getBlock();
+        state = state.getActualState(world, pos);
+        if (block == Blocks.AIR || !block.canRenderInLayer(state, layer)) {
+            return;
+        }
+        if (block.getRenderType(state) == MetaTileEntityRenderer.BLOCK_RENDER_TYPE) {
+            MetaTileEntityRenderer.INSTANCE.renderBlock(world, pos, state, buffer);
+        } else {
+            Minecraft.getMinecraft().getBlockRendererDispatcher().renderBlock(state, pos, world, buffer);
         }
     }
 
@@ -301,11 +554,30 @@ public abstract class WorldSceneRenderer {
             setDefaultPassRenderState(pass);
 
             int finalPass = pass;
-            TILE_ENTITIES.forEach((pos, tile) -> {
-                if (tile.shouldRenderInPass(finalPass)) {
-                    dispatcher.render(tile, pos.getX(), pos.getY(), pos.getZ(), 0);
+            int rendered = 0;
+            for (Map.Entry<BlockPos, TileEntity> entry : tileEntities.entrySet()) {
+                if (rendered >= maxTileEntityRenderers) break;
+
+                BlockPos pos = entry.getKey();
+                TileEntity tile = entry.getValue();
+
+                if (isBlockHidden(pos)) continue;
+                if (!tile.shouldRenderInPass(finalPass)) continue;
+
+                // Distance culling
+                if (maxTileEntityRenderDistSq < Double.MAX_VALUE) {
+                    double dx = pos.getX() + 0.5 - eyePos.x;
+                    double dy = pos.getY() + 0.5 - eyePos.y;
+                    double dz = pos.getZ() + 0.5 - eyePos.z;
+                    if (dx * dx + dy * dy + dz * dz > maxTileEntityRenderDistSq) continue;
                 }
-            });
+
+                // Custom filter
+                if (tileEntityFilter != null && !tileEntityFilter.test(tile)) continue;
+
+                dispatcher.render(tile, pos.getX(), pos.getY(), pos.getZ(), 0);
+                rendered++;
+            }
         }
         ForgeHooksClient.setRenderPass(-1);
         RenderHelper.disableStandardItemLighting();
@@ -322,6 +594,36 @@ public abstract class WorldSceneRenderer {
             GlStateManager.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
             GlStateManager.depthMask(false);
         }
+    }
+
+    /**
+     * Enable two Y-axis clip planes to restrict rendering to a horizontal slice.
+     * GL_CLIP_PLANE0: clips below minY (normal pointing up)
+     * GL_CLIP_PLANE1: clips above maxY (normal pointing down)
+     */
+    protected void enableYClipPlanes(double minY, double maxY) {
+        // Clip plane equation: Ax + By + Cz + D >= 0 passes
+        CLIP_PLANE_BUFFER.clear();
+        // Bottom plane: y >= minY  →  0*x + 1*y + 0*z + (-minY) >= 0
+        CLIP_PLANE_BUFFER.put(0).put(1).put(0).put(-minY);
+        CLIP_PLANE_BUFFER.flip();
+        GL11.glClipPlane(GL11.GL_CLIP_PLANE0, CLIP_PLANE_BUFFER);
+        GL11.glEnable(GL11.GL_CLIP_PLANE0);
+
+        CLIP_PLANE_BUFFER.clear();
+        // Top plane: y < maxY  →  0*x + (-1)*y + 0*z + maxY > 0
+        CLIP_PLANE_BUFFER.put(0).put(-1).put(0).put(maxY);
+        CLIP_PLANE_BUFFER.flip();
+        GL11.glClipPlane(GL11.GL_CLIP_PLANE1, CLIP_PLANE_BUFFER);
+        GL11.glEnable(GL11.GL_CLIP_PLANE1);
+    }
+
+    /**
+     * Disable Y-axis clip planes.
+     */
+    protected void disableYClipPlanes() {
+        GL11.glDisable(GL11.GL_CLIP_PLANE0);
+        GL11.glDisable(GL11.GL_CLIP_PLANE1);
     }
 
     public RayTraceResult rayTrace(Vector3f hitPos) {

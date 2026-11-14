@@ -11,13 +11,20 @@ import net.minecraft.util.text.TextFormatting;
 import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.fml.common.Loader;
+import net.minecraftforge.fml.common.ModContainer;
 
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.screen.RichTooltip;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Supplier;
 
 import static gregtech.api.fluids.FluidConstants.CRYOGENIC_FLUID_THRESHOLD;
@@ -106,12 +113,7 @@ public class FluidTooltipUtil {
         return getFluidTooltip(FluidRegistry.getFluid(fluidName));
     }
 
-    public static Supplier<List<String>> createGTFluidTooltip(@NotNull GTFluid fluid) {
-        Material material = fluid instanceof GTFluid.GTMaterialFluid matFluid ? matFluid.getMaterial() : null;
-        return createFluidTooltip(material, fluid, fluid.getState());
-    }
-
-    public static Supplier<List<String>> createFluidTooltip(@Nullable Material material, @NotNull Fluid fluid,
+    public static Supplier<List<String>> createFluidTooltip(@Nullable Material material, @NotNull Fluid fluid,String tooltips,
                                                             @NotNull FluidState fluidState) {
         return () -> {
             List<String> tooltip = new ArrayList<>();
@@ -129,8 +131,34 @@ public class FluidTooltipUtil {
                 tooltip.add(I18n.format("gregtech.fluid.temperature.cryogenic"));
             }
 
+            if(!Objects.equals(tooltips, "null"))
+            {
+                tooltip.add(I18n.format(tooltips));
+            }
+
             return tooltip;
         };
+    }
+
+    public static void fluidInfo(@Nullable FluidStack stack, @NotNull RichTooltip tooltip, boolean showAmount,
+                                 boolean showTooltip, boolean showMolAmount) {
+        if (stack == null) return;
+
+        if (showAmount) {
+            tooltip.addLine(IKey.str("%,d L", stack.amount));
+        }
+
+        if (showTooltip) {
+            handleFluidTooltip(tooltip, stack);
+        }
+
+        if (showMolAmount) {
+            addIngotMolFluidTooltip(tooltip, stack);
+        }
+    }
+
+    public static void fluidInfo(@Nullable FluidStack stack, @NotNull RichTooltip tooltip) {
+        fluidInfo(stack, tooltip, true, true, true);
     }
 
     public static void addIngotMolFluidTooltip(@NotNull RichTooltip tooltip, @NotNull FluidStack fluidStack) {
@@ -142,7 +170,27 @@ public class FluidTooltipUtil {
             if (extra != 0) {
                 fluidAmount += String.format(" + %d L", extra);
             }
-            tooltip.add(TextFormatting.GRAY + LocalizationUtils.format("gregtech.gui.amount_raw") + fluidAmount);
+            tooltip.addLine(KeyUtil.lang(TextFormatting.GRAY, "gregtech.gui.amount_raw", fluidAmount));
         }
+    }
+
+    public static @NotNull IKey getFluidModNameKey(@NotNull FluidStack fluidStack) {
+        return IKey.str(getFluidModName(fluidStack.getFluid()));
+    }
+
+    public static @NotNull String getFluidModName(@NotNull FluidStack fluidStack) {
+        return getFluidModName(fluidStack.getFluid());
+    }
+
+    public static @NotNull String getFluidModName(@NotNull Fluid fluid) {
+        ModContainer modContainer = Loader.instance().getIndexedModList().get(getFluidModID(fluid));
+        if (modContainer == null) throw new IllegalStateException(
+                "Tried to get the mod name of a fluid that isn't registered to the Forge FluidRegistry");
+        return "§9§o" + modContainer.getName() + "§r";
+    }
+
+    public static @NotNull String getFluidModID(@NotNull Fluid fluid) {
+        String fluidModName = FluidRegistry.getDefaultFluidName(fluid);
+        return fluidModName.substring(0, fluidModName.indexOf(":"));
     }
 }

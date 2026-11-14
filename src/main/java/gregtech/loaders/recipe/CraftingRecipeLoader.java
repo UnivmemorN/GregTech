@@ -15,6 +15,7 @@ import gregtech.common.blocks.BlockGlassCasing;
 import gregtech.common.blocks.MetaBlocks;
 import gregtech.common.crafting.FacadeRecipe;
 import gregtech.common.items.MetaItems;
+import gregtech.common.metatileentities.MetaTileEntities;
 import gregtech.loaders.recipe.handlers.ToolRecipeHandler;
 
 import net.minecraft.init.Blocks;
@@ -230,94 +231,108 @@ public class CraftingRecipeLoader {
                 SHAPE_EMPTY.getStackForm());
         ModHandler.addShapedRecipe("shape_extruder_rotor", SHAPE_EXTRUDER_ROTOR.getStackForm(), "   ", " S ", "x  ",
                 'S', SHAPE_EMPTY.getStackForm());
+        ModHandler.addShapedRecipe(true, "shape_extruder.turbine_blade", SHAPE_EXTRUDER_TURBINE_BLADE.getStackForm(),
+                "   ", " M ", "  x",
+                'M', SHAPE_EXTRUDER_PLATE);
+        ModHandler.addShapedRecipe(true, "shape_extruder.drill_head", SHAPE_EXTRUDER_DRILL_HEAD.getStackForm(),
+                "   ", " M ", " x ",
+                'M', SHAPE_EXTRUDER_INGOT);
 
         ModHandler.addShapedRecipe(true, "shape_mold.plate", SHAPE_MOLD_PLATE.getStackForm(),
                 " hf", " M ", "   ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true,"shape_mold.gear", SHAPE_MOLD_GEAR.getStackForm(),
-                " h ", " M ", "  f",
+                "h f", " M ", "   ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.bottle", SHAPE_MOLD_BOTTLE.getStackForm(),
-                " h ", " M ", " f ",
+                "h  ", "fM ", "   ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.ingot", SHAPE_MOLD_INGOT.getStackForm(),
-                " h ", " M ", "f  ",
+                "h  ", " Mf", "   ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.ball", SHAPE_MOLD_BALL.getStackForm(),
-                " h ", "fM ", "   ",
+                "h  ", " M ", "f  ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.block", SHAPE_MOLD_BLOCK.getStackForm(),
-                "fh ", " M ", "   ",
+                "h  ", " M ", " f ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.nugget", SHAPE_MOLD_NUGGET.getStackForm(),
-                "  h", " Mf", "   ",
+                "h  ", " M ", "  f",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.cylinder", SHAPE_MOLD_CYLINDER.getStackForm(),
-                "  h", "fM ", "   ",
+                "fh ", " M ", "   ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.anvil", SHAPE_MOLD_ANVIL.getStackForm(),
-                "f h", " M ", "   ",
+                " h ", "fM ", "   ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.name", SHAPE_MOLD_NAME.getStackForm(),
-                " fh", " M ", "   ",
+                " h ", " Mf", "   ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.gear_small", SHAPE_MOLD_GEAR_SMALL.getStackForm(),
-                "   ", " Mh", " f ",
+                " h ", " M ", "f  ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.rotor", SHAPE_MOLD_ROTOR.getStackForm(),
-                "   ", " M ", "f h",
+                " h ", " M ", " f ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.rod", SHAPE_MOLD_ROD.getStackForm(),
-                "   ", " Mh", "f  ",
+                " h ", " M ", "  f",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.bolt", SHAPE_MOLD_BOLT.getStackForm(),
-                "   ", "fMh", "   ",
+                "f h", " M ", "   ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.round", SHAPE_MOLD_ROUND.getStackForm(),
-                "f  ", " Mh", "   ",
+                " fh", " M ", "   ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.screw", SHAPE_MOLD_SCREW.getStackForm(),
-                " f ", " Mh", "   ",
+                "  h", "fM ", "   ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.ring", SHAPE_MOLD_RING.getStackForm(),
-                "  f", " Mh", "   ",
+                "  h", " Mf", "   ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.rod_long", SHAPE_MOLD_ROD_LONG.getStackForm(),
-                "   ", " M ", " fh",
+                "  h", " M ", "f  ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.turbine_blade", SHAPE_MOLD_TURBINE_BLADE.getStackForm(),
-                "   ", "fM ", "  h",
+                "  h", " M ", " f ",
                 'M', SHAPE_EMPTY);
 
         ModHandler.addShapedRecipe(true, "shape_mold.drill_head", SHAPE_MOLD_DRILL_HEAD.getStackForm(),
-                "   ", " M ", " hf",
+                "  h", " M ", "  f",
                 'M', SHAPE_EMPTY);
 
-        ModHandler.addShapedRecipe(true, "shape_extruder.turbine_blade", SHAPE_EXTRUDER_TURBINE_BLADE.getStackForm(),
-                "   ", " M ", "  x",
-                'M', SHAPE_EXTRUDER_PLATE);
-
-        ModHandler.addShapedRecipe(true, "shape_extruder.drill_head", SHAPE_EXTRUDER_DRILL_HEAD.getStackForm(),
-                "   ", " M ", " x ",
-                'M', SHAPE_EXTRUDER_INGOT);
+        ModHandler.addShapedRecipe("shape_mold_pipe_tiny", SHAPE_MOLD_PIPE_TINY.getStackForm(),
+                "f  ", "hM ", "   ",
+                'M', SHAPE_EMPTY);
+        ModHandler.addShapedRecipe("shape_mold_pipe_small", SHAPE_MOLD_PIPE_SMALL.getStackForm(),
+                " f ", "hM ", "   ",
+                'M', SHAPE_EMPTY);
+        ModHandler.addShapedRecipe("shape_mold_pipe_normal", SHAPE_MOLD_PIPE_NORMAL.getStackForm(),
+                "  f", "hM ", "   ",
+                'M', SHAPE_EMPTY);
+        ModHandler.addShapedRecipe("shape_mold_pipe_large", SHAPE_MOLD_PIPE_LARGE.getStackForm(),
+                "   ", "hMf", "   ",
+                'M', SHAPE_EMPTY);
+        ModHandler.addShapedRecipe("shape_mold_pipe_huge", SHAPE_MOLD_PIPE_HUGE.getStackForm(),
+                "   ", "hM ", "f  ",
+                'M', SHAPE_EMPTY);
 
         ///////////////////////////////////////////////////
         // Credits //
@@ -365,13 +380,18 @@ public class CraftingRecipeLoader {
                 CREDIT_NAQUADAH.getStackForm(), CREDIT_NAQUADAH.getStackForm(), CREDIT_NAQUADAH.getStackForm(),
                 CREDIT_NAQUADAH.getStackForm(), CREDIT_NAQUADAH.getStackForm(), CREDIT_NAQUADAH.getStackForm(),
                 CREDIT_NAQUADAH.getStackForm(), CREDIT_NAQUADAH.getStackForm());
+
         ///////////////////////////////////////////////////
         // Armors //
         ///////////////////////////////////////////////////
+
+        // Nightvision Goggles
         ModHandler.addShapedRecipe("nightvision_goggles", MetaItems.NIGHTVISION_GOGGLES.getStackForm(), "CSC", "RBR",
                 "LdL", 'C', new UnificationEntry(OrePrefix.circuit, Tier.ULV), 'S',
                 new UnificationEntry(OrePrefix.screw, Steel), 'R', new UnificationEntry(OrePrefix.ring, Rubber), 'B',
                 MetaItems.BATTERY_LV_SODIUM, 'L', new UnificationEntry(OrePrefix.lens, Glass));
+
+        // Jetpacks
         ModHandler.addShapedRecipe("fluid_jetpack", MetaItems.SEMIFLUID_JETPACK.getStackForm(), "xCw", "SUS", "RIR",
                 'C', new UnificationEntry(OrePrefix.circuit, Tier.LV), 'S',
                 MetaItems.FLUID_CELL_LARGE_STEEL.getStackForm(), 'U', MetaItems.ELECTRIC_PUMP_LV.getStackForm(), 'R',
@@ -386,6 +406,34 @@ public class CraftingRecipeLoader {
                 MetaItems.POWER_THRUSTER_ADVANCED.getStackForm(), 'B', ENERGIUM_CRYSTAL.getStackForm(), 'W',
                 new UnificationEntry(OrePrefix.wireGtQuadruple, Gold), 'C',
                 new UnificationEntry(OrePrefix.circuit, Tier.HV));
+
+        // Piston Boots
+        ModHandler.addShapedRecipe(true, "piston_boots",
+                MetaItems.PISTON_BOOTS.getStackForm(), "EhE", "RLR", "PBP",
+                'E', Items.LEATHER,
+                'R', new UnificationEntry(OrePrefix.plate, Materials.Rubber),
+                'L', Items.LEATHER_BOOTS,
+                'P', MetaItems.ELECTRIC_PISTON_LV,
+                'B', MetaItems.BATTERY_LV_SODIUM);
+
+        // Coal Jetpack
+        ModHandler.addShapedRecipe("coal_jetpack", MetaItems.COAL_JETPACK.getStackForm(), "xCw", "SUS", "RIR",
+                'C', new UnificationEntry(OrePrefix.circuit, Tier.ULV), 'S',
+                MetaTileEntities.BRONZE_DRUM.getStackForm(), 'U', Blocks.PISTON, 'R',
+                new UnificationEntry(OrePrefix.rotor, Tin), 'I',
+                new UnificationEntry(OrePrefix.pipeSmallFluid, Copper));
+
+        // Hazmat Suite
+        ModHandler.addShapedRecipe("hazmat_helmet", MetaItems.HAZMAT_HELMET.getStackForm(), "PPP", "P P", 'P',
+                new UnificationEntry(OrePrefix.plate, Materials.Rubber));
+        ModHandler.addShapedRecipe("hazmat_chestplate", MetaItems.HAZMAT_CHESTPLATE.getStackForm(), "P P", "PPP",
+                "PPP", 'P', new UnificationEntry(OrePrefix.plate, Materials.Rubber));
+        ModHandler.addShapedRecipe("hazmat_leggings", MetaItems.HAZMAT_LEGGINGS.getStackForm(), "PPP", "P P", "P P",
+                'P', new UnificationEntry(OrePrefix.plate, Materials.Rubber));
+        ModHandler.addShapedRecipe("hazmat_boots", MetaItems.HAZMAT_BOOTS.getStackForm(), "P P", "P P", 'P',
+                new UnificationEntry(OrePrefix.plate, Materials.Rubber));
+
+        // Nano Armor
         ModHandler.addShapedRecipe("nano_helmet", MetaItems.NANO_HELMET.getStackForm(), "PPP", "PNP", "xEd", 'P',
                 MetaItems.CARBON_FIBER_PLATE.getStackForm(), 'N', MetaItems.NIGHTVISION_GOGGLES.getStackForm(), 'E',
                 MetaItems.ENERGIUM_CRYSTAL.getStackForm());

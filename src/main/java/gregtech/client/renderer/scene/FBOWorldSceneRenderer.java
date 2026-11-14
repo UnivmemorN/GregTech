@@ -1,6 +1,9 @@
 package gregtech.client.renderer.scene;
 
 import gregtech.api.util.GTLog;
+import gregtech.api.util.Position;
+import gregtech.api.util.PositionedRect;
+import gregtech.api.util.Size;
 
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.GlStateManager;
@@ -20,22 +23,23 @@ import org.lwjgl.opengl.GL11;
 import javax.vecmath.Vector3f;
 
 /**
- * Created with IntelliJ IDEA.
+ * Shared offscreen scene renderer for monitors and structure previews.
+ * Owns framebuffer allocation, cached scene rendering, texture presentation and resource cleanup;
+ * block geometry caching is provided by {@link VBOWorldSceneRenderer}.
  *
- * @Author: KilaBash
- * @Date: 2021/08/23
- * @Description: It looks similar to {@link ImmediateWorldSceneRenderer}, but totally different.
- *               It uses FBO and is more universality and efficient(X).
- *               FBO can be rendered anywhere more flexibly, not just in the GUI.
- *               If you have scene rendering needs, you will love this FBO renderer.
- *               TODO OP_LIST might be used in the future to further improve performance.
+ * <p>Structure preview picking and independently composited overlays belong to
+ * {@link StructurePreviewRenderer}. The monitor uses this base renderer directly.
  */
 @SideOnly(Side.CLIENT)
-public class FBOWorldSceneRenderer extends WorldSceneRenderer {
+public class FBOWorldSceneRenderer extends VBOWorldSceneRenderer {
 
     private int resolutionWidth = 1080;
     private int resolutionHeight = 1080;
-    private Framebuffer fbo;
+    protected Framebuffer fbo;
+    private boolean fboAllocationFailed;
+
+    // Dirty flag: when true, the FBO content needs to be re-rendered
+    private boolean fboDirty = true;
 
     public FBOWorldSceneRenderer(World world, int resolutionWidth, int resolutionHeight) {
         super(world);
@@ -55,6 +59,21 @@ public class FBOWorldSceneRenderer extends WorldSceneRenderer {
         return resolutionHeight;
     }
 
+    /**
+     * Mark the FBO content as needing re-render. Call this when the camera moves,
+     * the layer changes, or the structure switches.
+     */
+    public void markFBODirty() {
+        this.fboDirty = true;
+    }
+
+    /**
+     * @return true if the FBO needs re-rendering this frame
+     */
+    public boolean isFBODirty() {
+        return fboDirty;
+    }
+
     /***
      * This will modify the size of the FBO. You'd better know what you're doing before you call it.
      */
@@ -62,14 +81,14 @@ public class FBOWorldSceneRenderer extends WorldSceneRenderer {
         this.resolutionWidth = resolutionWidth;
         this.resolutionHeight = resolutionHeight;
         releaseFBO();
-        try {
-            fbo = new Framebuffer(resolutionWidth, resolutionHeight, true);
-        } catch (Exception e) {
-            GTLog.logger.error(e);
-        }
+        fboAllocationFailed = false;
+        this.fboDirty = true;
     }
 
     public RayTraceResult screenPos2BlockPosFace(int mouseX, int mouseY) {
+        if (!ensureFBO()) {
+            return null;
+        }
         int lastID = bindFBO();
         RayTraceResult looking = super.screenPos2BlockPosFace(mouseX, mouseY, 0, 0, this.resolutionWidth,
                 this.resolutionHeight);
@@ -78,28 +97,112 @@ public class FBOWorldSceneRenderer extends WorldSceneRenderer {
     }
 
     public Vector3f blockPos2ScreenPos(BlockPos pos, boolean depth) {
+        if (!ensureFBO()) {
+            return null;
+        }
         int lastID = bindFBO();
         Vector3f winPos = super.blockPos2ScreenPos(pos, depth, 0, 0, this.resolutionWidth, this.resolutionHeight);
         unbindFBO(lastID);
         return winPos;
     }
 
-    public void render(float x, float y, float width, float height, float mouseX, float mouseY) {
-        // bind to FBO
-        int lastID = bindFBO();
-        super.render(0, 0, this.resolutionWidth, this.resolutionHeight, (int) (this.resolutionWidth * mouseX / width),
-                (int) (this.resolutionHeight * (1 - mouseY / height)));
-        // unbind FBO
-        unbindFBO(lastID);
+    @Override
+    protected PositionedRect getPositionedRect(int x, int y, int width, int height) {
+        return new PositionedRect(new Position(x, y), new Size(width, height));
+    }
 
-        // bind FBO as texture
+    /**
+     * Renders the scene. If the FBO is dirty, re-renders the full scene into the FBO.
+     * Otherwise, just draws the cached FBO texture as a quad (nearly free).
+     * Hit test is only performed on dirty frames (when depth buffer is freshly written).
+     */
+    public void render(float x, float y, float width, float height, float mouseX, float mouseY) {
+        if (!ensureFBO()) {
+            super.render(x, y, width, height, (int) mouseX, (int) mouseY);
+            return;
+        }
+        if (fboDirty) {
+            // Re-render scene into FBO
+            float localMouseX = mouseX - x;
+            float localMouseY = mouseY - y;
+            int lastID = bindFBO();
+            super.render(0, 0, this.resolutionWidth, this.resolutionHeight,
+                    (int) (this.resolutionWidth * localMouseX / width),
+                    (int) (this.resolutionHeight * (1 - localMouseY / height)));
+            unbindFBO(lastID);
+            fboDirty = false;
+        }
+
+        // Draw cached FBO texture as a screen-aligned quad
+        drawFBOQuad(x, y, width, height);
+    }
+
+    /**
+     * Allocate the framebuffer only when the preview is actually rendered or
+     * queried. Scene owners may be created before they become visible, so eager
+     * allocation here would retain unused textures.
+     */
+    protected boolean ensureFBO() {
+        if (fbo != null) {
+            return true;
+        }
+        if (fboAllocationFailed) {
+            return false;
+        }
+        try {
+            fbo = new Framebuffer(resolutionWidth, resolutionHeight, true);
+            GTLog.logger.debug("[SceneRenderer] allocated FBO {}x{}", resolutionWidth, resolutionHeight);
+            return true;
+        } catch (Exception e) {
+            fboAllocationFailed = true;
+            GTLog.logger.error(e);
+            return false;
+        }
+    }
+
+    @Override
+    public void render(float x, float y, float width, float height, int mouseX, int mouseY) {
+        render(x, y, width, height, (float) mouseX, (float) mouseY);
+    }
+
+    @Override
+    public WorldSceneRenderer setClipPlanes(double minY, double maxY) {
+        markFBODirty();
+        return super.setClipPlanes(minY, maxY);
+    }
+
+    @Override
+    public WorldSceneRenderer disableClipPlanes() {
+        markFBODirty();
+        return super.disableClipPlanes();
+    }
+
+    @Override
+    public void setCameraLookAt(Vector3f eyePos, Vector3f lookAt, Vector3f worldUp) {
+        super.setCameraLookAt(eyePos, lookAt, worldUp);
+        markFBODirty();
+    }
+
+    @Override
+    public void setCameraLookAt(Vector3f lookAt, double radius, double rotationPitch, double rotationYaw) {
+        super.setCameraLookAt(lookAt, radius, rotationPitch, rotationYaw);
+        markFBODirty();
+    }
+
+    /**
+     * Draw the FBO texture as a textured quad covering the specified screen area.
+     */
+    protected void drawFBOQuad(float x, float y, float width, float height) {
         GlStateManager.enableTexture2D();
         GlStateManager.disableLighting();
-        lastID = GL11.glGetInteger(GL11.GL_TEXTURE_2D);
+        // GlStateManager's cached lighting flag cannot observe glPopAttrib() in resetCamera(), so
+        // the call above may be skipped while GL still has lighting enabled. A lit screen quad is
+        // exactly what turned every structure preview into a dark image.
+        GL11.glDisable(GL11.GL_LIGHTING);
+        int lastTexID = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
         GlStateManager.bindTexture(fbo.framebufferTexture);
         GlStateManager.color(1, 1, 1, 1);
 
-        // render rect with FBO texture
         Tessellator tessellator = Tessellator.getInstance();
         BufferBuilder bufferbuilder = tessellator.getBuffer();
         bufferbuilder.begin(7, DefaultVertexFormats.POSITION_TEX);
@@ -110,11 +213,7 @@ public class FBOWorldSceneRenderer extends WorldSceneRenderer {
         bufferbuilder.pos(x, y + height, 0).tex(0, 0).endVertex();
         tessellator.draw();
 
-        GlStateManager.bindTexture(lastID);
-    }
-
-    public void render(float x, float y, float width, float height, int mouseX, int mouseY) {
-        render(x, y, width, height, (float) mouseX, (float) mouseY);
+        GlStateManager.bindTexture(lastTexID);
     }
 
     private int bindFBO() {
@@ -137,5 +236,11 @@ public class FBOWorldSceneRenderer extends WorldSceneRenderer {
             fbo.deleteFramebuffer();
         }
         fbo = null;
+    }
+
+    @Override
+    public void dispose() {
+        super.dispose();
+        releaseFBO();
     }
 }

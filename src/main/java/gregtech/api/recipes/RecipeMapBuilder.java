@@ -36,7 +36,9 @@ public class RecipeMapBuilder<B extends RecipeBuilder<B>> {
     private int fluidOutputs;
     private boolean modifyFluidOutputs = true;
 
-    private boolean isGenerator;
+    private boolean jeiOverclockButton = true;
+    private boolean isGenerator = false;
+    private boolean isJEIVisible = true;
 
     private RecipeMapUIFunction recipeMapUIFunction = this::buildUI;
 
@@ -159,6 +161,16 @@ public class RecipeMapBuilder<B extends RecipeBuilder<B>> {
     }
 
     /**
+     * Hide this recipemap from JEI
+     *
+     * @return this
+     */
+    public @NotNull RecipeMapBuilder<B> hideJEI() {
+        this.isJEIVisible = false;
+        return this;
+    }
+
+    /**
      * @deprecated in favor of the MUI2 method.
      * @param progressBar the progress bar texture to use
      * @return this
@@ -243,6 +255,11 @@ public class RecipeMapBuilder<B extends RecipeBuilder<B>> {
         return this;
     }
 
+    public @NotNull RecipeMapBuilder<B> disableJeiOverclockButton() {
+        this.jeiOverclockButton = false;
+        return this;
+    }
+
     /**
      * @deprecated in favor of the MUI2 method.
      */
@@ -287,7 +304,7 @@ public class RecipeMapBuilder<B extends RecipeBuilder<B>> {
      */
     private @NotNull RecipeMapUI<?> buildUI(@NotNull RecipeMap<?> recipeMap) {
         RecipeMapUI<?> ui = new RecipeMapUI<>(recipeMap, modifyItemInputs, modifyItemOutputs, modifyFluidInputs,
-                modifyFluidOutputs, isGenerator);
+                modifyFluidOutputs, isGenerator,isJEIVisible);
         if (usesMui2 && this.mapUIBuilder != null) {
             ui.buildMui2(this.mapUIBuilder);
         } else {
@@ -370,6 +387,12 @@ public class RecipeMapBuilder<B extends RecipeBuilder<B>> {
         }
         if (buildActions != null) {
             recipeMap.onRecipeBuild(buildActions);
+        }
+        if (!jeiOverclockButton) {
+            recipeMap.disableJeiOverclockButton();
+        }
+        if(isGenerator){
+            recipeMap.setGenerator();
         }
         recipeMap.getPrimaryRecipeCategory().jeiSortToBack(sortToBack);
         return recipeMap;

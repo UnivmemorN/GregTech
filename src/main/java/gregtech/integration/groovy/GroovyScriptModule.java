@@ -25,6 +25,7 @@ import gregtech.common.blocks.BlockFrame;
 import gregtech.common.blocks.MetaBlocks;
 import gregtech.common.pipelike.cable.BlockCable;
 import gregtech.common.pipelike.fluidpipe.BlockFluidPipe;
+import gregtech.common.pipelike.heat.BlockHeatConductor;
 import gregtech.common.pipelike.itempipe.BlockItemPipe;
 import gregtech.integration.IntegrationSubmodule;
 import gregtech.modules.GregTechModules;
@@ -62,8 +63,6 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
-
 @Optional.Interface(modid = Mods.Names.GROOVY_SCRIPT,
                     iface = "com.cleanroommc.groovyscript.api.GroovyPlugin",
                     striprefs = true)
@@ -103,9 +102,7 @@ public class GroovyScriptModule extends IntegrationSubmodule implements GroovyPl
 
     @SubscribeEvent
     public static void onMTERegistries(MTEManager.MTERegistryEvent event) {
-        // automatically create a registry for groovyscript to store its MTEs
         GregTechAPI.mteManager.createRegistry(getPackId());
-        GregTechAPI.MIGRATIONS.registriesMigrator().migrate(getPackId(), IntStream.rangeClosed(32000, Short.MAX_VALUE));
     }
 
     public static boolean isCurrentlyRunning() {
@@ -211,6 +208,13 @@ public class GroovyScriptModule extends IntegrationSubmodule implements GroovyPl
                 for (Material material : cable.getEnabledMaterials()) {
                     String name = cable.getPrefix().name + material.toCamelCaseString();
                     ItemStack stack = cable.getItem(material);
+                    map.put(name, stack);
+                }
+            }
+            for (BlockHeatConductor pipe : MetaBlocks.HEAT_CONDUCTOR.get(modid)) {
+                for (Material material : pipe.getEnabledMaterials()) {
+                    String name = pipe.getPrefix().name + material.toCamelCaseString();
+                    ItemStack stack = pipe.getItem(material);
                     map.put(name, stack);
                 }
             }

@@ -1,30 +1,41 @@
 package gregtech.common.blocks;
 
 import gregtech.api.GregTechAPI;
+import gregtech.api.block.coil.CoilRegistry;
+import gregtech.api.block.coil.CustomCoilBlock;
 import gregtech.api.block.machines.BlockMachine;
 import gregtech.api.metatileentity.MetaTileEntityHolder;
+import gregtech.api.metatileentity.multiblock.nuclear.fission.ModeratorRegistry;
 import gregtech.api.metatileentity.registry.MTERegistry;
 import gregtech.api.pipenet.longdist.BlockLongDistancePipe;
 import gregtech.api.unification.OreDictUnifier;
 import gregtech.api.unification.material.Material;
 import gregtech.api.unification.material.Materials;
+import gregtech.api.unification.material.properties.ModeratorProperty;
 import gregtech.api.unification.material.properties.PropertyKey;
 import gregtech.api.unification.material.registry.MaterialRegistry;
 import gregtech.api.unification.ore.OrePrefix;
 import gregtech.api.unification.ore.StoneType;
 import gregtech.api.util.BlockUtility;
+import gregtech.api.util.GTLog;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.function.TriConsumer;
 import gregtech.client.model.SimpleStateMapper;
 import gregtech.client.model.modelfactories.BakedModelHandler;
+import gregtech.client.renderer.godforge.GodforgeRenderTileEntity;
+import gregtech.client.renderer.godforge.GodforgeStarRenderer;
 import gregtech.client.renderer.handler.MetaTileEntityRenderer;
 import gregtech.client.renderer.handler.MetaTileEntityTESR;
+import gregtech.client.renderer.handler.TileEntityTreeTapRenderer;
 import gregtech.client.renderer.pipe.CableRenderer;
 import gregtech.client.renderer.pipe.FluidPipeRenderer;
+import gregtech.client.renderer.pipe.HeatConductorRenderer;
 import gregtech.client.renderer.pipe.ItemPipeRenderer;
 import gregtech.client.renderer.pipe.LaserPipeRenderer;
 import gregtech.client.renderer.pipe.OpticalPipeRenderer;
 import gregtech.common.ConfigHolder;
+import gregtech.common.blocks.bedrock.BlockBedrockFluidSpring;
+import gregtech.common.blocks.bedrock.TileEntityBedrockFluidSpring;
 import gregtech.common.blocks.explosive.BlockITNT;
 import gregtech.common.blocks.explosive.BlockPowderbarrel;
 import gregtech.common.blocks.foam.BlockFoam;
@@ -37,7 +48,9 @@ import gregtech.common.blocks.wood.BlockRubberDoor;
 import gregtech.common.blocks.wood.BlockRubberLeaves;
 import gregtech.common.blocks.wood.BlockRubberLog;
 import gregtech.common.blocks.wood.BlockRubberSapling;
+import gregtech.common.blocks.wood.BlockTreeTap;
 import gregtech.common.blocks.wood.BlockWoodenDoor;
+import gregtech.common.blocks.wood.TileEntityTreeTap;
 import gregtech.common.items.MetaItems;
 import gregtech.common.pipelike.cable.BlockCable;
 import gregtech.common.pipelike.cable.Insulation;
@@ -48,6 +61,10 @@ import gregtech.common.pipelike.fluidpipe.FluidPipeType;
 import gregtech.common.pipelike.fluidpipe.longdistance.LDFluidPipeType;
 import gregtech.common.pipelike.fluidpipe.tile.TileEntityFluidPipe;
 import gregtech.common.pipelike.fluidpipe.tile.TileEntityFluidPipeTickable;
+import gregtech.common.pipelike.heat.BlockHeatConductor;
+import gregtech.common.pipelike.heat.HeatConductorType;
+import gregtech.common.pipelike.heat.tile.TileEntityHeatConductor;
+import gregtech.common.pipelike.heat.tile.TileEntityHeatConductorTickable;
 import gregtech.common.pipelike.itempipe.BlockItemPipe;
 import gregtech.common.pipelike.itempipe.ItemPipeType;
 import gregtech.common.pipelike.itempipe.longdistance.LDItemPipeType;
@@ -63,8 +80,6 @@ import gregtech.common.pipelike.optical.tile.TileEntityOpticalPipe;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockFence;
 import net.minecraft.block.BlockFenceGate;
-import net.minecraft.block.BlockLog;
-import net.minecraft.block.BlockLog.EnumAxis;
 import net.minecraft.block.BlockSlab;
 import net.minecraft.block.BlockSlab.EnumBlockHalf;
 import net.minecraft.block.BlockStairs;
@@ -106,8 +121,7 @@ import java.util.Objects;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-import static gregtech.api.unification.material.info.MaterialFlags.FORCE_GENERATE_BLOCK;
-import static gregtech.api.unification.material.info.MaterialFlags.GENERATE_FRAME;
+import static gregtech.api.unification.material.info.MaterialFlags.*;
 import static gregtech.api.util.GTUtility.gregtechId;
 
 public class MetaBlocks {
@@ -115,10 +129,11 @@ public class MetaBlocks {
     private MetaBlocks() {}
     public static BlockMachine MACHINE;
     public static final Map<String, BlockCable[]> CABLES = new Object2ObjectOpenHashMap<>();
+    public static final Map<String, BlockHeatConductor[]> HEAT_CONDUCTOR = new Object2ObjectOpenHashMap<>();
     public static final Map<String, BlockFluidPipe[]> FLUID_PIPES = new Object2ObjectOpenHashMap<>();
     public static final Map<String, BlockItemPipe[]> ITEM_PIPES = new Object2ObjectOpenHashMap<>();
-    public static final BlockOpticalPipe[] OPTICAL_PIPES = new BlockOpticalPipe[OpticalPipeType.values().length];
-    public static final BlockLaserPipe[] LASER_PIPES = new BlockLaserPipe[LaserPipeType.values().length];
+    public static final Map<String, BlockOpticalPipe[]> OPTICAL_PIPES = new Object2ObjectOpenHashMap<>();
+    public static final BlockLaserPipe[] LASER_PIPES = new BlockLaserPipe[OpticalPipeType.values().length];
     public static BlockLongDistancePipe LD_ITEM_PIPE;
     public static BlockLongDistancePipe LD_FLUID_PIPE;
 
@@ -139,6 +154,23 @@ public class MetaBlocks {
     public static BlockComputerCasing COMPUTER_CASING;
     public static BlockBatteryPart BATTERY_BLOCK;
 
+    // Nuclear blocks
+    public static BlockFissionCasing FISSION_CASING;
+    public static BlockNuclearCasing NUCLEAR_CASING;
+    public static BlockGasCentrifugeCasing GAS_CENTRIFUGE_CASING;
+    public static BlockPanelling PANELLING;
+    public static BlockNuclearReactorCasing NUCLEAR_REACTOR_CASING;
+    public static BlockMoltenCorium MOLTEN_CORIUM;
+
+    // GCYM的
+    public static BlockUniqueCasing UNIQUE_CASING;
+    public static BlockLargeMultiblockCasing LARGE_MULTIBLOCK_CASING;
+
+    // Forge of the Gods blocks
+    public static BlockGodforgeCasing GODFORGE_CASING;
+    public static BlockGodforgeGlass GODFORGE_GLASS;
+    public static BlockGodforgeRender GODFORGE_RENDER;
+
     public static final EnumMap<EnumDyeColor, BlockLamp> LAMPS = new EnumMap<>(EnumDyeColor.class);
     public static final EnumMap<EnumDyeColor, BlockLamp> BORDERLESS_LAMPS = new EnumMap<>(EnumDyeColor.class);
 
@@ -155,6 +187,8 @@ public class MetaBlocks {
     public static BlockRubberLog RUBBER_LOG;
     public static BlockRubberLeaves RUBBER_LEAVES;
     public static BlockRubberSapling RUBBER_SAPLING;
+    public static BlockTreeTap TREE_TAP;
+    public static BlockBedrockFluidSpring BEDROCK_FLUID_SPRING;
     public static BlockGregPlanks PLANKS;
     public static BlockGregWoodSlab WOOD_SLAB;
     public static BlockGregWoodSlab DOUBLE_WOOD_SLAB;
@@ -177,13 +211,16 @@ public class MetaBlocks {
 
     public static final Map<Material, BlockCompressed> COMPRESSED = new Object2ObjectOpenHashMap<>();
     public static final Map<Material, BlockFrame> FRAMES = new Object2ObjectOpenHashMap<>();
+    public static final Map<Material, BlockSheet> SHEETS = new Object2ObjectOpenHashMap<>();
     public static final Map<Material, BlockSurfaceRock> SURFACE_ROCK = new Object2ObjectOpenHashMap<>();
 
     public static final List<BlockCompressed> COMPRESSED_BLOCKS = new ArrayList<>();
     public static final List<BlockFrame> FRAME_BLOCKS = new ArrayList<>();
+    public static final List<BlockSheet> SHEET_BLOCKS = new ArrayList<>();
     public static final List<BlockSurfaceRock> SURFACE_ROCK_BLOCKS = new ArrayList<>();
 
     public static final List<BlockOre> ORES = new ArrayList<>();
+    public static final List<BlockLeanOre> LEAN_ORES = new ArrayList<>();
     public static final List<BlockFluidBase> FLUID_BLOCKS = new ArrayList<>();
 
     public static void init() {
@@ -202,6 +239,13 @@ public class MetaBlocks {
             }
             CABLES.put(modid, cables);
 
+            BlockHeatConductor[] pipe = new BlockHeatConductor[HeatConductorType.VALUES.length];
+            for (HeatConductorType ins : HeatConductorType.VALUES) {
+                pipe[ins.ordinal()] = new BlockHeatConductor(ins, registry);
+                pipe[ins.ordinal()].setRegistryName(modid, ins.getName());
+            }
+            HEAT_CONDUCTOR.put(modid, pipe);
+
             BlockFluidPipe[] fluidPipes = new BlockFluidPipe[FluidPipeType.VALUES.length];
             for (FluidPipeType type : FluidPipeType.VALUES) {
                 fluidPipes[type.ordinal()] = new BlockFluidPipe(type, registry);
@@ -215,11 +259,14 @@ public class MetaBlocks {
                 itemPipes[type.ordinal()].setRegistryName(modid, String.format("item_pipe_%s", type.name));
             }
             ITEM_PIPES.put(modid, itemPipes);
-        }
-        for (OpticalPipeType type : OpticalPipeType.values()) {
-            OPTICAL_PIPES[type.ordinal()] = new BlockOpticalPipe(type);
-            OPTICAL_PIPES[type.ordinal()].setRegistryName(String.format("optical_pipe_%s", type.getName()));
-            OPTICAL_PIPES[type.ordinal()].setTranslationKey(String.format("optical_pipe_%s", type.getName()));
+
+            BlockOpticalPipe[] opticalPipes = new BlockOpticalPipe[OpticalPipeType.VALUES.length];
+            for (OpticalPipeType type : OpticalPipeType.VALUES) {
+                opticalPipes[type.ordinal()] = new BlockOpticalPipe(type, registry);
+                opticalPipes[type.ordinal()].setRegistryName(modid,
+                        String.format("optical_pipe_%s", type.getName()));
+            }
+            OPTICAL_PIPES.put(modid, opticalPipes);
         }
         for (LaserPipeType type : LaserPipeType.values()) {
             LASER_PIPES[type.ordinal()] = new BlockLaserPipe(type);
@@ -264,6 +311,31 @@ public class MetaBlocks {
         BATTERY_BLOCK = new BlockBatteryPart();
         BATTERY_BLOCK.setRegistryName("battery_block");
 
+        FISSION_CASING = new BlockFissionCasing();
+        FISSION_CASING.setRegistryName("fission_casing");
+        NUCLEAR_CASING = new BlockNuclearCasing();
+        NUCLEAR_CASING.setRegistryName("nuclear_casing");
+        GAS_CENTRIFUGE_CASING = new BlockGasCentrifugeCasing();
+        GAS_CENTRIFUGE_CASING.setRegistryName("gas_centrifuge_casing");
+        PANELLING = new BlockPanelling();
+        PANELLING.setRegistryName("panelling");
+        NUCLEAR_REACTOR_CASING = new BlockNuclearReactorCasing();
+        NUCLEAR_REACTOR_CASING.setRegistryName("nuclear_reactor_casing");
+        MOLTEN_CORIUM = BlockMoltenCorium.register();
+
+        UNIQUE_CASING = new BlockUniqueCasing();
+        UNIQUE_CASING.setRegistryName("unique_casing");
+        LARGE_MULTIBLOCK_CASING = new BlockLargeMultiblockCasing();
+        LARGE_MULTIBLOCK_CASING.setRegistryName("large_multiblock_casing");
+
+        // Forge of the Gods blocks
+        GODFORGE_CASING = new BlockGodforgeCasing();
+        GODFORGE_CASING.setRegistryName("godforge_casing");
+        GODFORGE_GLASS = new BlockGodforgeGlass();
+        GODFORGE_GLASS.setRegistryName("godforge_glass");
+        GODFORGE_RENDER = new BlockGodforgeRender();
+        GODFORGE_RENDER.setRegistryName("godforge_render");
+
         for (EnumDyeColor color : EnumDyeColor.values()) {
             BlockLamp block = new BlockLamp(color);
             block.setRegistryName(color.getName() + "_lamp");
@@ -293,6 +365,10 @@ public class MetaBlocks {
 
         RUBBER_LOG = new BlockRubberLog();
         RUBBER_LOG.setRegistryName("rubber_log");
+        TREE_TAP = new BlockTreeTap();
+        TREE_TAP.setRegistryName("tree_tap");
+        BEDROCK_FLUID_SPRING = new BlockBedrockFluidSpring();
+        BEDROCK_FLUID_SPRING.setRegistryName("bedrock_fluid_spring");
         RUBBER_LEAVES = new BlockRubberLeaves();
         RUBBER_LEAVES.setRegistryName("rubber_leaves");
         RUBBER_SAPLING = new BlockRubberSapling();
@@ -346,6 +422,10 @@ public class MetaBlocks {
                 material -> (material.hasProperty(PropertyKey.INGOT) || material.hasProperty(PropertyKey.GEM) ||
                         material.hasFlag(FORCE_GENERATE_BLOCK)) && !OrePrefix.block.isIgnored(material),
                 MetaBlocks::createCompressedBlock);
+
+        createGeneratedBlock(
+                material -> material.hasFlag(GENERATE_SHEET) && !OrePrefix.sheet.isIgnored(material),
+                MetaBlocks::createSheetBlock);
 
         registerTileEntity();
 
@@ -417,6 +497,15 @@ public class MetaBlocks {
         FRAME_BLOCKS.add(block);
     }
 
+    private static void createSheetBlock(String modid, Material[] materials, int index) {
+        BlockSheet block = BlockSheet.create(materials);
+        block.setRegistryName(modid, "meta_block_sheet_" + index);
+        for (Material m : materials) {
+            SHEETS.put(m, block);
+        }
+        SHEET_BLOCKS.add(block);
+    }
+
     private static void createSurfaceRockBlock(String modid, Material[] materials, int index) {
         BlockSurfaceRock block = BlockSurfaceRock.create(materials);
         block.setRegistryName(modid, "meta_block_surface_rock_" + index);
@@ -430,12 +519,17 @@ public class MetaBlocks {
         GameRegistry.registerTileEntity(MetaTileEntityHolder.class, gregtechId("machine"));
         GameRegistry.registerTileEntity(TileEntityCable.class, gregtechId("cable"));
         GameRegistry.registerTileEntity(TileEntityCableTickable.class, gregtechId("cable_tickable"));
+        GameRegistry.registerTileEntity(TileEntityHeatConductor.class, gregtechId("heat_pipe"));
+        GameRegistry.registerTileEntity(TileEntityHeatConductorTickable.class, gregtechId("heat_pipe_tickable"));
         GameRegistry.registerTileEntity(TileEntityFluidPipe.class, gregtechId("fluid_pipe"));
         GameRegistry.registerTileEntity(TileEntityItemPipe.class, gregtechId("item_pipe"));
         GameRegistry.registerTileEntity(TileEntityOpticalPipe.class, gregtechId("optical_pipe"));
         GameRegistry.registerTileEntity(TileEntityLaserPipe.class, gregtechId("laser_pipe"));
         GameRegistry.registerTileEntity(TileEntityFluidPipeTickable.class, gregtechId("fluid_pipe_active"));
         GameRegistry.registerTileEntity(TileEntityItemPipeTickable.class, gregtechId("item_pipe_active"));
+        GameRegistry.registerTileEntity(GodforgeRenderTileEntity.class, gregtechId("godforge_render"));
+        GameRegistry.registerTileEntity(TileEntityTreeTap.class, gregtechId("tree_tap"));
+        GameRegistry.registerTileEntity(TileEntityBedrockFluidSpring.class, gregtechId("bedrock_fluid_spring"));
     }
 
     @SideOnly(Side.CLIENT)
@@ -444,18 +538,6 @@ public class MetaBlocks {
             ModelLoader.setCustomMeshDefinition(Item.getItemFromBlock(registry.getBlock()),
                     stack -> MetaTileEntityRenderer.MODEL_LOCATION);
         }
-
-        for (MaterialRegistry registry : GregTechAPI.materialManager.getRegistries()) {
-            for (BlockCable cable : CABLES.get(registry.getModid())) cable.onModelRegister();
-            for (BlockFluidPipe pipe : FLUID_PIPES.get(registry.getModid())) pipe.onModelRegister();
-            for (BlockItemPipe pipe : ITEM_PIPES.get(registry.getModid())) pipe.onModelRegister();
-        }
-        for (BlockOpticalPipe pipe : OPTICAL_PIPES)
-            ModelLoader.setCustomMeshDefinition(Item.getItemFromBlock(pipe),
-                    stack -> OpticalPipeRenderer.INSTANCE.getModelLocation());
-        for (BlockLaserPipe pipe : LASER_PIPES)
-            ModelLoader.setCustomMeshDefinition(Item.getItemFromBlock(pipe),
-                    stack -> LaserPipeRenderer.INSTANCE.getModelLocation());
 
         registerItemModel(BOILER_CASING);
         registerItemModel(METAL_CASING);
@@ -468,17 +550,66 @@ public class MetaBlocks {
         registerItemModel(CLEANROOM_CASING);
         registerItemModel(COMPUTER_CASING);
         registerItemModel(BATTERY_BLOCK);
+        registerItemModel(FISSION_CASING);
+        registerItemModel(GAS_CENTRIFUGE_CASING);
+        registerItemModel(PANELLING);
+        registerItemModel(NUCLEAR_REACTOR_CASING);
+        registerItemModel(LARGE_MULTIBLOCK_CASING);
         registerItemModel(ASPHALT);
-        for (StoneVariantBlock block : STONE_BLOCKS.values())
-            registerItemModel(block);
         registerItemModel(RUBBER_LOG);
         registerItemModel(RUBBER_LEAVES);
         registerItemModel(RUBBER_SAPLING);
-        ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(RUBBER_SAPLING), 0,
-                new ModelResourceLocation(Objects.requireNonNull(RUBBER_SAPLING.getRegistryName()), "inventory"));
+        registerItemModel(TREE_TAP);
+        registerItemModel(BEDROCK_FLUID_SPRING);
         registerItemModel(PLANKS);
         registerItemModel(LD_ITEM_PIPE);
         registerItemModel(LD_FLUID_PIPE);
+        registerItemModel(BRITTLE_CHARCOAL);
+        registerItemModel(POWDERBARREL);
+        registerItemModel(ITNT);
+        registerItemModel(METAL_SHEET);
+        registerItemModel(LARGE_METAL_SHEET);
+        registerItemModel(STUDS);
+
+        BOILER_FIREBOX_CASING.onModelRegister();
+        NUCLEAR_CASING.onModelRegister();
+        WIRE_COIL.onModelRegister();
+        FUSION_CASING.onModelRegister();
+        MULTIBLOCK_CASING.onModelRegister();
+        TRANSPARENT_CASING.onModelRegister();
+        UNIQUE_CASING.onModelRegister();
+        GODFORGE_CASING.onModelRegister();
+        GODFORGE_GLASS.onModelRegister();
+
+        for (MaterialRegistry registry : GregTechAPI.materialManager.getRegistries()) {
+            for (BlockCable cable : CABLES.get(registry.getModid())) cable.onModelRegister();
+            for (BlockHeatConductor pipe : HEAT_CONDUCTOR.get(registry.getModid())) pipe.onModelRegister();
+            for (BlockFluidPipe pipe : FLUID_PIPES.get(registry.getModid())) pipe.onModelRegister();
+            for (BlockItemPipe pipe : ITEM_PIPES.get(registry.getModid())) pipe.onModelRegister();
+            for (BlockOpticalPipe pipe : OPTICAL_PIPES.get(registry.getModid())) pipe.onModelRegister();
+        }
+        for (BlockLaserPipe pipe : LASER_PIPES)
+            ModelLoader.setCustomMeshDefinition(Item.getItemFromBlock(pipe),
+                    stack -> LaserPipeRenderer.INSTANCE.getModelLocation());
+
+        for (CoilRegistry r : GregTechAPI.coilManager.getRegistries()) {
+            for (CustomCoilBlock block : r) {
+                block.onModelRegister();
+            }
+        }
+
+        for (StoneVariantBlock block : STONE_BLOCKS.values())
+            registerItemModel(block);
+
+        for (BlockLamp lamp : LAMPS.values()) lamp.onModelRegister();
+        for (BlockLamp lamp : BORDERLESS_LAMPS.values()) lamp.onModelRegister();
+        for (BlockCompressed block : COMPRESSED_BLOCKS) block.onModelRegister();
+        for (BlockFrame block : FRAME_BLOCKS) block.onModelRegister();
+        for (BlockSheet block : SHEET_BLOCKS) block.onModelRegister();
+        for (BlockOre block : ORES) block.onModelRegister();
+        for (BlockLeanOre block : LEAN_ORES) block.onModelRegister();
+
+
         registerItemModelWithOverride(WOOD_SLAB, ImmutableMap.of(BlockSlab.HALF, EnumBlockHalf.BOTTOM));
         ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(RUBBER_WOOD_STAIRS), 0,
                 new ModelResourceLocation(Objects.requireNonNull(RUBBER_WOOD_STAIRS.getRegistryName()), "inventory"));
@@ -494,26 +625,8 @@ public class MetaBlocks {
         ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(TREATED_WOOD_FENCE_GATE), 0,
                 new ModelResourceLocation(Objects.requireNonNull(TREATED_WOOD_FENCE_GATE.getRegistryName()),
                         "inventory"));
-        registerItemModel(BRITTLE_CHARCOAL);
-        registerItemModel(POWDERBARREL);
-        registerItemModel(ITNT);
-
-        registerItemModel(METAL_SHEET);
-        registerItemModel(LARGE_METAL_SHEET);
-        registerItemModel(STUDS);
-
-        BOILER_FIREBOX_CASING.onModelRegister();
-        WIRE_COIL.onModelRegister();
-        FUSION_CASING.onModelRegister();
-        MULTIBLOCK_CASING.onModelRegister();
-        TRANSPARENT_CASING.onModelRegister();
-
-        for (BlockLamp lamp : LAMPS.values()) lamp.onModelRegister();
-        for (BlockLamp lamp : BORDERLESS_LAMPS.values()) lamp.onModelRegister();
-
-        for (BlockCompressed block : COMPRESSED_BLOCKS) block.onModelRegister();
-        for (BlockFrame block : FRAME_BLOCKS) block.onModelRegister();
-        for (BlockOre block : ORES) block.onModelRegister();
+        ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(RUBBER_SAPLING), 0,
+                new ModelResourceLocation(Objects.requireNonNull(RUBBER_SAPLING.getRegistryName()), "inventory"));
     }
 
     @SideOnly(Side.CLIENT)
@@ -553,6 +666,10 @@ public class MetaBlocks {
             for (BlockCable cable : CABLES.get(registry.getModid())) {
                 ModelLoader.setCustomStateMapper(cable, normalStateMapper);
             }
+            normalStateMapper = new SimpleStateMapper(HeatConductorRenderer.INSTANCE.getModelLocation());
+            for (BlockHeatConductor cable : HEAT_CONDUCTOR.get(registry.getModid())) {
+                ModelLoader.setCustomStateMapper(cable, normalStateMapper);
+            }
             normalStateMapper = new SimpleStateMapper(FluidPipeRenderer.INSTANCE.getModelLocation());
             for (BlockFluidPipe pipe : FLUID_PIPES.get(registry.getModid())) {
                 ModelLoader.setCustomStateMapper(pipe, normalStateMapper);
@@ -561,10 +678,10 @@ public class MetaBlocks {
             for (BlockItemPipe pipe : ITEM_PIPES.get(registry.getModid())) {
                 ModelLoader.setCustomStateMapper(pipe, normalStateMapper);
             }
-        }
-        normalStateMapper = new SimpleStateMapper(OpticalPipeRenderer.INSTANCE.getModelLocation());
-        for (BlockOpticalPipe pipe : OPTICAL_PIPES) {
-            ModelLoader.setCustomStateMapper(pipe, normalStateMapper);
+            normalStateMapper = new SimpleStateMapper(OpticalPipeRenderer.INSTANCE.getModelLocation());
+            for (BlockOpticalPipe pipe : OPTICAL_PIPES.get(registry.getModid())) {
+                ModelLoader.setCustomStateMapper(pipe, normalStateMapper);
+            }
         }
         normalStateMapper = new SimpleStateMapper(LaserPipeRenderer.INSTANCE.getModelLocation());
         for (BlockLaserPipe pipe : LASER_PIPES) {
@@ -595,6 +712,8 @@ public class MetaBlocks {
         FLUID_BLOCKS.forEach(modelHandler::addFluidBlock);
 
         ClientRegistry.bindTileEntitySpecialRenderer(MetaTileEntityHolder.class, new MetaTileEntityTESR());
+        ClientRegistry.bindTileEntitySpecialRenderer(GodforgeRenderTileEntity.class, new GodforgeStarRenderer());
+        ClientRegistry.bindTileEntitySpecialRenderer(TileEntityTreeTap.class, new TileEntityTreeTapRenderer());
     }
 
     @SideOnly(Side.CLIENT)
@@ -621,12 +740,23 @@ public class MetaBlocks {
             itemColors.registerItemColorHandler((s, i) -> block.getGtMaterial(s).getMaterialRGB(), block);
         }
 
+        for (BlockSheet block : SHEET_BLOCKS) {
+            blockColors.registerBlockColorHandler((s, w, p, i) -> block.getGtMaterial(s).getMaterialRGB(), block);
+            itemColors.registerItemColorHandler((s, i) -> block.getGtMaterial(s).getMaterialRGB(), block);
+        }
+
         for (BlockSurfaceRock block : SURFACE_ROCK_BLOCKS) {
             blockColors.registerBlockColorHandler((s, w, p, i) -> i == 1 ? block.getGtMaterial(s).getMaterialRGB() : -1,
                     block);
         }
 
         for (BlockOre block : ORES) {
+            blockColors.registerBlockColorHandler((s, w, p, i) -> i == 1 ? block.material.getMaterialRGB() : 0xFFFFFF,
+                    block);
+            itemColors.registerItemColorHandler((s, i) -> i == 1 ? block.material.getMaterialRGB() : 0xFFFFFF, block);
+        }
+
+        for (BlockLeanOre block : LEAN_ORES) {
             blockColors.registerBlockColorHandler((s, w, p, i) -> i == 1 ? block.material.getMaterialRGB() : 0xFFFFFF,
                     block);
             itemColors.registerItemColorHandler((s, i) -> i == 1 ? block.material.getMaterialRGB() : 0xFFFFFF, block);
@@ -644,6 +774,14 @@ public class MetaBlocks {
         blockColors.registerBlockColorHandler((s, w, p, i) -> ConfigHolder.client.defaultPaintingColor,
                 HERMETIC_CASING);
         itemColors.registerItemColorHandler((s, i) -> ConfigHolder.client.defaultPaintingColor, HERMETIC_CASING);
+
+        WIRE_COIL.onColorRegister(blockColors, itemColors);
+
+        for (CoilRegistry r : GregTechAPI.coilManager.getRegistries()) {
+            for (CustomCoilBlock block : r) {
+                block.onColorRegister(blockColors, itemColors);
+            }
+        }
     }
 
     public static void registerWalkingSpeedBonus() {
@@ -686,6 +824,13 @@ public class MetaBlocks {
             OreDictUnifier.registerOre(itemStack, OrePrefix.frameGt, material);
         }
 
+        for (Entry<Material, BlockSheet> entry : SHEETS.entrySet()) {
+            Material material = entry.getKey();
+            BlockSheet block = entry.getValue();
+            ItemStack itemStack = block.getItem(material);
+            OreDictUnifier.registerOre(itemStack, OrePrefix.sheet, material);
+        }
+
         for (BlockOre blockOre : ORES) {
             Material material = blockOre.material;
             for (StoneType stoneType : blockOre.STONE_TYPE.getAllowedValues()) {
@@ -695,11 +840,26 @@ public class MetaBlocks {
                 OreDictUnifier.registerOre(normalStack, stoneType.processingPrefix, material);
             }
         }
+        for (BlockLeanOre blockLeanOre : LEAN_ORES) {
+            Material material = blockLeanOre.material;
+            for (StoneType stoneType : blockLeanOre.STONE_TYPE.getAllowedValues()) {
+                if (stoneType == null) continue;
+                ItemStack normalStack = GTUtility.toItem(blockLeanOre.getDefaultState()
+                        .withProperty(blockLeanOre.STONE_TYPE, stoneType));
+                OreDictUnifier.registerOre(normalStack, stoneType.getLeanProcessingPrefix(), material);
+            }
+        }
         for (MaterialRegistry registry : GregTechAPI.materialManager.getRegistries()) {
             for (BlockCable cable : CABLES.get(registry.getModid())) {
                 for (Material pipeMaterial : cable.getEnabledMaterials()) {
                     ItemStack itemStack = cable.getItem(pipeMaterial);
                     OreDictUnifier.registerOre(itemStack, cable.getPrefix(), pipeMaterial);
+                }
+            }
+            for (BlockHeatConductor pipe : HEAT_CONDUCTOR.get(registry.getModid())) {
+                for (Material pipeMaterial : pipe.getEnabledMaterials()) {
+                    ItemStack itemStack = pipe.getItem(pipeMaterial);
+                    OreDictUnifier.registerOre(itemStack, pipe.getPrefix(), pipeMaterial);
                 }
             }
             for (BlockFluidPipe pipe : FLUID_PIPES.get(registry.getModid())) {
@@ -714,6 +874,25 @@ public class MetaBlocks {
                     OreDictUnifier.registerOre(itemStack, pipe.getPrefix(), pipeMaterial);
                 }
             }
+            for (BlockOpticalPipe pipe : OPTICAL_PIPES.get(registry.getModid())) {
+                for (Material pipeMaterial : pipe.getEnabledMaterials()) {
+                    ItemStack itemStack = pipe.getItem(pipeMaterial);
+                    OreDictUnifier.registerOre(itemStack, pipe.getPrefix(), pipeMaterial);
+                }
+            }
+        }
+
+        for (Material material : GregTechAPI.materialManager.getRegisteredMaterials()) {
+            if (!material.hasProperty(PropertyKey.MODERATOR)) continue;
+
+            BlockCompressed block = COMPRESSED.get(material);
+            if (block == null) {
+                GTLog.logger.warn("Skipping moderator registration for {} because no compressed block was generated",
+                        material.getResourceLocation());
+                continue;
+            }
+            ModeratorProperty moderator = material.getProperty(PropertyKey.MODERATOR);
+            ModeratorRegistry.registerModerator(block.getBlock(material), moderator);
         }
     }
 

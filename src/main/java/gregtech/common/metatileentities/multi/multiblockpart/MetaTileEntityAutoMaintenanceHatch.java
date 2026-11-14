@@ -27,7 +27,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 
 public class MetaTileEntityAutoMaintenanceHatch extends MetaTileEntityMultiblockPart implements
-                                                IMultiblockAbilityPart<IMaintenanceHatch>, IMaintenanceHatch {
+                                                                                     IMultiblockAbilityPart<IMaintenanceHatch>,
+                                                                                     IMaintenanceHatch {
 
     public MetaTileEntityAutoMaintenanceHatch(ResourceLocation metaTileEntityId) {
         super(metaTileEntityId, 3);
@@ -44,12 +45,6 @@ public class MetaTileEntityAutoMaintenanceHatch extends MetaTileEntityMultiblock
         if (shouldRenderOverlay()) {
             Textures.MAINTENANCE_OVERLAY_FULL_AUTO.renderSided(getFrontFacing(), renderState, translation, pipeline);
         }
-    }
-
-    @Override
-    public void addInformation(ItemStack stack, @Nullable World world, List<String> tooltip, boolean advanced) {
-        super.addInformation(stack, world, tooltip, advanced);
-        tooltip.add(I18n.format("gregtech.universal.disabled"));
     }
 
     @Override
@@ -108,11 +103,6 @@ public class MetaTileEntityAutoMaintenanceHatch extends MetaTileEntityMultiblock
     @Override
     public void registerAbilities(@NotNull AbilityInstances abilityInstances) {
         abilityInstances.add(this);
-    }
-
-    @Override
-    public boolean canPartShare() {
-        return false;
     }
 
     @Override

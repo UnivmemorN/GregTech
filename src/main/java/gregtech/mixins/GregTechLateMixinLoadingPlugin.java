@@ -17,12 +17,13 @@ public class GregTechLateMixinLoadingPlugin implements ILateMixinLoader {
         configs.add("mixins.gregtech.jei.json");
         configs.add("mixins.gregtech.ctm.json");
         configs.add("mixins.gregtech.ccl.json");
-        configs.add("mixins.gregtech.littletiles.json");
         configs.add("mixins.gregtech.vintagium.json");
         configs.add("mixins.gregtech.mui2.json");
         configs.add("mixins.gregtech.nothirium.json");
         configs.add("mixins.gregtech.forestry.json");
-
+        configs.add("mixins.gregtech.betterbuilderswands.json");
+        configs.add("mixins.gregtech.chisel.json");
+        configs.add("mixins.gregtech.tconstruct.json");
         return configs;
     }
 
@@ -31,11 +32,13 @@ public class GregTechLateMixinLoadingPlugin implements ILateMixinLoader {
         return switch (mixinConfig) {
             case "mixins.gregtech.theoneprobe.json" -> Mods.TheOneProbe.isModLoaded();
             case "mixins.gregtech.jei.json" -> Mods.JustEnoughItems.isModLoaded();
-            case "mixin.gregtech.ctm.json" -> Mods.CTM.isModLoaded();
-            case "mixins.gregtech.littletiles.json" -> Mods.LittleTiles.isModLoaded();
+            case "mixins.gregtech.ctm.json" -> Mods.CTM.isModLoaded();
             case "mixins.gregtech.vintagium.json" -> Mods.Vintagium.isModLoaded();
             case "mixins.gregtech.nothirium.json" -> Mods.Nothirium.isModLoaded();
             case "mixins.gregtech.forestry.json" -> Mods.Forestry.isModLoaded();
+            case "mixins.gregtech.betterbuilderswands.json" -> Mods.BetterBuildersWands.isModLoaded();
+            case "mixins.gregtech.chisel.json" -> Mods.Chisel.isModLoaded();
+            case "mixins.gregtech.tconstruct.json" -> Mods.TinkersConstruct.isModLoaded();
             default -> true;
         };
     }

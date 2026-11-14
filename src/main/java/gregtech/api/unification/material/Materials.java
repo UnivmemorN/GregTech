@@ -1,16 +1,20 @@
 package gregtech.api.unification.material;
 
-import gregtech.api.unification.material.info.MaterialFlag;
-import gregtech.api.unification.material.materials.*;
+import gregtech.api.fluids.GeneratedFluidHandler;
+import gregtech.api.unification.material.materials.ElementMaterials;
+import gregtech.api.unification.material.materials.FirstDegreeMaterials;
+import gregtech.api.unification.material.materials.HigherDegreeMaterials;
+import gregtech.api.unification.material.materials.MaterialFlagAddition;
+import gregtech.api.unification.material.materials.OrganicChemistryMaterials;
+import gregtech.api.unification.material.materials.SecondDegreeMaterials;
+import gregtech.api.unification.material.materials.SoftToolAddition;
+import gregtech.api.unification.material.materials.UnknownCompositionMaterials;
+import gregtech.api.unification.material.properties.AlloyBlastPropertyAddition;
 import gregtech.api.unification.ore.OrePrefix;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static gregtech.api.unification.material.info.MaterialFlags.*;
-import static gregtech.api.util.Mods.Names.GTQT_CORE;
+import static gregtech.api.util.Mods.Names.GTQT_TEST;
 import static net.minecraftforge.fml.common.Loader.isModLoaded;
 
 /**
@@ -81,6 +85,7 @@ public class Materials {
          */
         MaterialFlagAddition.register();
 
+
         CHEMICAL_DYES = new Material[] {
                 Materials.DyeWhite, Materials.DyeOrange,
                 Materials.DyeMagenta, Materials.DyeLightBlue,
@@ -93,23 +98,15 @@ public class Materials {
         };
 
         // Register soft tools
-        if(!isModLoaded(GTQT_CORE))SoftToolAddition.register();
+        if(!isModLoaded(GTQT_TEST))
+            SoftToolAddition.register();
 
         OrePrefix.init();
     }
 
-    public static final List<MaterialFlag> STD_METAL = new ArrayList<>();
-    public static final List<MaterialFlag> EXT_METAL = new ArrayList<>();
-    public static final List<MaterialFlag> EXT2_METAL = new ArrayList<>();
-
-    static {
-        STD_METAL.add(GENERATE_PLATE);
-
-        EXT_METAL.addAll(STD_METAL);
-        EXT_METAL.add(GENERATE_ROD);
-
-        EXT2_METAL.addAll(EXT_METAL);
-        EXT2_METAL.addAll(Arrays.asList(GENERATE_LONG_ROD, GENERATE_BOLT_SCREW));
+    public static void postMaterialLoad() {
+        AlloyBlastPropertyAddition.init();
+        GeneratedFluidHandler.init();
     }
 
     public static final MarkerMaterial NULL = MarkerMaterial.create("null");
@@ -120,12 +117,17 @@ public class Materials {
     public static Material Actinium;
     public static Material Aluminium;
     public static Material Americium;
+    public static Material Americium240;
+    public static Material Americium241;
+    public static Material Americium242;
+    public static Material Americium243;
     public static Material Antimony;
     public static Material Argon;
     public static Material Arsenic;
     public static Material Astatine;
     public static Material Barium;
     public static Material Berkelium;
+    public static Material Berkelium249;
     public static Material Beryllium;
     public static Material Bismuth;
     public static Material Bohrium;
@@ -134,6 +136,8 @@ public class Materials {
     public static Material Caesium;
     public static Material Calcium;
     public static Material Californium;
+    public static Material Californium249;
+    public static Material Californium252;
     public static Material Carbon;
     public static Material Cadmium;
     public static Material Cerium;
@@ -143,6 +147,14 @@ public class Materials {
     public static Material Copernicium;
     public static Material Copper;
     public static Material Curium;
+    public static Material Curium242;
+    public static Material Curium243;
+    public static Material Curium244;
+    public static Material Curium245;
+    public static Material Curium246;
+    public static Material Curium247;
+    public static Material Curium248;
+    public static Material Curium250;
     public static Material Darmstadtium;
     public static Material Deuterium;
     public static Material Dubnium;
@@ -185,6 +197,11 @@ public class Materials {
     public static Material Neodymium;
     public static Material Neon;
     public static Material Neptunium;
+    public static Material Neptunium235;
+    public static Material Neptunium236;
+    public static Material Neptunium237;
+    public static Material Neptunium238;
+    public static Material Neptunium239;
     public static Material Nickel;
     public static Material Nihonium;
     public static Material Niobium;
@@ -200,12 +217,23 @@ public class Materials {
     public static Material Plutonium;
     public static Material Plutonium239;
     public static Material Plutonium241;
+    public static Material Plutonium236;
+    public static Material Plutonium237;
+    public static Material Plutonium238;
+    public static Material Plutonium240;
+    public static Material Plutonium242;
+    public static Material Plutonium243;
+    public static Material Plutonium244;
     public static Material Potassium;
     public static Material Praseodymium;
     public static Material Promethium;
     public static Material Protactinium;
+    public static Material Protactinium231;
+    public static Material Protactinium233;
     public static Material Radon;
     public static Material Radium;
+    public static Material Radium225;
+    public static Material Radium226;
     public static Material Rhenium;
     public static Material Rhodium;
     public static Material Roentgenium;
@@ -227,6 +255,11 @@ public class Materials {
     public static Material Tennessine;
     public static Material Terbium;
     public static Material Thorium;
+    public static Material Thorium228;
+    public static Material Thorium229;
+    public static Material Thorium230;
+    public static Material Thorium232;
+    public static Material Thorium233;
     public static Material Thallium;
     public static Material Thulium;
     public static Material Tin;
@@ -236,6 +269,12 @@ public class Materials {
     public static Material Uranium;
     public static Material Uranium238;
     public static Material Uranium235;
+    public static Material Uranium232;
+    public static Material Uranium233;
+    public static Material Uranium234;
+    public static Material Uranium236;
+    public static Material Uranium237;
+    public static Material Uranium239;
     public static Material Vanadium;
     public static Material Xenon;
     public static Material Ytterbium;
@@ -423,6 +462,9 @@ public class Materials {
     public static Material NeodymiumMagnetic;
     public static Material HydrochloricAcid;
     public static Material Steam;
+    public static Material SteamExhaust;
+    public static Material HighPressureSteam;
+    public static Material SupercriticalSteam;
     public static Material DistilledWater;
     public static Material SodiumPotassium;
     public static Material SamariumMagnetic;
@@ -464,6 +506,21 @@ public class Materials {
     public static Material Inconel718;
     public static Material HighGradeSolderingAlloy;
     public static Material AntimonyTelluride;
+    public static Material Alumina;
+    public static Material Corium;
+    public static Material SpentUraniumFuelSolution;
+    public static Material RadonRichGasMixture;
+    public static Material LEU235;
+    public static Material HEU235;
+    public static Material LowGradeMOX;
+    public static Material HighGradeMOX;
+    public static Material FBR;
+    public static Material THOR;
+    public static Material HighEnrichedUraniumDioxide;
+    public static Material DepletedUraniumDioxide;
+    public static Material FissilePlutoniumDioxide;
+    public static Material LowEnrichedUraniumDioxide;
+    public static Material HighEnrichedUraniumHexafluoride;
 
     /**
      * Organic chemistry
@@ -529,7 +586,9 @@ public class Materials {
     public static Material Nitrochlorobenzene;
     public static Material Chlorobenzene;
     public static Material Octane;
-    public static Material EthylTertButylEther;
+    public static Material AntiKnockAgent;
+    public static Material MTBEReactionMixtureButene;
+    public static Material MTBEReactionMixtureButane;
     public static Material Ethylbenzene;
     public static Material Naphthalene;
     public static Material Nitrobenzene;
@@ -640,6 +699,8 @@ public class Materials {
     public static Material Gelatin;
     public static Material Agar;
     public static Material Andesite;
+    public static Material GSTGlass;
+    public static Material ZBLANGlass;
     public static Material Milk;
     public static Material Cocoa;
     public static Material Wheat;
@@ -678,6 +739,7 @@ public class Materials {
     public static Material NaquadriaWaste;
     public static Material Lapotron;
     public static Material UUMatter;
+    public static Material UUAmplifier;
     public static Material PCBCoolant;
     public static Material BauxiteSlurry;
     public static Material CrackedBauxiteSlurry;
@@ -686,6 +748,7 @@ public class Materials {
     public static Material BauxiteSlag;
     public static Material Sewage;
     public static Material MolybdeniteLubricant;
+    public static Material WaterproofPaint;
 
     /**
      * Second Degree Compounds
@@ -693,6 +756,8 @@ public class Materials {
     public static Material Glass;
     public static Material Perlite;
     public static Material Borax;
+    public static Material BoronTrioxide;
+    public static Material BoronCarbide;
     public static Material Olivine;
     public static Material Opal;
     public static Material Amethyst;
@@ -741,9 +806,43 @@ public class Materials {
     public static Material LiquidEnderAir;
     public static Material AquaRegia;
     public static Material SaltWater;
+    public static Material HeavyWater;
+    public static Material HighPressureHeavyWater;
     public static Material Clay;
     public static Material Redstone;
     public static Material ChromiumDopedMolybdenite;
+
+    /**
+     * 尾气不应该直接加在配方内
+     * 应该是其他多方块专属
+     * 但是不写在 ceu
+     * 原则上保持ceu发电系统的落后性
+     */
+    public static Material ExhaustGas;
+    public static Material HighPressureExhaustGas;
+    public static Material SupercriticalExhaustGas;
+    public static Material LowTemperatureExhaustGas;
+
+    /**
+     * GCYM的
+     */
+    public static Material Stellite;
+    public static Material WatertightSteel;
+    public static Material MaragingSteel250;
+    public static Material MaragingSteel300;
+    public static Material MaragingSteel350;
+    public static Material HastelloyC276;
+    public static Material HastelloyX;
+    public static Material HastelloyN;
+    public static Material HastelloyW;
+    public static Material Trinaquadalloy;
+    public static Material Zeron100;
+    public static Material TitaniumCarbide;
+    public static Material TantalumCarbide;
+    public static Material MolybdenumDisilicide;
+    public static Material HSLASteel;
+    public static Material TitaniumTungstenCarbide;
+    public static Material IncoloyMA956;
 
     /**
      * Third Degree Materials
@@ -774,4 +873,74 @@ public class Materials {
     public static Material BasalticMineralSand;
     public static Material HSSE;
     public static Material HSSS;
+
+    /**
+     * Forge of the Gods Materials
+     */
+    public static Material DimensionallyTranscendentResidue;
+    public static Material RawStarMatter;
+    public static Material MagnetoHydrodynamicallyConstrainedStarMatter;
+    public static Material GravitonShard;
+    public static Material QuarkGluonPlasma;
+    public static Material MagMatter;
+
+    /**
+     * Disposable Battery Block intermediate materials (A-series).
+     * IDs: 1700+
+     */
+
+    // A0 — Zinc-Manganese intermediates
+    public static Material ZincManganeseMix;
+    public static Material ZincManganeseElectrolyte;
+
+    // A1 — Lithium-Manganese intermediates
+    public static Material LithiumManganeseMix;
+    public static Material LithiumManganeseElectrolyte;
+
+    // A2 — Nickel-Cadmium intermediates
+    public static Material NickelHydroxide;
+    public static Material NickelCadmiumElectrode;
+    public static Material NickelOxide;
+    public static Material NickelCadmiumElectrolyte;
+
+    // A3 — Lead-Acid intermediates
+    public static Material LeadAcidElectrode;
+    public static Material LeadAcidElectrolyte;
+
+    // A4 — Vanadium Flow intermediates
+    public static Material VanadiumPentoxide;
+    public static Material VanadiumElectrolyte;
+    public static Material VanadiumFlowElectrode;
+
+    // A5 — LFP (Lithium Iron Phosphate) intermediates
+    public static Material IronIIIPhosphate;
+    public static Material LFPCathodePowder;
+    public static Material CarbonNanotubeFilm;
+
+    // A6 — LCO (Lithium Cobalt Oxide) intermediates
+    public static Material LithiumCobaltOxide;
+    public static Material PVDF;
+
+    // A7 — NMC (Nickel-Manganese-Cobalt) intermediates
+    public static Material NMCCathodePowder;
+    public static Material LithiumHexafluorophosphate;
+
+    // A5/A6 Electrolyte Fluids
+    public static Material LithiumBisoxalatoborate;
+    public static Material LithiumBistriflimide;
+
+    // Charged electrolyte fluids for Battery Accumulator multiblock
+    public static Material ChargedZincManganeseElectrolyte;
+    public static Material ChargedLithiumManganeseElectrolyte;
+    public static Material ChargedNickelCadmiumElectrolyte;
+    public static Material ChargedLeadAcidElectrolyte;
+    public static Material ChargedVanadiumElectrolyte;
+    public static Material ChargedLithiumBisoxalatoborate;
+    public static Material ChargedLithiumBistriflimide;
+    public static Material ChargedLithiumHexafluorophosphate;
+
+    //CombExtract
+    public static Material HoneycombExtract;
+    public static Material PremiumHoneycombExtract;
+    public static Material PremiumGradeHoneycombExtract;
 }

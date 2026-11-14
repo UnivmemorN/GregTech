@@ -4,7 +4,6 @@ import gregtech.api.cover.CoverBase;
 import gregtech.api.cover.CoverDefinition;
 import gregtech.api.cover.CoverWithUI;
 import gregtech.api.cover.CoverableView;
-import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.mui.GTGuis;
 import gregtech.client.renderer.texture.Textures;
 
@@ -26,10 +25,11 @@ import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.factory.SidedPosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.SyncHandlers;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.layout.Grid;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -50,6 +50,12 @@ public class CoverStorage extends CoverBase implements CoverWithUI {
     @Override
     public boolean canAttach(@NotNull CoverableView coverable, @NotNull EnumFacing side) {
         return true;
+    }
+
+    @Override
+    public boolean allowsCopyPasteTool() {
+        // 复制/粘贴会连同内部物品一起复制，禁止以免刷物品
+        return false;
     }
 
     @Override
@@ -82,12 +88,7 @@ public class CoverStorage extends CoverBase implements CoverWithUI {
     }
 
     @Override
-    public boolean usesMui2() {
-        return true;
-    }
-
-    @Override
-    public ModularPanel buildUI(SidedPosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(SidedPosGuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
         guiSyncManager.registerSlotGroup("item_inv", 9);
 
         int rows = inventorySize / 9;
@@ -96,12 +97,12 @@ public class CoverStorage extends CoverBase implements CoverWithUI {
             widgets.add(new ArrayList<>());
             for (int j = 0; j < 9; j++) {
                 int index = i * 9 + j;
-                widgets.get(i).add(new ItemSlot().slot(SyncHandlers.itemSlot(storageHandler, index)
+                widgets.get(i).add(new ItemSlot().slot(new ModularSlot(storageHandler, index)
                         .slotGroup("item_inv")));
             }
         }
         return GTGuis.createPanel(this, 9 * 18 + 14, 18 + 4 * 18 + 5 + 14 + 18 * rows)
-                .child(IKey.lang("cover.storage.title").asWidget().pos(5, 5))
+                .child(IKey.str("存储覆盖板").asWidget().pos(5, 5))
                 .bindPlayerInventory()
                 .child(new Grid()
                         .top(18).left(7).right(7).height(rows * 18)

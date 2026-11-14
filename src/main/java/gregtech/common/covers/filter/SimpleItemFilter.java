@@ -1,9 +1,6 @@
 package gregtech.common.covers.filter;
 
 import gregtech.api.cover.CoverWithUI;
-import gregtech.api.gui.GuiTextures;
-import gregtech.api.gui.widgets.PhantomSlotWidget;
-import gregtech.api.gui.widgets.ToggleButtonWidget;
 import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuis;
 import gregtech.api.util.TextFormattingUtil;
@@ -21,16 +18,14 @@ import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.utils.Color;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.SyncHandlers;
 import com.cleanroommc.modularui.widget.Widget;
 import com.cleanroommc.modularui.widgets.CycleButtonWidget;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.layout.Flow;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
+import com.cleanroommc.modularui.widgets.slot.PhantomItemSlot;
 import com.cleanroommc.modularui.widgets.slot.SlotGroup;
 import org.jetbrains.annotations.NotNull;
-
-import java.util.function.Consumer;
 
 public class SimpleItemFilter extends BaseFilter {
 
@@ -39,29 +34,6 @@ public class SimpleItemFilter extends BaseFilter {
 
     public SimpleItemFilter(ItemStack stack) {
         filterReader = new SimpleItemFilterReader(stack, MAX_MATCH_SLOTS);
-    }
-
-    public static int itemFilterMatch(IItemHandler filterSlots, boolean ignoreDamage,
-                                      boolean ignoreNBTData, ItemStack itemStack) {
-        for (int i = 0; i < filterSlots.getSlots(); i++) {
-            ItemStack filterStack = filterSlots.getStackInSlot(i);
-            if (!filterStack.isEmpty() && areItemsEqual(ignoreDamage, ignoreNBTData, filterStack, itemStack)) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    private static boolean areItemsEqual(boolean ignoreDamage, boolean ignoreNBTData,
-                                         ItemStack filterStack, ItemStack itemStack) {
-        if (ignoreDamage) {
-            if (!filterStack.isItemEqualIgnoreDurability(itemStack)) {
-                return false;
-            }
-        } else if (!filterStack.isItemEqual(itemStack)) {
-            return false;
-        }
-        return ignoreNBTData || ItemStack.areItemStackTagsEqual(filterStack, itemStack);
     }
 
     @Override
@@ -103,21 +75,8 @@ public class SimpleItemFilter extends BaseFilter {
     }
 
     @Override
-    public void initUI(Consumer<gregtech.api.gui.Widget> widgetGroup) {
-        for (int i = 0; i < 9; i++) {
-            widgetGroup.accept(new PhantomSlotWidget(filterReader, i, 10 + 18 * (i % 3), 18 * (i / 3))
-                    .setBackgroundTexture(GuiTextures.SLOT));
-        }
-        widgetGroup.accept(new ToggleButtonWidget(74, 0, 20, 20, GuiTextures.BUTTON_FILTER_DAMAGE,
-                filterReader::isIgnoreDamage, filterReader::setIgnoreDamage)
-                .setTooltipText("cover.item_filter.ignore_damage"));
-        widgetGroup.accept(new ToggleButtonWidget(99, 0, 20, 20, GuiTextures.BUTTON_FILTER_NBT,
-                filterReader::isIgnoreNBT, filterReader::setIgnoreNBT).setTooltipText("cover.item_filter.ignore_nbt"));
-    }
-
-    @Override
-    public @NotNull ModularPanel createPopupPanel(PanelSyncManager syncManager) {
-        return GTGuis.createPopupPanel("simple_item_filter", 98, 81, false)
+    public @NotNull ModularPanel createPopupPanel(PanelSyncManager syncManager, String panelName) {
+        return GTGuis.createPopupPanel(panelName, 98, 81, false)
                 .child(CoverWithUI.createTitleRow(getContainerStack()))
                 .child(createWidgets(syncManager).top(22).left(4));
     }
@@ -141,32 +100,31 @@ public class SimpleItemFilter extends BaseFilter {
                         .matrix("XXX",
                                 "XXX",
                                 "XXX")
-                        .key('X', index -> new ItemSlot()
-                                .tooltip(tooltip -> {
-                                    tooltip.setAutoUpdate(true);
-                                    tooltip.textColor(Color.GREY.main);
-                                })
-                                .tooltipBuilder(tooltip -> {
-                                    if (dirtyNotifiable instanceof CoverRoboticArm coverArm &&
-                                            coverArm.getTransferMode() != TransferMode.TRANSFER_ANY ||
-                                            dirtyNotifiable instanceof CoverItemVoidingAdvanced coverItem &&
-                                                    coverItem.getVoidingMode() != VoidingMode.VOID_ANY) {
-                                        tooltip.addLine(IKey.lang("cover.item_filter.config_amount"));
-                                        int count = this.filterReader.getTagAt(index)
-                                                .getInteger(SimpleItemFilterReader.COUNT);
-                                        if (count > 0)
-                                            tooltip.addLine(
-                                                    IKey.str("Count: %s", TextFormattingUtil.formatNumbers(count)));
-                                    }
-                                })
-                                .slot(SyncHandlers.phantomItemSlot(this.filterReader, index)
+                        .key('X', index -> new PhantomItemSlot()
+                                .slot(new ModularSlot(this.filterReader, index)
                                         .ignoreMaxStackSize(true)
                                         .slotGroup(filterInventory)
                                         .changeListener((newItem, onlyAmountChanged, client, init) -> {
                                             if (onlyAmountChanged && !init) {
                                                 markDirty();
                                             }
-                                        })))
+                                        }))
+                                .tooltipAutoUpdate(true)
+                                .tooltipTextColor(Color.GREY.main)
+                                .tooltipBuilder(tooltip -> {
+                                    if (dirtyNotifiable instanceof CoverRoboticArm coverArm &&
+                                            coverArm.getTransferMode() != TransferMode.TRANSFER_ANY ||
+                                            dirtyNotifiable instanceof CoverItemVoidingAdvanced coverItem &&
+                                                    coverItem.getVoidingMode() != VoidingMode.VOID_ANY) {
+                                        int count = this.filterReader.getTagAt(index)
+                                                .getInteger(SimpleItemFilterReader.COUNT);
+                                        if (count > 0) {
+                                            tooltip.addLine(IKey.lang("cover.item_filter.config_amount"));
+                                            tooltip.addLine(
+                                                    IKey.str("Count: %s", TextFormattingUtil.formatNumbers(count)));
+                                        }
+                                    }
+                                }))
                         .build().marginRight(4))
                 .child(Flow.column().width(18).coverChildren()
                         .child(createBlacklistUI())
@@ -182,5 +140,28 @@ public class SimpleItemFilter extends BaseFilter {
                                 .stateBackground(1, GTGuiTextures.BUTTON_IGNORE_NBT[1])
                                 .addTooltip(0, IKey.lang("cover.item_filter.ignore_nbt.disabled"))
                                 .addTooltip(1, IKey.lang("cover.item_filter.ignore_nbt.enabled"))));
+    }
+
+    public static int itemFilterMatch(IItemHandler filterSlots, boolean ignoreDamage,
+                                      boolean ignoreNBTData, ItemStack itemStack) {
+        for (int i = 0; i < filterSlots.getSlots(); i++) {
+            ItemStack filterStack = filterSlots.getStackInSlot(i);
+            if (!filterStack.isEmpty() && areItemsEqual(ignoreDamage, ignoreNBTData, filterStack, itemStack)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean areItemsEqual(boolean ignoreDamage, boolean ignoreNBTData,
+                                         ItemStack filterStack, ItemStack itemStack) {
+        if (ignoreDamage) {
+            if (!filterStack.isItemEqualIgnoreDurability(itemStack)) {
+                return false;
+            }
+        } else if (!filterStack.isItemEqual(itemStack)) {
+            return false;
+        }
+        return ignoreNBTData || ItemStack.areItemStackTagsEqual(filterStack, itemStack);
     }
 }

@@ -16,10 +16,8 @@ import gregtech.api.metatileentity.multiblock.MultiblockControllerBase;
 import gregtech.api.metatileentity.registry.MTERegistry;
 import gregtech.api.pipenet.IBlockAppearance;
 import gregtech.api.util.GTUtility;
-import gregtech.api.util.Mods;
 import gregtech.client.renderer.handler.MetaTileEntityRenderer;
 import gregtech.common.creativetab.GTCreativeTabs;
-import gregtech.common.items.MetaItems;
 import gregtech.common.items.behaviors.spray.AbstractSprayBehavior;
 import gregtech.integration.ctm.IFacadeWrapper;
 
@@ -66,7 +64,6 @@ import codechicken.lib.raytracer.CuboidRayTraceResult;
 import codechicken.lib.raytracer.IndexedCuboid6;
 import codechicken.lib.raytracer.RayTracer;
 import codechicken.lib.vec.Cuboid6;
-import gtqt.common.items.GTQTMetaItems;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -214,7 +211,12 @@ public class BlockMachine extends BlockCustomParticle implements ITileEntityProv
         MetaTileEntity metaTileEntity = getMetaTileEntity(world, pos);
         if (metaTileEntity == null)
             return ItemStack.EMPTY;
-        return metaTileEntity.getStackForm();
+        ItemStack itemStack = metaTileEntity.getStackForm();
+        NBTTagCompound tagCompound = new NBTTagCompound();
+        metaTileEntity.writeItemStackData(tagCompound);
+        if (!tagCompound.isEmpty())
+            itemStack.setTagCompound(tagCompound);
+        return itemStack;
     }
 
     @Override
@@ -301,11 +303,9 @@ public class BlockMachine extends BlockCustomParticle implements ITileEntityProv
                 removed.forEach(mteTag::removeTag);
             }
         }
-        MetaTileEntity metaTileEntity = holder.setMetaTileEntity(sampleMetaTileEntity, mteTag);
+        MetaTileEntity metaTileEntity = holder.setMetaTileEntity(sampleMetaTileEntity, mteTag,
+                mteTag == null ? stackTag : null);
         if (mteTag == null) {
-            if (stackTag != null && !stackTag.isEmpty())
-                metaTileEntity.initFromItemStackData(stackTag);
-
             if (metaTileEntity.isValidFrontFacing(EnumFacing.UP)) {
                 metaTileEntity.setFrontFacing(EnumFacing.getDirectionFromEntityLiving(pos, placer));
             } else {
@@ -322,12 +322,6 @@ public class BlockMachine extends BlockCustomParticle implements ITileEntityProv
                 }
             }
         }
-        if (Mods.AppliedEnergistics2.isModLoaded()) {
-            if (metaTileEntity.getProxy() != null) {
-                metaTileEntity.getProxy().setOwner((EntityPlayer) placer);
-            }
-        }
-
         // Color machines on place if holding spray can in off-hand
         if (placer instanceof EntityPlayer player) {
             AbstractSprayBehavior.handleExternalSpray(player, EnumHand.OFF_HAND, worldIn, pos, EnumFacing.UP);
@@ -546,6 +540,11 @@ public class BlockMachine extends BlockCustomParticle implements ITileEntityProv
             if (cover instanceof IFacadeCover facadeCover) {
                 return facadeCover.getVisualState();
             }
+        }
+        // CTM: check if machine declares a casing state for connected textures
+        if (metaTileEntity != null) {
+            IBlockState casing = metaTileEntity.getCasingBlock();
+            if (casing != null) return casing;
         }
         return world.getBlockState(pos);
     }

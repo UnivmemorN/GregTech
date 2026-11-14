@@ -24,7 +24,8 @@ import static gregtech.api.GTValues.*;
 import static gregtech.api.recipes.RecipeMaps.*;
 import static gregtech.api.unification.material.Materials.*;
 import static gregtech.api.unification.ore.OrePrefix.*;
-import static gregtech.api.util.Mods.Names.GTQT_CORE;
+import static gregtech.api.util.Mods.Names.GTQT_TEST;
+import static gregtech.api.util.Mods.Names.GT_STEAM;
 import static gregtech.common.items.MetaItems.PLANT_BALL;
 import static gregtech.common.items.MetaItems.STICKY_RESIN;
 import static net.minecraftforge.fml.common.Loader.isModLoaded;
@@ -110,21 +111,23 @@ public class SeparationRecipes {
             }
         }
 
-        CENTRIFUGE_RECIPES.recipeBuilder().duration(400).EUt(5)
-                .input(STICKY_RESIN)
-                .output(dust, RawRubber, 3)
-                .chancedOutput(PLANT_BALL, 1000, 850)
-                .fluidOutputs(Glue.getFluid(100))
-                .buildAndRegister();
+        if(!isModLoaded(GT_STEAM)) {
+            CENTRIFUGE_RECIPES.recipeBuilder().duration(400).EUt(20)
+                    .input(STICKY_RESIN)
+                    .output(dust, RawRubber, 3)
+                    .chancedOutput(PLANT_BALL, 1000, 850)
+                    .fluidOutputs(Glue.getFluid(100))
+                    .buildAndRegister();
 
-        CENTRIFUGE_RECIPES.recipeBuilder().duration(200).EUt(20)
-                .inputs(new ItemStack(MetaBlocks.RUBBER_LOG))
-                .chancedOutput(STICKY_RESIN, 5000, 1200)
-                .chancedOutput(PLANT_BALL, 3750, 900)
-                .chancedOutput(dust, Carbon, 2500, 600)
-                .chancedOutput(dust, Wood, 2500, 700)
-                .fluidOutputs(Methane.getFluid(60))
-                .buildAndRegister();
+            CENTRIFUGE_RECIPES.recipeBuilder().duration(200).EUt(30)
+                    .inputs(new ItemStack(MetaBlocks.RUBBER_LOG))
+                    .chancedOutput(STICKY_RESIN, 5000, 1200)
+                    .chancedOutput(PLANT_BALL, 3750, 900)
+                    .chancedOutput(dust, Carbon, 2500, 600)
+                    .chancedOutput(dust, Wood, 2500, 700)
+                    .fluidOutputs(Methane.getFluid(60))
+                    .buildAndRegister();
+        }
 
         CENTRIFUGE_RECIPES.recipeBuilder().duration(250).EUt(VA[LV])
                 .inputs(new ItemStack(Blocks.DIRT, 1, GTValues.W))
@@ -209,7 +212,7 @@ public class SeparationRecipes {
                 .chancedOutput(dust, Tantalite, 125, 35)
                 .buildAndRegister();
 
-        if (!isModLoaded(GTQT_CORE)) {
+        if (!isModLoaded(GTQT_TEST)) {
             CENTRIFUGE_RECIPES.recipeBuilder().duration(64).EUt(20)
                     .input(dust, RareEarth)
                     .chancedOutput(dustSmall, Cadmium, 2500, 400)
@@ -335,15 +338,17 @@ public class SeparationRecipes {
 
         ELECTROLYZER_RECIPES.recipeBuilder()
                 .fluidInputs(Water.getFluid(1000))
+                .circuitMeta(1)
                 .fluidOutputs(Hydrogen.getFluid(2000))
                 .fluidOutputs(Oxygen.getFluid(1000))
-                .duration(1200).EUt(VA[LV]).buildAndRegister();
+                .duration(1500).EUt(VA[LV]).buildAndRegister();
 
         ELECTROLYZER_RECIPES.recipeBuilder()
                 .fluidInputs(DistilledWater.getFluid(1000))
+                .circuitMeta(1)
                 .fluidOutputs(Hydrogen.getFluid(2000))
                 .fluidOutputs(Oxygen.getFluid(1000))
-                .duration(900).EUt(VA[LV]).buildAndRegister();
+                .duration(1200).EUt(VA[LV]).buildAndRegister();
 
         ELECTROLYZER_RECIPES.recipeBuilder()
                 .inputs(new ItemStack(Items.DYE, 3))

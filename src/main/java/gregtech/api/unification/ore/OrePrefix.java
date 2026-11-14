@@ -8,6 +8,7 @@ import gregtech.api.unification.material.info.MaterialIconType;
 import gregtech.api.unification.material.properties.IMaterialProperty;
 import gregtech.api.unification.material.properties.PropertyKey;
 import gregtech.api.unification.stack.MaterialStack;
+import gregtech.api.util.Hazard;
 import gregtech.api.util.LocalizationUtils;
 import gregtech.api.util.function.TriConsumer;
 import gregtech.common.ConfigHolder;
@@ -16,19 +17,17 @@ import net.minecraft.client.resources.I18n;
 import net.minecraft.item.ItemStack;
 
 import com.google.common.base.Preconditions;
-import crafttweaker.annotations.ZenRegister;
 import it.unimi.dsi.fastutil.objects.Object2FloatMap;
 import it.unimi.dsi.fastutil.objects.Object2FloatOpenHashMap;
 import org.apache.commons.lang3.Validate;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import stanhebben.zenscript.annotations.ZenClass;
-import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -40,12 +39,11 @@ import java.util.function.Predicate;
 
 import static gregtech.api.GTValues.M;
 import static gregtech.api.unification.material.info.MaterialFlags.*;
+import static gregtech.api.unification.material.properties.PropertyKey.FISSION_FUEL;
 import static gregtech.api.unification.ore.OrePrefix.Conditions.*;
 import static gregtech.api.unification.ore.OrePrefix.Flags.ENABLE_UNIFICATION;
 import static gregtech.api.unification.ore.OrePrefix.Flags.SELF_REFERENCING;
 
-@ZenClass("mods.gregtech.ore.OrePrefix")
-@ZenRegister
 public class OrePrefix {
 
     private final static Map<String, OrePrefix> PREFIXES = new HashMap<>();
@@ -58,6 +56,14 @@ public class OrePrefix {
             .flags(OrePrefix.Flags.ENABLE_UNIFICATION)
             .condition(OrePrefix.Conditions.hasOreProperty)
             .build();
+
+    public static final OrePrefix oreLean = Builder.of("oreLean", -1)
+            .material(null)
+            .materialIconType(MaterialIconType.oreLean)
+            .flags(OrePrefix.Flags.ENABLE_UNIFICATION)
+            .condition(OrePrefix.Conditions.hasOreProperty)
+            .build();
+
     //rawOre
     public static final OrePrefix rawOre = Builder.of("rawOre", -1)
             .material(null)
@@ -81,10 +87,30 @@ public class OrePrefix {
     public static final OrePrefix oreBasalt = new OrePrefix("oreBasalt", -1, null, MaterialIconType.ore,
             ENABLE_UNIFICATION, hasOreProperty);
 
+    public static final OrePrefix oreGraniteLean = new OrePrefix("oreGraniteLean", -1, null, MaterialIconType.oreLean,
+            ENABLE_UNIFICATION, hasOreProperty);
+    public static final OrePrefix oreDioriteLean = new OrePrefix("oreDioriteLean", -1, null, MaterialIconType.oreLean,
+            ENABLE_UNIFICATION, hasOreProperty);
+    public static final OrePrefix oreAndesiteLean = new OrePrefix("oreAndesiteLean", -1, null, MaterialIconType.oreLean,
+            ENABLE_UNIFICATION, hasOreProperty);
+    public static final OrePrefix oreBlackgraniteLean = new OrePrefix("oreBlackgraniteLean", -1, null,
+            MaterialIconType.oreLean, ENABLE_UNIFICATION, hasOreProperty);
+    public static final OrePrefix oreRedgraniteLean = new OrePrefix("oreRedgraniteLean", -1, null,
+            MaterialIconType.oreLean, ENABLE_UNIFICATION, hasOreProperty);
+    public static final OrePrefix oreMarbleLean = new OrePrefix("oreMarbleLean", -1, null, MaterialIconType.oreLean,
+            ENABLE_UNIFICATION, hasOreProperty);
+    public static final OrePrefix oreBasaltLean = new OrePrefix("oreBasaltLean", -1, null, MaterialIconType.oreLean,
+            ENABLE_UNIFICATION, hasOreProperty);
+
     // In case of an Sand-Ores Mod. Ore -> Material is a Oneway Operation!
     public static final OrePrefix oreSand = new OrePrefix("oreSand", -1, null, MaterialIconType.ore, ENABLE_UNIFICATION,
             null);
     public static final OrePrefix oreRedSand = new OrePrefix("oreRedSand", -1, null, MaterialIconType.ore,
+            ENABLE_UNIFICATION, null);
+
+    public static final OrePrefix oreSandLean = new OrePrefix("oreSandLean", -1, null, MaterialIconType.oreLean,
+            ENABLE_UNIFICATION, null);
+    public static final OrePrefix oreRedSandLean = new OrePrefix("oreRedSandLean", -1, null, MaterialIconType.oreLean,
             ENABLE_UNIFICATION, null);
 
     // Prefix of the Nether-Ores Mod. Causes Ores to double. Ore -> Material is a Oneway Operation!
@@ -93,6 +119,40 @@ public class OrePrefix {
     // In case of an End-Ores Mod. Ore -> Material is a Oneway Operation!
     public static final OrePrefix oreEndstone = new OrePrefix("oreEndstone", -1, null, MaterialIconType.ore,
             ENABLE_UNIFICATION, hasOreProperty);
+
+    // Legacy aliases
+    public static final OrePrefix oreNether = new OrePrefix("oreNether", -1, null, MaterialIconType.ore,
+            ENABLE_UNIFICATION, hasOreProperty);
+    public static final OrePrefix oreEnd = new OrePrefix("oreEnd", -1, null, MaterialIconType.ore,
+            ENABLE_UNIFICATION, hasOreProperty);
+
+    public static final OrePrefix oreNetherrackLean = new OrePrefix("oreNetherrackLean", -1, null,
+            MaterialIconType.oreLean, ENABLE_UNIFICATION, hasOreProperty);
+    public static final OrePrefix oreNetherLean = new OrePrefix("oreNetherLean", -1, null, MaterialIconType.oreLean,
+            ENABLE_UNIFICATION, hasOreProperty);
+    public static final OrePrefix oreEndstoneLean = new OrePrefix("oreEndstoneLean", -1, null, MaterialIconType.oreLean,
+            ENABLE_UNIFICATION, hasOreProperty);
+    public static final OrePrefix oreEndLean = new OrePrefix("oreEndLean", -1, null, MaterialIconType.oreLean,
+            ENABLE_UNIFICATION, hasOreProperty);
+
+    /** Maps each stone-type OrePrefix to its lean counterpart. */
+    public static final Map<OrePrefix, OrePrefix> leanCounterparts = new HashMap<>();
+    static {
+        leanCounterparts.put(OrePrefix.ore, OrePrefix.oreLean);
+        leanCounterparts.put(OrePrefix.oreGranite, OrePrefix.oreGraniteLean);
+        leanCounterparts.put(OrePrefix.oreDiorite, OrePrefix.oreDioriteLean);
+        leanCounterparts.put(OrePrefix.oreAndesite, OrePrefix.oreAndesiteLean);
+        leanCounterparts.put(OrePrefix.oreBlackgranite, OrePrefix.oreBlackgraniteLean);
+        leanCounterparts.put(OrePrefix.oreRedgranite, OrePrefix.oreRedgraniteLean);
+        leanCounterparts.put(OrePrefix.oreMarble, OrePrefix.oreMarbleLean);
+        leanCounterparts.put(OrePrefix.oreBasalt, OrePrefix.oreBasaltLean);
+        leanCounterparts.put(OrePrefix.oreSand, OrePrefix.oreSandLean);
+        leanCounterparts.put(OrePrefix.oreRedSand, OrePrefix.oreRedSandLean);
+        leanCounterparts.put(OrePrefix.oreNetherrack, OrePrefix.oreNetherrackLean);
+        leanCounterparts.put(OrePrefix.oreNether, OrePrefix.oreNetherLean);
+        leanCounterparts.put(OrePrefix.oreEndstone, OrePrefix.oreEndstoneLean);
+        leanCounterparts.put(OrePrefix.oreEnd, OrePrefix.oreEndLean);
+    }
 
     public static final OrePrefix crushedCentrifuged = new OrePrefix("crushedCentrifuged", -1, null,
             MaterialIconType.crushedCentrifuged, ENABLE_UNIFICATION, hasOreProperty);
@@ -118,6 +178,18 @@ public class OrePrefix {
     // A regular Ingot. Introduced by Eloraam
     public static final OrePrefix ingot = new OrePrefix("ingot", M, null, MaterialIconType.ingot, ENABLE_UNIFICATION,
             hasIngotProperty);
+    // 2 Ingots combined in one Item
+    public static final OrePrefix ingotDouble = new OrePrefix("ingotDouble", M * 2, null,
+            MaterialIconType.ingotDouble, ENABLE_UNIFICATION, mat -> mat.hasFlag(GENERATE_EXTRA));
+    // 3 Ingots combined in one Item
+    public static final OrePrefix ingotTriple = new OrePrefix("ingotTriple", M * 3, null,
+            MaterialIconType.ingotTriple, ENABLE_UNIFICATION, mat -> mat.hasFlag(GENERATE_EXTRA));
+    // 4 Ingots combined in one Item
+    public static final OrePrefix ingotQuadruple = new OrePrefix("ingotQuadruple", M * 4, null,
+            MaterialIconType.ingotQuadruple, ENABLE_UNIFICATION, mat -> mat.hasFlag(GENERATE_EXTRA));
+    // 5 Ingots combined in one Item
+    public static final OrePrefix ingotQuintuple = new OrePrefix("ingotQuintuple", M * 5, null,
+            MaterialIconType.ingotQuintuple, ENABLE_UNIFICATION, mat -> mat.hasFlag(GENERATE_EXTRA));
 
     // A regular Gem worth one Dust. Introduced by Eloraam
     public static final OrePrefix gem = new OrePrefix("gem", M, null, MaterialIconType.gem, ENABLE_UNIFICATION,
@@ -134,6 +206,9 @@ public class OrePrefix {
     // A regular Gem worth four Dusts. Introduced by TerraFirmaCraft
     public static final OrePrefix gemExquisite = new OrePrefix("gemExquisite", M * 4, null,
             MaterialIconType.gemExquisite, ENABLE_UNIFICATION, hasGemProperty);
+    // A regular Gem worth eight Dusts. Introduced by TerraFirmaCraft
+    public static final OrePrefix gemLegendary = new OrePrefix("gemLegendary", M * 8, null,
+            MaterialIconType.gemLegendary, ENABLE_UNIFICATION, hasGemProperty);
 
     // 1/4th of a Dust.
     public static final OrePrefix dustSmall = new OrePrefix("dustSmall", M / 4, null, MaterialIconType.dustSmall,
@@ -156,16 +231,33 @@ public class OrePrefix {
     public static final OrePrefix nugget = new OrePrefix("nugget", M / 9, null, MaterialIconType.nugget,
             ENABLE_UNIFICATION, hasIngotProperty);
 
-    // 9 Plates combined in one Item.
-    public static final OrePrefix plateDense = new OrePrefix("plateDense", M * 9, null, MaterialIconType.plateDense,
-            ENABLE_UNIFICATION, mat -> mat.hasFlag(GENERATE_DENSE));
+
+    // Regular Plate made of one Ingot/Dust. Introduced by Calclavia
+    public static final OrePrefix plate = new OrePrefix("plate", M, null, MaterialIconType.plate, ENABLE_UNIFICATION,
+            mat -> mat.hasFlag(GENERATE_PLATE));
+    // Curved Plate made of one Plate
+    public static final OrePrefix plateCurved = new OrePrefix("plateCurved", M, null, MaterialIconType.plateCurved,
+            ENABLE_UNIFICATION, mat -> mat.hasFlag(GENERATE_CURVED_PLATE));
     // 2 Plates combined in one Item
     public static final OrePrefix plateDouble = new OrePrefix("plateDouble", M * 2, null, MaterialIconType.plateDouble,
             ENABLE_UNIFICATION, hasIngotProperty
             .and(mat -> mat.hasFlags(GENERATE_PLATE, GENERATE_DOUBLE_PLATE) && !mat.hasFlag(NO_SMASHING)));
-    // Regular Plate made of one Ingot/Dust. Introduced by Calclavia
-    public static final OrePrefix plate = new OrePrefix("plate", M, null, MaterialIconType.plate, ENABLE_UNIFICATION,
-            mat -> mat.hasFlag(GENERATE_PLATE));
+    // 3 Plates combined in one Item
+    public static final OrePrefix plateTriple = new OrePrefix("plateTriple", M * 3, null, MaterialIconType.plateTriple,
+            ENABLE_UNIFICATION, hasIngotProperty
+            .and(mat -> mat.hasFlags(GENERATE_EXTRA) && !mat.hasFlag(NO_SMASHING)));
+    // 4 Plates combined in one Item
+    public static final OrePrefix plateQuadruple = new OrePrefix("plateQuadruple", M * 4, null,
+            MaterialIconType.plateQuadruple, ENABLE_UNIFICATION, hasIngotProperty
+            .and(mat -> mat.hasFlags(GENERATE_EXTRA) && !mat.hasFlag(NO_SMASHING)));
+    // 5 Plates combined in one Item
+    public static final OrePrefix plateQuintuple = new OrePrefix("plateQuintuple", M * 5, null,
+            MaterialIconType.plateQuintuple, ENABLE_UNIFICATION, hasIngotProperty
+            .and(mat -> mat.hasFlags(GENERATE_EXTRA) && !mat.hasFlag(NO_SMASHING)));
+    // 9 Plates combined in one Item.
+    public static final OrePrefix plateDense = new OrePrefix("plateDense", M * 9, null, MaterialIconType.plateDense,
+            ENABLE_UNIFICATION, mat -> mat.hasFlag(GENERATE_DENSE));
+
 
     // Round made of 1 Nugget
     public static final OrePrefix round = new OrePrefix("round", M / 9, null, MaterialIconType.round,
@@ -269,6 +361,9 @@ public class OrePrefix {
     public static final OrePrefix frameGt = new OrePrefix("frameGt", M * 2, null, null, ENABLE_UNIFICATION,
             material -> material.hasFlag(GENERATE_FRAME));
 
+    public static final OrePrefix sheet = new OrePrefix("sheet", M * 3, null, MaterialIconType.sheet,
+            ENABLE_UNIFICATION, material -> material.hasFlag(GENERATE_SHEET));
+
     public static final OrePrefix pipeTinyFluid = new OrePrefix("pipeTinyFluid", M / 2, null, null, ENABLE_UNIFICATION,
             null);
     public static final OrePrefix pipeSmallFluid = new OrePrefix("pipeSmallFluid", M, null, null, ENABLE_UNIFICATION,
@@ -323,6 +418,37 @@ public class OrePrefix {
     public static final OrePrefix cableGtSingle = new OrePrefix("cableGtSingle", M / 2, null, null, ENABLE_UNIFICATION,
             null);
 
+    public static final OrePrefix pipeHeatConductorSingle = new OrePrefix("pipeHeatConductorSingle", M, null, null, ENABLE_UNIFICATION,
+            null);
+    public static final OrePrefix pipeHeatConductorDouble = new OrePrefix("pipeHeatConductorDouble", M*2, null, null, ENABLE_UNIFICATION,
+            null);
+    public static final OrePrefix pipeHeatConductorQuadruple = new OrePrefix("pipeHeatConductorQuadruple", M*4, null, null, ENABLE_UNIFICATION,
+            null);
+    public static final OrePrefix pipeHeatConductorOctal = new OrePrefix("pipeHeatConductorOctal", M*8, null, null, ENABLE_UNIFICATION,
+            null);
+    public static final OrePrefix pipeHeatConductorHex = new OrePrefix("pipeHeatConductorHex", M*16, null, null, ENABLE_UNIFICATION,
+            null);
+
+    //insulatedHeatConductorSingle
+    public static final OrePrefix insulatedHeatConductorSingle = new OrePrefix("insulatedHeatConductorSingle", M, null, null, ENABLE_UNIFICATION,
+            null);
+    //insulatedHeatConductorDouble
+    public static final OrePrefix insulatedHeatConductorDouble = new OrePrefix("insulatedHeatConductorDouble", M*2, null, null, ENABLE_UNIFICATION,
+            null);
+    //insulatedHeatConductorQuadruple
+    public static final OrePrefix insulatedHeatConductorQuadruple = new OrePrefix("insulatedHeatConductorQuadruple", M*4, null, null, ENABLE_UNIFICATION,
+            null);
+    //insulatedHeatConductorOctal
+    public static final OrePrefix insulatedHeatConductorOctal = new OrePrefix("insulatedHeatConductorOctal", M*8, null, null, ENABLE_UNIFICATION,
+            null);
+    //insulatedHeatConductorHex
+    public static final OrePrefix insulatedHeatConductorHex = new OrePrefix("insulatedHeatConductorHex", M*16, null, null, ENABLE_UNIFICATION,
+            null);
+
+    public static final OrePrefix pipeOptical = new OrePrefix("pipeOptical", M, null, null, ENABLE_UNIFICATION,
+            null);
+
+
     // Special Prefix used mainly for the Crafting Handler.
     public static final OrePrefix craftingLens = new OrePrefix("craftingLens", -1, null, null, 0, null);
     // Used for the 16 dyes. Introduced by Eloraam
@@ -338,6 +464,44 @@ public class OrePrefix {
     // Introduced by Calclavia
     public static final OrePrefix circuit = new OrePrefix("circuit", -1, null, null, ENABLE_UNIFICATION, null);
     public static final OrePrefix component = new OrePrefix("component", -1, null, null, ENABLE_UNIFICATION, null);
+
+    // Nuclear stuff, introduced by Zalgo and Bruberu.
+    // Their radiation warning comes from the fuel material's RadioactiveProperty, like every
+    // other shape of the same substance — not from a second, hand-written tooltip here.
+    public static final OrePrefix fuelRod = new OrePrefix("fuelRod", -1, null, MaterialIconType.fuelRod, 0,
+            material -> material.hasProperty(FISSION_FUEL));
+
+    public static final OrePrefix fuelRodDepleted = new OrePrefix("fuelRodDepleted", -1, null,
+            MaterialIconType.fuelRodDepleted, 0, material -> material.hasProperty(FISSION_FUEL));
+
+    public static final OrePrefix fuelRodHotDepleted = new OrePrefix("fuelRodHotDepleted", -1, null,
+            MaterialIconType.fuelRodHotDepleted, 0, material -> material.hasProperty(FISSION_FUEL));
+
+    public static final OrePrefix fuelPelletRaw = new OrePrefix("fuelPelletRaw", -1, null,
+            MaterialIconType.fuelPelletRaw, 0, material -> material.hasProperty(FISSION_FUEL));
+
+    public static final OrePrefix fuelPellet = new OrePrefix("fuelPellet", -1, null,
+            MaterialIconType.fuelPellet, 0, material -> material.hasProperty(FISSION_FUEL));
+
+    public static final OrePrefix fuelPelletDepleted = new OrePrefix("fuelPelletDepleted", -1, null,
+            MaterialIconType.fuelPelletDepleted, 0, material -> material.hasProperty(FISSION_FUEL));
+
+    public static final OrePrefix dustSpentFuel = new OrePrefix("dustSpentFuel", -1, null,
+            MaterialIconType.dustSpentFuel, 0, material -> material.hasProperty(FISSION_FUEL));
+
+    public static final OrePrefix dustBredFuel = new OrePrefix("dustBredFuel", -1, null,
+            MaterialIconType.dustBredFuel, 0, material -> material.hasProperty(FISSION_FUEL));
+
+    public static final OrePrefix dustFissionByproduct = new OrePrefix("dustFissionByproduct", -1, null,
+            MaterialIconType.dustFissionByproduct, 0,
+            material -> material.hasProperty(FISSION_FUEL));
+
+    //Additions Nuclear stuff, introduced by MeowmelMuku
+    public static final OrePrefix fuelPebble = new OrePrefix("fuelPebble", -1, null, MaterialIconType.fuelPebble, ENABLE_UNIFICATION,
+            mat -> mat.hasFlag(GENERATE_PELLETS));
+
+    public static final OrePrefix fuelPebbleDepleted = new OrePrefix("fuelPebbleDepleted", -1, null, MaterialIconType.fuelPebbleDepleted, ENABLE_UNIFICATION,
+            mat -> mat.hasFlag(GENERATE_PELLETS));
 
     public static class Flags {
 
@@ -358,13 +522,45 @@ public class OrePrefix {
         public static final Predicate<Material> hasRotorProperty = mat -> mat.hasProperty(PropertyKey.ROTOR);
     }
 
+    /**
+     * Base damage per second of a hot shape. A hot shape is hot because of its shape, not
+     * because of its material — the blast temperature only adds to this.
+     */
+    public static final float HOT_SHAPE_BASE_DAMAGE = 2f;
+
+    /**
+     * A hot ingot burns for every material. Blast temperature only adds on top; materials that
+     * cannot be blasted simply get the shape's base reading.
+     */
+    private static float hotIngotDamage(@NotNull Material material) {
+        float blastBonus = material.hasProperty(PropertyKey.BLAST)
+                ? Math.max(0f, (material.getBlastTemperature() - 1750) / 1000.0F)
+                : 0f;
+        return HOT_SHAPE_BASE_DAMAGE + blastBonus;
+    }
+
     public static void init() {
-        ingotHot.heatDamageFunction = (temp) -> ((temp - 1750) / 1000.0F) + 2;
+        // A hot shape burns any material: the base damage comes from the shape itself, and a
+        // material's blast temperature only adds on top of it. Depleted hot fuel rods glow
+        // at the same flat rate whatever fuel they came from.
+        ingotHot.setHazardDamage(Hazard.HEAT, OrePrefix::hotIngotDamage);
+        fuelRodHotDepleted.setHazardDamage(Hazard.HEAT, material -> HOT_SHAPE_BASE_DAMAGE);
+
         gemFlawless.maxStackSize = 32;
         gemExquisite.maxStackSize = 16;
+        gemLegendary.maxStackSize = 8;
+
+        ingotDouble.maxStackSize = 32;
+        ingotTriple.maxStackSize = 24;
+        ingotQuadruple.maxStackSize = 16;
+        ingotQuintuple.maxStackSize = 12;
 
         plateDouble.maxStackSize = 32;
-        plateDense.maxStackSize = 7;
+        plateTriple.maxStackSize = 24;
+        plateQuadruple.maxStackSize = 16;
+        plateQuintuple.maxStackSize = 12;
+        plateDense.maxStackSize = 8;
+
         rotor.maxStackSize = 16;
         gear.maxStackSize = 16;
 
@@ -379,8 +575,8 @@ public class OrePrefix {
         battery.setMarkerPrefix(true);
         circuit.setMarkerPrefix(true);
 
+        gemLegendary.setIgnored(Materials.Sugar);
         gemExquisite.setIgnored(Materials.Sugar);
-
         gemFlawless.setIgnored(Materials.Sugar);
 
         gem.setIgnored(Materials.Diamond);
@@ -510,6 +706,7 @@ public class OrePrefix {
         gemFlawed.setIgnored(material);
         gemFlawless.setIgnored(material);
         gemExquisite.setIgnored(material);
+        gemLegendary.setIgnored(material);
     }
 
     public final String name;
@@ -539,7 +736,11 @@ public class OrePrefix {
 
     public byte maxStackSize = 64;
     public final List<MaterialStack> secondaryMaterials = new ArrayList<>();
-    public Function<Integer, Float> heatDamageFunction = null; // Negative for Frost Damage
+    /**
+     * The shape entry of the hazard system: damage per second this prefix adds for any material,
+     * by hazard. Created lazily because almost no prefix carries a hazard.
+     */
+    private @Nullable EnumMap<Hazard, Function<Material, Float>> hazardDamageFunctions;
     public Function<Material, List<String>> tooltipFunc;
 
     private String alternativeOreName = null;
@@ -581,6 +782,33 @@ public class OrePrefix {
         this.isMarkerPrefix = isMarkerPrefix;
     }
 
+    /**
+     * The shape entry of a hazard: damage per second this prefix adds for any material it is
+     * made of. Zero when the shape does not carry that hazard. Readings are clamped at zero —
+     * a shape that cools registers its function under {@link Hazard#FROST}.
+     */
+    public float getHazardDamage(@NotNull Hazard hazard, @NotNull Material material) {
+        if (hazardDamageFunctions == null) return 0f;
+        Function<Material, Float> function = hazardDamageFunctions.get(hazard);
+        if (function == null) return 0f;
+        Float damage = function.apply(material);
+        return damage == null ? 0f : Math.max(0f, damage);
+    }
+
+    /**
+     * Registers this shape's damage per second for a hazard, or clears it when the function is
+     * null. The function runs for every material the prefix is generated for, so it has to
+     * answer for materials that do not have the relevant property as well.
+     */
+    public void setHazardDamage(@NotNull Hazard hazard, @Nullable Function<Material, Float> function) {
+        if (function == null) {
+            if (hazardDamageFunctions != null) hazardDamageFunctions.remove(hazard);
+            return;
+        }
+        if (hazardDamageFunctions == null) hazardDamageFunctions = new EnumMap<>(Hazard.class);
+        hazardDamageFunctions.put(hazard, function);
+    }
+
     public long getMaterialAmount(@Nullable Material material) {
         if (material == null || !isAmountModified(material)) {
             return this.materialAmount;
@@ -588,7 +816,6 @@ public class OrePrefix {
         return (long) (M * materialAmounts.getFloat(material));
     }
 
-    @ZenMethod
     public static OrePrefix getPrefix(String prefixName) {
         return getPrefix(prefixName, null);
     }
@@ -693,12 +920,10 @@ public class OrePrefix {
         return ignoredMaterials.contains(material);
     }
 
-    @ZenMethod
     public void setIgnored(Material material) {
         ignoredMaterials.add(material);
     }
 
-    @ZenMethod
     public void removeIgnored(@NotNull Material material) {
         ignoredMaterials.remove(material);
     }
@@ -707,7 +932,6 @@ public class OrePrefix {
         return materialAmounts.containsKey(material);
     }
 
-    @ZenMethod
     public void modifyMaterialAmount(@NotNull Material material, float amount) {
         materialAmounts.put(material, amount);
     }
@@ -767,6 +991,7 @@ public class OrePrefix {
     private long flags;
     private Predicate<Material> condition;
     private Function<Material, List<String>> tooltipFunc;
+    private final Map<Hazard, Function<Material, Float>> hazardDamageFunctions = new EnumMap<>(Hazard.class);
 
     private Builder(String name, long materialAmount) {
         this.name = name;
@@ -802,8 +1027,20 @@ public class OrePrefix {
         return this;
     }
 
+    /**
+     * Registers damage per second this shape deals for any material, under the given hazard.
+     * This is the shape entry of the hazard system — see {@link Hazard}.
+     */
+    public Builder hazardDamage(@NotNull Hazard hazard, @NotNull Function<Material, Float> function) {
+        this.hazardDamageFunctions.put(hazard, function);
+        return this;
+    }
+
     public OrePrefix build() {
-        return new OrePrefix(name, materialAmount, material, materialIconType, flags, condition, tooltipFunc);
+        OrePrefix prefix = new OrePrefix(name, materialAmount, material, materialIconType, flags, condition,
+                tooltipFunc);
+        hazardDamageFunctions.forEach(prefix::setHazardDamage);
+        return prefix;
     }
 }
 

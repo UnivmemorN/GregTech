@@ -2,7 +2,14 @@ package gregtech.api.metatileentity.multiblock;
 
 import gregtech.api.GTValues;
 import gregtech.api.block.VariantActiveBlock;
-import gregtech.api.capability.*;
+import gregtech.api.capability.GregtechDataCodes;
+import gregtech.api.capability.GregtechTileCapabilities;
+import gregtech.api.capability.IActiveOutputSide;
+import gregtech.api.capability.IControllable;
+import gregtech.api.capability.IDistinctBusController;
+import gregtech.api.capability.IMaintenanceHatch;
+import gregtech.api.capability.IMufflerHatch;
+import gregtech.api.capability.ISideUI;
 import gregtech.api.gui.GuiTextures;
 import gregtech.api.gui.ModularUI;
 import gregtech.api.gui.Widget;
@@ -14,8 +21,8 @@ import gregtech.api.gui.widgets.IndicatorImageWidget;
 import gregtech.api.gui.widgets.ProgressWidget;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIBuilder;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIFactory;
-import gregtech.api.pattern.PatternMatchContext;
-import gregtech.api.pattern.TraceabilityPredicate;
+import gregtech.api.mui.widget.WorldPreviewPanel;
+import gregtech.api.pattern.FormedStructureView;
 import gregtech.api.unification.OreDictUnifier;
 import gregtech.api.unification.material.Materials;
 import gregtech.api.unification.ore.OrePrefix;
@@ -25,21 +32,38 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
-import net.minecraft.util.*;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.EnumParticleTypes;
+import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.SoundCategory;
+import net.minecraft.util.Tuple;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.ITextComponent;
+import net.minecraft.util.text.Style;
+import net.minecraft.util.text.TextComponentTranslation;
+import net.minecraft.util.text.TextFormatting;
+import net.minecraft.world.World;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.fluids.IFluidTank;
-import net.minecraftforge.fluids.capability.IFluidHandler;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
+import net.minecraftforge.items.IItemHandlerModifiable;
 
+import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 
 import static gregtech.api.capability.GregtechDataCodes.IS_WORKING;
 import static gregtech.api.capability.GregtechDataCodes.STORE_TAPED;
@@ -91,57 +115,21 @@ public abstract class MultiblockWithDisplayBase extends MultiblockControllerBase
         this.voidingMode = VoidingMode.VOID_NONE;
     }
 
-    /**
-     * Sets the maintenance problem corresponding to index to fixed
-     *
-     * @param index of the maintenance problem
-     */
-    @Override
-    public void setMaintenanceFixed(int index) {
-        this.maintenance_problems |= 1 << index;
-    }
-
-    /**
-     * Used to cause a single random maintenance problem
-     */
-    @Override
-    public void causeMaintenanceProblems() {
-        this.maintenance_problems &= ~(1 << ((int) (GTValues.RNG.nextFloat() * 5)));
-        this.getWorld().playSound(null, this.getPos().getX(), this.getPos().getY(), this.getPos().getZ(),
-                this.getBreakdownSound(), SoundCategory.BLOCKS, 1.f, 1.f);
-    }
-
-    /**
-     * @return the byte value representing the maintenance problems
-     */
     @Override
     public byte getMaintenanceProblems() {
-        return ConfigHolder.machines.enableMaintenance && hasMaintenanceMechanics() ? maintenance_problems : 0b111111;
+        return hasMaintenanceMechanics() ? maintenance_problems : IMaintenance.NO_PROBLEMS;
     }
 
-    /**
-     * @return the amount of maintenance problems the multiblock has
-     */
     @Override
-    public int getNumMaintenanceProblems() {
-        return ConfigHolder.machines.enableMaintenance && hasMaintenanceMechanics() ?
-                6 - Integer.bitCount(maintenance_problems) : 0;
+    public void setMaintenance(byte maintenance) {
+        this.maintenance_problems = maintenance;
     }
 
-    /**
-     * @return whether the multiblock has any maintenance problems
-     */
     @Override
-    public boolean hasMaintenanceProblems() {
-        return ConfigHolder.machines.enableMaintenance && hasMaintenanceMechanics() && this.maintenance_problems < 63;
-    }
-
-    /**
-     * @return whether this multiblock has maintenance mechanics
-     */
-    @Override
-    public boolean hasMaintenanceMechanics() {
-        return true;
+    public void causeMaintenanceProblems() {
+        IMaintenance.super.causeMaintenanceProblems();
+        this.getWorld().playSound(null, this.getPos().getX(), this.getPos().getY(), this.getPos().getZ(),
+                this.getBreakdownSound(), SoundCategory.BLOCKS, 1.f, 1.f);
     }
 
     public boolean hasMufflerMechanics() {
@@ -178,15 +166,21 @@ public abstract class MultiblockWithDisplayBase extends MultiblockControllerBase
         }
         return maintenanceHatch.getDurationMultiplier();
     }
-
     @Override
     public boolean isStructureObstructed() {
-        return hasMufflerMechanics() && !isMufflerFaceFree();
+        return hasMufflerMechanics() && !isMufflerReady();
     }
 
     @Override
-    protected void formStructure(PatternMatchContext context) {
-        super.formStructure(context);
+    protected void formStructure(@NotNull FormedStructureView formed) {
+        formStructureWithDisplay(formed);
+    }
+
+    protected final void formStructureWithDisplay(@NotNull FormedStructureView formed) {
+        formStructureWithDisplay(new LinkedList<>(formed.getVariantActiveBlocks()));
+    }
+
+    private void formStructureWithDisplay(@NotNull List<BlockPos> variantActiveBlocks) {
         if (this.hasMaintenanceMechanics() && ConfigHolder.machines.enableMaintenance) { // nothing extra if no
             // maintenance
             if (getAbilities(MultiblockAbility.MAINTENANCE_HATCH).isEmpty())
@@ -203,7 +197,7 @@ public abstract class MultiblockWithDisplayBase extends MultiblockControllerBase
                 storeTaped(false);
             }
         }
-        this.variantActiveBlocks = context.getOrDefault("VABlock", new LinkedList<>());
+        this.variantActiveBlocks = variantActiveBlocks;
         replaceVariantBlocksActive(false);
     }
 
@@ -255,12 +249,30 @@ public abstract class MultiblockWithDisplayBase extends MultiblockControllerBase
     /**
      * @return whether the muffler hatch's front face is free
      */
-    public boolean isMufflerFaceFree() {
+    public boolean isMufflerReady(){
         if (hasMufflerMechanics() && getAbilities(MultiblockAbility.MUFFLER_HATCH).size() == 0)
             return false;
 
         return isStructureFormed() && hasMufflerMechanics() &&
+                getAbilities(MultiblockAbility.MUFFLER_HATCH).get(0).isFrontFaceFree()
+                &&!getAbilities(MultiblockAbility.MUFFLER_HATCH).get(0).isMufflerFull();
+
+    }
+
+    public boolean isMufflerFaceFree() {
+        if (hasMufflerMechanics() && getAbilities(MultiblockAbility.MUFFLER_HATCH).isEmpty())
+            return false;
+
+        return isStructureFormed() && hasMufflerMechanics() &&
                 getAbilities(MultiblockAbility.MUFFLER_HATCH).get(0).isFrontFaceFree();
+    }
+
+    public boolean isMufflerEmpty() {
+        if (hasMufflerMechanics() && getAbilities(MultiblockAbility.MUFFLER_HATCH).isEmpty())
+            return false;
+
+        return isStructureFormed() && hasMufflerMechanics() &&
+                !getAbilities(MultiblockAbility.MUFFLER_HATCH).get(0).isMufflerFull();
     }
 
     @SideOnly(Side.CLIENT)
@@ -273,9 +285,14 @@ public abstract class MultiblockWithDisplayBase extends MultiblockControllerBase
      *
      * @param recoveryItems is the items to set
      */
-    protected void setRecoveryItems(ItemStack... recoveryItems) {
+    public void setRecoveryItems(ItemStack... recoveryItems) {
         this.recoveryItems.clear();
         this.recoveryItems.addAll(Arrays.asList(recoveryItems));
+    }
+
+    public void setRecoveryItems(List<ItemStack> recoveryItems) {
+        this.recoveryItems.clear();
+        this.recoveryItems.addAll(recoveryItems);
     }
 
     /**
@@ -316,30 +333,6 @@ public abstract class MultiblockWithDisplayBase extends MultiblockControllerBase
         }
     }
 
-    public TraceabilityPredicate autoAbilities() {
-        return autoAbilities(true, true);
-    }
-
-    public TraceabilityPredicate autoAbilities(boolean checkMaintenance, boolean checkMuffler) {
-        TraceabilityPredicate predicate = new TraceabilityPredicate();
-        if (checkMaintenance && hasMaintenanceMechanics()) {
-            predicate = predicate.or(maintenancePredicate());
-        }
-        if (checkMuffler && hasMufflerMechanics()) {
-            predicate = predicate
-                    .or(abilities(MultiblockAbility.MUFFLER_HATCH).setMinGlobalLimited(1).setMaxGlobalLimited(1));
-        }
-        return predicate;
-    }
-
-    protected TraceabilityPredicate maintenancePredicate() {
-        if (hasMaintenanceMechanics()) {
-            return abilities(MultiblockAbility.MAINTENANCE_HATCH)
-                    .setMinGlobalLimited(ConfigHolder.machines.enableMaintenance ? 1 : 0).setMaxGlobalLimited(1);
-        }
-        return new TraceabilityPredicate();
-    }
-
     public boolean shouldShowVoidingModeButton() {
         return true;
     }
@@ -349,6 +342,7 @@ public abstract class MultiblockWithDisplayBase extends MultiblockControllerBase
     }
 
     public final void setVoidingMode(int mode) {
+        int previousMode = getVoidingMode();
         this.voidingMode = VoidingMode.VALUES[mode];
 
         this.voidingFluids = mode >= 2;
@@ -358,12 +352,28 @@ public abstract class MultiblockWithDisplayBase extends MultiblockControllerBase
         // After changing the voiding mode, reset the notified buses in case a recipe can run now that voiding mode has
         // been changed
         for (IFluidTank tank : this.getAbilities(MultiblockAbility.IMPORT_FLUIDS)) {
-            this.getNotifiedFluidInputList().add((IFluidHandler) tank);
+            addNotifiedInput(tank);
         }
-        this.getNotifiedItemInputList()
-                .addAll(this.getAbilities(MultiblockAbility.IMPORT_ITEMS));
+        for (IItemHandlerModifiable bus : this.getAbilities(MultiblockAbility.IMPORT_ITEMS)) {
+            addNotifiedInput(bus);
+        }
 
         markDirty();
+        if (previousMode != mode) {
+            notifyStructureConfigChanged();
+        }
+    }
+
+    @NotNull
+    @Override
+    @SuppressWarnings("unchecked")
+    protected Object getStructureConfigDependencyValue() {
+        Map<String, Object> values = new LinkedHashMap<>(
+                (Map<String, Object>) super.getStructureConfigDependencyValue());
+        values.put("voidingMode", getVoidingMode());
+        values.put("voidingItems", voidingItems);
+        values.put("voidingFluids", voidingFluids);
+        return values;
     }
 
     public static @NotNull String getVoidingModeTooltip(int mode) {
@@ -378,9 +388,13 @@ public abstract class MultiblockWithDisplayBase extends MultiblockControllerBase
     protected void configureDisplayText(MultiblockUIBuilder builder) {}
 
     protected void configureErrorText(MultiblockUIBuilder builder) {
-        builder.structureFormed(isStructureFormed());
-        if (hasMufflerMechanics())
+        builder.structureFormed(isStructureFormed())
+                .addMissingStructureAbilities(getMissingStructureAbilities())
+                .addStructureError(getLastStructureError());
+        if (hasMufflerMechanics()) {
             builder.addMufflerObstructedLine(!isMufflerFaceFree());
+            builder.addMufflerFullLine(!isMufflerEmpty());
+        }
         if (hasMaintenanceMechanics())
             builder.addMaintenanceProblemLines(getMaintenanceProblems(), false);
     }
@@ -398,18 +412,9 @@ public abstract class MultiblockWithDisplayBase extends MultiblockControllerBase
     }
 
     @Override
-    public final ModularPanel buildUI(PosGuiData guiData, PanelSyncManager panelSyncManager) {
+    public final ModularPanel buildUI(PosGuiData guiData, PanelSyncManager panelSyncManager, UISettings settings) {
         if (uiFactory == null) uiFactory = createUIFactory();
         return this.uiFactory.buildUI(guiData, panelSyncManager);
-    }
-
-    /**
-     * Outputs the recovery items into the muffler hatch
-     */
-    public void outputRecoveryItems() {
-        IMufflerHatch muffler = getAbilities(MultiblockAbility.MUFFLER_HATCH).get(0);
-        if(!muffler.outputItem())return;
-        muffler.recoverItemsTable(recoveryItems);
     }
 
     protected ModularUI createUI(EntityPlayer entityPlayer) {
@@ -522,12 +527,12 @@ public abstract class MultiblockWithDisplayBase extends MultiblockControllerBase
     }
 
     public void outputRecoveryItems(int parallel) {
-        IMufflerHatch muffler = getAbilities(MultiblockAbility.MUFFLER_HATCH).get(0);
-        if(!muffler.outputItem())return;
-        for (int i = 0; i < parallel; i++) {
-            muffler.recoverItemsTable(recoveryItems);
+        for(IMufflerHatch muffler : getAbilities(MultiblockAbility.MUFFLER_HATCH))
+        {
+            if(muffler.mufflerWaste()) muffler.recoverItemsTable(recoveryItems,parallel);
         }
     }
+
     @Override
     public NBTTagCompound writeToNBT(NBTTagCompound data) {
         super.writeToNBT(data);
@@ -674,8 +679,12 @@ public abstract class MultiblockWithDisplayBase extends MultiblockControllerBase
      * Prioritized over any warnings provided by {@link MultiblockWithDisplayBase#addWarningText}.
      */
     protected void addErrorText(List<ITextComponent> textList) {
-        MultiblockDisplayText.builder(textList, isStructureFormed())
-                .addMufflerObstructedLine(hasMufflerMechanics() && !isMufflerFaceFree());
+        if(hasMufflerMechanics()) {
+            MultiblockDisplayText.builder(textList, isStructureFormed())
+                    .addMufflerObstructedLine(!isMufflerFaceFree())
+                    .addMufflerFullLine(!isMufflerEmpty());
+        }
+
     }
 
     /**
@@ -685,6 +694,24 @@ public abstract class MultiblockWithDisplayBase extends MultiblockControllerBase
      */
     protected void addDisplayText(List<ITextComponent> textList) {
         MultiblockDisplayText.builder(textList, isStructureFormed());
+        addMissingStructureAbilityText(textList);
+    }
+
+    private void addMissingStructureAbilityText(List<ITextComponent> textList) {
+        Map<String, Integer> missingAbilities = getMissingStructureAbilities();
+        if (isStructureFormed() || missingAbilities.isEmpty()) return;
+
+        textList.add(new TextComponentTranslation(
+                "gregtech.multiblock.missing_ability_header")
+                        .setStyle(new Style().setColor(TextFormatting.RED)));
+        for (Map.Entry<String, Integer> entry : missingAbilities.entrySet()) {
+            textList.add(new TextComponentTranslation(
+                    "gregtech.multiblock.missing_ability",
+                    entry.getValue(),
+                    new TextComponentTranslation(
+                            "gregtech.multiblock.ability." + entry.getKey()))
+                                    .setStyle(new Style().setColor(TextFormatting.RED)));
+        }
     }
 
     /**
@@ -702,5 +729,26 @@ public abstract class MultiblockWithDisplayBase extends MultiblockControllerBase
     @Override
     public boolean hasSideUI() {
         return false;
+    }
+
+    @Override
+    protected @Nullable IWidget createWorldPreviewButton(@NotNull PanelSyncManager syncManager) {
+        // 朝向预览现在是窗口页签，不再放侧边按钮；两处都建会把同一组同步值注册两遍
+        return null;
+    }
+
+    /**
+     * 朝向预览页签的内容。配置里关掉了世界预览、或者客户端还没拿到世界时返回 {@code null}。
+     */
+    public @Nullable IWidget createWorldPreviewPage(@NotNull PanelSyncManager syncManager, int width, int height) {
+        if (!ConfigHolder.client.enableMachineWorldPreview) return null;
+        World world = getWorld();
+        if (world == null) return null;
+        boolean outputSides = this instanceof IActiveOutputSide;
+        EnumFacing frontFacing = hasFrontFacing() ? getFrontFacing() : null;
+        EnumFacing itemsOutput = outputSides ? ((IActiveOutputSide) this).getOutputFacingItems() : null;
+        EnumFacing fluidsOutput = outputSides ? ((IActiveOutputSide) this).getOutputFacingFluids() : null;
+        return WorldPreviewPanel.createPage(syncManager, world, getPos(), getStackForm(), hasFrontFacing(),
+                outputSides, frontFacing, itemsOutput, fluidsOutput, this::applyFaceAction, width, height, 0);
     }
 }

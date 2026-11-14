@@ -3,6 +3,7 @@ package gregtech.common.covers.filter;
 import gregtech.api.cover.CoverWithUI;
 import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.util.IDirtyNotifiable;
+import gregtech.api.util.ItemStackHashStrategy;
 
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -14,24 +15,27 @@ import com.cleanroommc.modularui.api.IPanelHandler;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.drawable.GuiTextures;
+import com.cleanroommc.modularui.factory.GuiData;
 import com.cleanroommc.modularui.network.NetworkUtils;
-import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.SyncHandlers;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.layout.Flow;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+
 public abstract class BaseFilterContainer extends ItemStackHandler {
 
-    private final IDirtyNotifiable dirtyNotifiable;
     private int maxTransferSize = 1;
     private int transferSize;
     private @Nullable BaseFilter currentFilter;
     private @Nullable Runnable onFilterInstanceChange;
+    private final IDirtyNotifiable dirtyNotifiable;
 
     protected BaseFilterContainer(IDirtyNotifiable dirtyNotifiable) {
         super();
@@ -76,20 +80,12 @@ public abstract class BaseFilterContainer extends ItemStackHandler {
         return this.getStackInSlot(0);
     }
 
-    public final void setFilterStack(ItemStack stack) {
-        setStackInSlot(0, stack);
-    }
-
     @Override
     public void setStackInSlot(int slot, @NotNull ItemStack stack) {
         if (ItemStack.areItemStacksEqual(stack, getFilterStack()))
             return;
 
-        if (stack.isEmpty()) {
-            setFilter(null);
-        } else if (isItemValid(stack)) {
-            setFilter(BaseFilter.getFilterFromStack(stack));
-        }
+        setFilter(BaseFilter.getFilterFromStack(stack));
 
         super.setStackInSlot(slot, stack);
     }
@@ -120,6 +116,10 @@ public abstract class BaseFilterContainer extends ItemStackHandler {
         return extracted;
     }
 
+    public final void setFilterStack(ItemStack stack) {
+        setStackInSlot(0, stack);
+    }
+
     public int getMaxTransferSize() {
         return !showGlobalTransferLimitSlider() && hasFilter() ? currentFilter.getMaxTransferSize() :
                 this.maxTransferSize;
@@ -140,7 +140,7 @@ public abstract class BaseFilterContainer extends ItemStackHandler {
     }
 
     public final void setFilter(@Nullable BaseFilter newFilter) {
-        this.currentFilter = newFilter;
+        this.currentFilter = BaseFilter.ERROR_FILTER == newFilter ? null : newFilter;
         if (hasFilter()) {
             this.currentFilter.setDirtyNotifiable(this.dirtyNotifiable);
             this.currentFilter.setMaxTransferSize(this.maxTransferSize);
@@ -154,13 +154,13 @@ public abstract class BaseFilterContainer extends ItemStackHandler {
         return this.maxTransferSize > 0 && (!hasFilter() || getFilter().showGlobalTransferLimitSlider());
     }
 
-    public final boolean isBlacklistFilter() {
-        return hasFilter() && getFilter().isBlacklistFilter();
-    }
-
     public void setBlacklistFilter(boolean blacklistFilter) {
         if (hasFilter()) getFilter().setBlacklistFilter(blacklistFilter);
         onFilterInstanceChange();
+    }
+
+    public final boolean isBlacklistFilter() {
+        return hasFilter() && getFilter().isBlacklistFilter();
     }
 
     public int getTransferSize() {
@@ -170,16 +170,16 @@ public abstract class BaseFilterContainer extends ItemStackHandler {
         return this.transferSize;
     }
 
-    public void setTransferSize(int transferSize) {
-        this.transferSize = MathHelper.clamp(transferSize, 1, getMaxTransferSize());
-        onFilterInstanceChange();
-    }
-
     public int getTransferLimit(int slotIndex) {
         if (isBlacklistFilter() || !hasFilter()) {
             return getTransferSize();
         }
         return this.currentFilter.getTransferLimit(slotIndex, getTransferSize());
+    }
+
+    public void setTransferSize(int transferSize) {
+        this.transferSize = MathHelper.clamp(transferSize, 1, getMaxTransferSize());
+        onFilterInstanceChange();
     }
 
     @Override
@@ -211,22 +211,39 @@ public abstract class BaseFilterContainer extends ItemStackHandler {
     }
 
     /** Uses Cleanroom MUI */
-    public IWidget initUI(ModularPanel mainPanel, PanelSyncManager manager) {
-        IPanelHandler filterPanel = manager.panel("filter_panel", (syncManager, syncHandler) -> {
-            var filter = hasFilter() ? getFilter() : BaseFilter.ERROR_FILTER;
-            filter.setMaxTransferSize(getMaxTransferSize());
-            return filter.createPopupPanel(syncManager);
-        }, true);
+    public IWidget initUI(GuiData data, PanelSyncManager manager) {
+        // i bet brachy is gonna really hate this, but it *does* work
+        // todo Find a better way to handle the filter popup panel than making
+        // a new panel handler every time it changes
+        // Could use a DynamicSyncedWidget or a client only panel in a future PR
+        AtomicReference<IPanelHandler> filterPanel = new AtomicReference<>();
+        AtomicReference<ItemStack> oldStack = new AtomicReference<>(getFilterStack());
+        AtomicInteger counter = new AtomicInteger();
+        if (hasFilter()) filterPanel.set(getFilter().createPanelHandler(manager, counter.getAndIncrement()));
+        manager.registerSyncedAction("update_filter_panel", packet -> {
+            if (hasFilter()) {
+                // make new panel handler only when we have a filter
+                filterPanel.set(getFilter().createPanelHandler(manager, counter.getAndIncrement()));
+            }
+        });
+        ItemStackHashStrategy strategy = ItemStackHashStrategy.comparingItemDamageCount();
 
         return Flow.row().coverChildrenHeight()
                 .marginBottom(2).widthRel(1f)
                 .child(new ItemSlot()
-                        .slot(SyncHandlers.itemSlot(this, 0)
+                        .slot(new ModularSlot(this, 0)
                                 .filter(this::isItemValid)
                                 .singletonSlotGroup(101)
                                 .changeListener((newItem, onlyAmountChanged, client, init) -> {
-                                    if (!isItemValid(newItem) && filterPanel.isPanelOpen()) {
-                                        filterPanel.closePanel();
+                                    if (strategy.equals(oldStack.get(), newItem)) return;
+                                    oldStack.set(newItem);
+
+                                    IPanelHandler panel = filterPanel.get();
+                                    if (panel != null && panel.isPanelOpen()) {
+                                        panel.closePanel();
+                                    }
+                                    if (client) {
+                                        manager.callSyncedAction("update_filter_panel", packetBuffer -> {});
                                     }
                                 }))
                         .size(18).marginRight(2)
@@ -237,10 +254,13 @@ public abstract class BaseFilterContainer extends ItemStackHandler {
                                 GTGuiTextures.FILTER_SETTINGS_OVERLAY.asIcon().size(16))
                         .setEnabledIf(w -> hasFilter())
                         .onMousePressed(i -> {
-                            if (!filterPanel.isPanelOpen()) {
-                                filterPanel.openPanel();
+                            IPanelHandler panel = filterPanel.get();
+                            if (panel == null) return false;
+                            if (!panel.isPanelOpen()) {
+                                setMaxTransferSize(getMaxTransferSize());
+                                panel.openPanel();
                             } else {
-                                filterPanel.closePanel();
+                                panel.closePanel();
                             }
                             return true;
                         }))

@@ -3,12 +3,12 @@ package gregtech.api;
 import gregtech.api.advancement.IAdvancementManager;
 import gregtech.api.block.ICleanroomFilter;
 import gregtech.api.block.IHeatingCoilBlockStats;
+import gregtech.api.block.coil.CoilManager;
 import gregtech.api.command.ICommandManager;
 import gregtech.api.cover.CoverDefinition;
 import gregtech.api.event.HighTierEvent;
 import gregtech.api.gui.UIFactory;
 import gregtech.api.metatileentity.multiblock.IBatteryData;
-import gregtech.api.metatileentity.multiblock.MultiblockControllerBase;
 import gregtech.api.metatileentity.registry.MBPattern;
 import gregtech.api.metatileentity.registry.MTEManager;
 import gregtech.api.modules.IModuleManager;
@@ -24,9 +24,6 @@ import gregtech.api.util.GTControlledRegistry;
 import gregtech.api.util.GTLog;
 import gregtech.api.util.IBlockOre;
 import gregtech.common.ConfigHolder;
-import gregtech.datafix.migration.lib.MigrationAPI;
-
-import gregtech.integration.jei.multiblock.MultiblockInfoRecipeWrapper;
 
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.ResourceLocation;
@@ -61,8 +58,8 @@ public class GregTechAPI {
     public static MarkerMaterialRegistry markerMaterialRegistry;
     /** Will be available at the Pre-Initialization stage */
     public static MTEManager mteManager;
-    /** GT's data migrations API */
-    public static final MigrationAPI MIGRATIONS = new MigrationAPI();
+    /** Will be available at the Pre-Initialization stage */
+    public static CoilManager coilManager;
     public static final RecipePropertyRegistry RECIPE_PROPERTIES = new RecipePropertyRegistry();
     /**
      * Manager for Item Recycling Data
@@ -73,13 +70,38 @@ public class GregTechAPI {
     private static boolean highTierInitialized;
 
     private static final Map<ResourceLocation, MBPattern[]> MULTIBLOCK_INFO_CACHE = new ConcurrentHashMap<>();
+    private static final Map<ResourceLocation, Integer> MULTIBLOCK_INFO_PATTERN_COUNTS = new ConcurrentHashMap<>();
 
     public static MBPattern[] getPatterns(ResourceLocation key) {
         return MULTIBLOCK_INFO_CACHE.get(key);
     }
 
     public static void addPatterns(ResourceLocation key, MBPattern[] patterns) {
-        MULTIBLOCK_INFO_CACHE.put(key, patterns);
+        MBPattern[] previous = MULTIBLOCK_INFO_CACHE.put(key, patterns);
+        MULTIBLOCK_INFO_PATTERN_COUNTS.put(key, patterns.length);
+        if (previous != null && previous != patterns) {
+            disposePatterns(previous);
+        }
+    }
+
+    /**
+     * Remove a preview entry only when it is still the expected value. The
+     * pattern count deliberately remains available to structure tooltips.
+     */
+    public static void removePatterns(ResourceLocation key, MBPattern[] patterns) {
+        MULTIBLOCK_INFO_CACHE.remove(key, patterns);
+    }
+
+    public static int getPatternCount(ResourceLocation key) {
+        return MULTIBLOCK_INFO_PATTERN_COUNTS.getOrDefault(key, 0);
+    }
+
+    private static void disposePatterns(MBPattern[] patterns) {
+        for (MBPattern pattern : patterns) {
+            if (pattern != null) {
+                pattern.dispose();
+            }
+        }
     }
 
     public static final GTControlledRegistry<ResourceLocation, UIFactory> UI_FACTORY_REGISTRY = new GTControlledRegistry<>(

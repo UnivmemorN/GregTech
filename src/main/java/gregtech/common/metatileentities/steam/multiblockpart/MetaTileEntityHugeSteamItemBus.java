@@ -3,7 +3,6 @@ package gregtech.common.metatileentities.steam.multiblockpart;
 import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.metatileentity.multiblock.MultiblockAbility;
-import gregtech.api.metatileentity.multiblock.MultiblockControllerBase;
 import gregtech.api.mui.GTGuiTheme;
 import gregtech.client.renderer.ICubeRenderer;
 import gregtech.client.renderer.texture.Textures;
@@ -27,8 +26,6 @@ import java.util.List;
 
 public class MetaTileEntityHugeSteamItemBus extends MetaTileEntityItemBus {
 
-    private static final boolean IS_STEEL = true;
-
     public MetaTileEntityHugeSteamItemBus(ResourceLocation metaTileEntityId, boolean isExportHatch) {
         super(metaTileEntityId, 2, isExportHatch);
         initializeInventory();
@@ -44,15 +41,6 @@ public class MetaTileEntityHugeSteamItemBus extends MetaTileEntityItemBus {
         return isExportHatch ? MultiblockAbility.STEAM_EXPORT_ITEMS : MultiblockAbility.STEAM_IMPORT_ITEMS;
     }
 
-    // Override base texture to have a bus with 4 slots, but ULV textures
-    @Override
-    public ICubeRenderer getBaseTexture() {
-        MultiblockControllerBase controller = getController();
-        if (controller == null)
-            return IS_STEEL ? Textures.STEAM_CASING_STEEL : Textures.STEAM_CASING_BRONZE;
-        return controller.getBaseTexture(this);
-    }
-
     @Override
     public void addInformation(ItemStack stack, @Nullable World player, @NotNull List<String> tooltip,
                                boolean advanced) {
@@ -61,11 +49,22 @@ public class MetaTileEntityHugeSteamItemBus extends MetaTileEntityItemBus {
     }
 
     @Override
+    public ICubeRenderer getBaseTexture() {
+        if(getController()==null)
+            return Textures.STEAM_CASING_STEEL;
+        return super.getBaseTexture();
+    }
+
+    @Override
     public void renderMetaTileEntity(CCRenderState renderState, Matrix4 translation, IVertexOperation[] pipeline) {
         super.renderMetaTileEntity(renderState, translation, pipeline);
         if (this.shouldRenderOverlay()) {
             SimpleOverlayRenderer renderer = this.isExportHatch ? Textures.PIPE_OUT_OVERLAY : Textures.PIPE_IN_OVERLAY;
             renderer.renderSided(this.getFrontFacing(), renderState, translation, pipeline);
+            Textures.PIPE_ITEM_OVERLAY.renderSided(getFrontFacing(), renderState, translation, pipeline);
+            SimpleOverlayRenderer overlay = isExportHatch ? Textures.ITEM_HATCH_OUTPUT_OVERLAY :
+                    Textures.ITEM_HATCH_INPUT_OVERLAY;
+            overlay.renderSided(getFrontFacing(), renderState, translation, pipeline);
         }
     }
 
@@ -76,6 +75,6 @@ public class MetaTileEntityHugeSteamItemBus extends MetaTileEntityItemBus {
 
     @Override
     public GTGuiTheme getUITheme() {
-        return IS_STEEL ? GTGuiTheme.STEEL : GTGuiTheme.BRONZE;
+        return GTGuiTheme.STEEL;
     }
 }

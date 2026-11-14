@@ -2,9 +2,7 @@ package gregtech.loaders.recipe.chemistry;
 
 import static gregtech.api.GTValues.*;
 import static gregtech.api.recipes.RecipeMaps.*;
-import static gregtech.api.recipes.RecipeMaps.BLAST_RECIPES;
 import static gregtech.api.unification.material.Materials.*;
-import static gregtech.api.unification.material.Materials.Water;
 import static gregtech.api.unification.ore.OrePrefix.*;
 
 public class TitaniumRecipes {
@@ -165,12 +163,13 @@ public class TitaniumRecipes {
 
     // Byproduct separation for Ilmenite
     private static void ilmeniteProcess() {
-        ELECTROMAGNETIC_SEPARATOR_RECIPES.recipeBuilder()
+        CENTRIFUGE_RECIPES.recipeBuilder()
                 .input(dust, IlmeniteSlag)
                 .chancedOutput(dust, Iron, 8000, 0)
-                .chancedOutput(dust, Zircon, 2500, 0)
+                .chancedOutput(dust, Manganese, 5000, 0)
                 .chancedOutput(dust, Tantalum, 2000, 0)
                 .chancedOutput(dust, Niobium, 500, 0)
+                .chancedOutput(dust, Magnesium, 6000, 0)
                 .duration(50).EUt(VA[MV]).buildAndRegister();
     }
 }

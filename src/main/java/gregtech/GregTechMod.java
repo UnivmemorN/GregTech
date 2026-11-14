@@ -6,11 +6,9 @@ import gregtech.api.modules.ModuleContainerRegistryEvent;
 import gregtech.api.persistence.PersistentData;
 import gregtech.client.utils.BloomEffectUtil;
 import gregtech.common.ConfigHolder;
+import gregtech.common.Difficulty;
 import gregtech.modules.GregTechModules;
 import gregtech.modules.ModuleManager;
-
-import gtqt.common.Difficulty;
-import gtqt.common.GTQTCommonProxy;
 
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fluids.FluidRegistry;
@@ -33,18 +31,17 @@ import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static gtqt.common.Difficulty.fromLevel;
+import static gregtech.common.Difficulty.fromLevel;
 
 @Mod(modid = GTValues.MODID,
      name = GTValues.MOD_NAME,
      acceptedMinecraftVersions = "[1.12.2,1.13)",
      version = GTInternalTags.VERSION,
      dependencies = "required:forge@[14.23.5.2847,);" + "required-after:codechickenlib@[3.2.3,);" +
-             "required-after:modularui@[2.5.0-rc,);" + "required-after:mixinbooter@[8.0,);" +
-             "after:appliedenergistics2;" +
+             "required-after:modularui@[3.0.4,);" + "required-after:mixinbooter@[8.0,);" +
              "after:forestry;" + "after:extrabees;" + "after:extratrees;" + "after:genetics;" + "after:magicbees;" +
-             "after:jei@[4.15.0,);" + "after:crafttweaker@[4.1.20,);" + "after:groovyscript@[1.2.0,);" +
-             "after:theoneprobe;" + "after:hwyla;")
+             "after:jei@[4.15.0,);"  + "after:groovyscript@[1.2.0,);" +
+             "after:theoneprobe;")
 public class GregTechMod {
 
     // Hold this so that we can reference non-interface methods without
@@ -77,6 +74,9 @@ public class GregTechMod {
     @EventHandler
     public void preInit(FMLPreInitializationEvent event) {
         moduleManager.onPreInit(event);
+
+
+
     }
 
     @EventHandler

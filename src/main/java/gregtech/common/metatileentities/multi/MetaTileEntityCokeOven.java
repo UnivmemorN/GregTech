@@ -11,8 +11,9 @@ import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuiTheme;
 import gregtech.api.mui.factory.MetaTileEntityGuiFactory;
 import gregtech.api.mui.widget.RecipeProgressWidget;
-import gregtech.api.pattern.BlockPattern;
-import gregtech.api.pattern.FactoryBlockPattern;
+import gregtech.api.pattern.casing.DeclarativePatternBuilder;
+import gregtech.api.pattern.element.Elements;
+import gregtech.api.pattern.element.StructureDefinition;
 import gregtech.api.recipes.RecipeMaps;
 import gregtech.client.particle.VanillaParticleEffects;
 import gregtech.client.renderer.ICubeRenderer;
@@ -28,7 +29,11 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.SoundEvents;
-import net.minecraft.util.*;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.EnumHand;
+import net.minecraft.util.EnumParticleTypes;
+import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.SoundCategory;
 import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.fluids.FluidUtil;
 import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
@@ -42,15 +47,30 @@ import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.value.sync.DoubleSyncValue;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.ProgressWidget;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import org.jetbrains.annotations.NotNull;
 
 public class MetaTileEntityCokeOven extends RecipeMapPrimitiveMultiblockController {
 
+    private static final StructureDefinition<?> STRUCTURE_DEFINITION = StructureDefinition.getOrBuild(
+            "gregtech:coke_oven", () -> DeclarativePatternBuilder.start()
+                    .aisle("XXX", "XXX", "XXX")
+                    .aisle("XXX", "X#X", "XXX")
+                    .aisle("XXX", "XYX", "XXX")
+                    .self('Y', MetaTileEntityCokeOven.class)
+                    .air('#')
+                    .casing('X', getCasingState())
+                    .custom(Elements.metaTileEntities(0, 5, 5, MetaTileEntities.COKE_OVEN_HATCH), 5)
+                    .buildStructureDefinition());
+
     public MetaTileEntityCokeOven(ResourceLocation metaTileEntityId) {
         super(metaTileEntityId, RecipeMaps.COKE_OVEN_RECIPES);
+    }
+
+    public static IBlockState getCasingState() {
+        return MetaBlocks.METAL_CASING.getState(BlockMetalCasing.MetalCasingType.COKE_BRICKS);
     }
 
     @Override
@@ -60,21 +80,8 @@ public class MetaTileEntityCokeOven extends RecipeMapPrimitiveMultiblockControll
 
     @NotNull
     @Override
-    protected BlockPattern createStructurePattern() {
-        return FactoryBlockPattern.start()
-                .aisle("XXX", "XXX", "XXX")
-                .aisle("XXX", "X#X", "XXX")
-                .aisle("XXX", "XYX", "XXX")
-                .where('X',
-                        states(getCasingState())
-                                .or(metaTileEntities(MetaTileEntities.COKE_OVEN_HATCH).setMaxGlobalLimited(5)))
-                .where('#', air())
-                .where('Y', selfPredicate())
-                .build();
-    }
-
-    protected IBlockState getCasingState() {
-        return MetaBlocks.METAL_CASING.getState(BlockMetalCasing.MetalCasingType.COKE_BRICKS);
+    protected StructureDefinition<?> createStructureDefinition() {
+        return STRUCTURE_DEFINITION;
     }
 
     @SideOnly(Side.CLIENT)
@@ -138,7 +145,6 @@ public class MetaTileEntityCokeOven extends RecipeMapPrimitiveMultiblockControll
                 });
     }
 
-
     @Override
     public GTGuiTheme getUITheme() {
         return GTGuiTheme.PRIMITIVE;
@@ -181,5 +187,20 @@ public class MetaTileEntityCokeOven extends RecipeMapPrimitiveMultiblockControll
     @Override
     public SoundType getSoundType() {
         return SoundType.STONE;
+    }
+
+    @Override
+    public void update() {
+        super.update();
+        if (this.isActive()) {
+            if (getWorld().isRemote) {
+                pollution(this.getPollutionAmount(), this.getPollutionTicks());
+            }
+        }
+    }
+
+    @Override
+    public double getPollutionAmount() {
+        return 0.005;
     }
 }

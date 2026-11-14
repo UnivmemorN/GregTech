@@ -30,25 +30,27 @@ import net.minecraftforge.items.IItemHandlerModifiable;
 import codechicken.lib.render.CCRenderState;
 import codechicken.lib.render.pipeline.IVertexOperation;
 import codechicken.lib.vec.Matrix4;
+import com.cleanroommc.modularui.animation.Animator;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.drawable.DynamicDrawable;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.utils.Color;
+import com.cleanroommc.modularui.utils.Interpolation;
 import com.cleanroommc.modularui.value.BoolValue;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.SyncHandlers;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.ScrollingTextWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
-import com.cleanroommc.modularui.widgets.TextWidget;
 import com.cleanroommc.modularui.widgets.ToggleButton;
 import com.cleanroommc.modularui.widgets.layout.Flow;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -63,11 +65,6 @@ import static gregtech.api.capability.GregtechDataCodes.*;
 public abstract class MetaTileEntityQuantumStorage<T> extends MetaTileEntity implements IQuantumStorage<T>,
                                                                                         IActiveOutputSide {
 
-    /** not synced, server only. lazily initialized from pos */
-    private WeakReference<IQuantumController> controller = new WeakReference<>(null);
-
-    /** synced, server and client */
-    private BlockPos controllerPos;
     protected static final String IS_VOIDING = "IsVoiding";
     protected static final String INPUT_FROM_OUTPUT = "AllowInputFromOutputSide";
     protected static final String INPUT_FROM_OUTPUT_FLUID = "AllowInputFromOutputSideF";
@@ -76,12 +73,15 @@ public abstract class MetaTileEntityQuantumStorage<T> extends MetaTileEntity imp
     protected static final String IS_LOCKED = "IsLocked";
     protected static final String HAS_CONTROLLER = "HasController";
     protected static final String CONTROLLER_POS = "ControllerPos";
-
     protected EnumFacing outputFacing;
     protected boolean voiding = false;
     protected boolean autoOutput;
     protected boolean allowInputFromOutputSide = false;
     protected boolean locked = false;
+    /** not synced, server only. lazily initialized from pos */
+    private WeakReference<IQuantumController> controller = new WeakReference<>(null);
+    /** synced, server and client */
+    private BlockPos controllerPos;
 
     public MetaTileEntityQuantumStorage(ResourceLocation metaTileEntityId) {
         super(metaTileEntityId);
@@ -172,7 +172,7 @@ public abstract class MetaTileEntityQuantumStorage<T> extends MetaTileEntity imp
     }
 
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
         var panel = GTGuis.createPanel(this, 176, 166);
         createWidgets(panel, guiSyncManager);
         return panel.padding(4)
@@ -182,13 +182,15 @@ public abstract class MetaTileEntityQuantumStorage<T> extends MetaTileEntity imp
                 .child(createConnectionButton()
                         .right(9)
                         .top(18 + 45))
-                .child(SlotGroupWidget.playerInventory().left(7));
+                .child(SlotGroupWidget.playerInventory(false)
+                        .left(7)
+                        .bottom(7));
     }
 
     protected void createWidgets(ModularPanel mainPanel, PanelSyncManager syncManager) {}
 
     public Flow createQuantumDisplay(String lang,
-                                     Supplier<String> name, Predicate<TextWidget> condition,
+                                     Supplier<String> name, Predicate<ScrollingTextWidget> condition,
                                      Supplier<String> count) {
         return Flow.column()
                 .background(GTGuiTextures.DISPLAY)
@@ -203,6 +205,8 @@ public abstract class MetaTileEntityQuantumStorage<T> extends MetaTileEntity imp
                         .left(4)
                         .marginBottom(2))
                 .child(new ScrollingTextWidget(IKey.dynamic(name))
+                        // initialize this so it doesn't crash on dispose
+                        .animator(new Animator().curve(Interpolation.SINE_INOUT))
                         .alignment(Alignment.CenterLeft)
                         .color(Color.WHITE.main)
                         .setEnabledIf(condition)
@@ -219,13 +223,13 @@ public abstract class MetaTileEntityQuantumStorage<T> extends MetaTileEntity imp
                 .coverChildren()
                 .child(new ItemSlot()
                         .background(GTGuiTextures.SLOT, GTGuiTextures.IN_SLOT_OVERLAY)
-                        .slot(SyncHandlers.itemSlot(importHandler, 0)
+                        .slot(new ModularSlot(importHandler, 0)
                                 .accessibility(true, true)
                                 .singletonSlotGroup(200))
                         .marginRight(18))
                 .child(new ItemSlot()
                         .background(GTGuiTextures.SLOT, GTGuiTextures.OUT_SLOT_OVERLAY)
-                        .slot(SyncHandlers.itemSlot(exportHandler, 0)
+                        .slot(new ModularSlot(exportHandler, 0)
                                 .accessibility(false, true)));
     }
 
@@ -287,7 +291,6 @@ public abstract class MetaTileEntityQuantumStorage<T> extends MetaTileEntity imp
                                 .left(2)
                                 .marginBottom(15)
                                 .size(154, 14)
-                                .keepScrollBarInArea(true)
                                 .setNumbers(1, Integer.MAX_VALUE)
                                 .setMaxLength(11)
                                 .value(amountPerCycle))
@@ -296,7 +299,6 @@ public abstract class MetaTileEntityQuantumStorage<T> extends MetaTileEntity imp
                         .child(new TextFieldWidget()
                                 .left(2)
                                 .size(154, 14)
-                                .keepScrollBarInArea(true)
                                 .setNumbers(1, Integer.MAX_VALUE)
                                 .setMaxLength(11)
                                 .value(ticksPerCycle)))
@@ -354,6 +356,28 @@ public abstract class MetaTileEntityQuantumStorage<T> extends MetaTileEntity imp
             writeCustomData(UPDATE_OUTPUT_FACING, buf -> buf.writeByte(outputFacing.getIndex()));
             markDirty();
         }
+    }
+
+    // ---- IActiveOutputSide：量子储罐系只有单一输出面，两个通道都指向它 ----
+
+    @Override
+    public EnumFacing getOutputFacingItems() {
+        return getOutputFacing();
+    }
+
+    @Override
+    public EnumFacing getOutputFacingFluids() {
+        return getOutputFacing();
+    }
+
+    @Override
+    public void setOutputFacingItems(EnumFacing facing) {
+        setOutputFacing(facing);
+    }
+
+    @Override
+    public void setOutputFacingFluids(EnumFacing facing) {
+        setOutputFacing(facing);
     }
 
     public boolean isAutoOutputItems() {

@@ -20,6 +20,7 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.WritableRaster;
 import java.util.HashMap;
+import java.util.Map;
 
 public class ProspectingTexture extends AbstractTexture {
 
@@ -29,8 +30,8 @@ public class ProspectingTexture extends AbstractTexture {
     private boolean darkMode;
     private int imageWidth = -1;
     private int imageHeight = -1;
-    public final HashMap<Byte, String>[][] map;
-    public static HashMap<Byte, String> emptyTag = new HashMap<>();
+    public final Map<Byte, String>[][] map;
+    public static Map<Byte, String> emptyTag = new HashMap<>();
     private int playerXGui;
     private int playerYGui;
     private final ProspectorMode mode;
@@ -40,7 +41,7 @@ public class ProspectingTexture extends AbstractTexture {
         this.darkMode = darkMode;
         this.radius = radius;
         this.mode = mode;
-        if (this.mode == ProspectorMode.FLUID) {
+        if (this.mode == ProspectorMode.BEDROCK_FLUID || this.mode == ProspectorMode.BEDROCK_ORE) {
             // noinspection unchecked
             map = new HashMap[(radius * 2 - 1)][(radius * 2 - 1)];
         } else {
@@ -81,7 +82,7 @@ public class ProspectingTexture extends AbstractTexture {
             return;
         }
 
-        if (this.mode == ProspectorMode.FLUID) {
+        if (this.mode == ProspectorMode.BEDROCK_FLUID || this.mode == ProspectorMode.BEDROCK_ORE) {
             map[currentColumn][currentRow] = packet.map[0][0] == null ?
                     emptyTag : packet.map[0][0];
         } else {
@@ -102,8 +103,8 @@ public class ProspectingTexture extends AbstractTexture {
 
         for (int i = 0; i < wh; i++) {
             for (int j = 0; j < wh; j++) {
-                HashMap<Byte, String> data = this.map[this.mode == ProspectorMode.ORE ? i : i / 16][this.mode ==
-                        ProspectorMode.ORE ? j : j / 16];
+                boolean isChunkMode = this.mode == ProspectorMode.BEDROCK_FLUID || this.mode == ProspectorMode.BEDROCK_ORE;
+                Map<Byte, String> data = this.map[isChunkMode ? i / 16 : i][isChunkMode ? j / 16 : j];
                 // draw bg
                 image.setRGB(i, j, ((data == null) ^ darkMode) ? Color.darkGray.getRGB() : Color.WHITE.getRGB());
                 // draw ore
@@ -155,7 +156,7 @@ public class ProspectingTexture extends AbstractTexture {
         if (this.glTextureId < 0) return;
         GlStateManager.bindTexture(this.getGlTextureId());
         Gui.drawModalRectWithCustomSizedTexture(x, y, 0, 0, imageWidth, imageHeight, imageWidth, imageHeight);
-        if (this.mode == ProspectorMode.FLUID) { // draw fluids in grid
+        if (this.mode == ProspectorMode.BEDROCK_FLUID) { // draw fluids in grid
             for (int cx = 0; cx < this.radius * 2 - 1; cx++) {
                 for (int cz = 0; cz < this.radius * 2 - 1; cz++) {
                     if (this.map[cx][cz] != null && !this.map[cx][cz].isEmpty()) {
@@ -163,6 +164,22 @@ public class ProspectingTexture extends AbstractTexture {
                         if (selected.equals(SELECTED_ALL) || selected.equals(fluid.getName())) {
                             RenderUtil.drawFluidForGui(new FluidStack(fluid, 1), 1, x + cx * 16 + 1, y + cz * 16 + 1,
                                     16, 16);
+                        }
+                    }
+                }
+            }
+        }
+        if (this.mode == ProspectorMode.BEDROCK_ORE) {
+            for (int cx = 0; cx < this.radius * 2 - 1; cx++) {
+                for (int cz = 0; cz < this.radius * 2 - 1; cz++) {
+                    if (this.map[cx][cz] != null && !this.map[cx][cz].isEmpty()) {
+                        String oreNames = this.map[cx][cz].get((byte) 1);
+                        if (selected.equals(SELECTED_ALL) || oreNames.contains(selected)) {
+                            int colorHash = oreNames.hashCode();
+                            Color c = new Color(colorHash | 0xFF000000);
+                            Gui.drawRect(x + cx * 16 + 1, y + cz * 16 + 1,
+                                    x + cx * 16 + 15, y + cz * 16 + 15,
+                                    c.getRGB());
                         }
                     }
                 }

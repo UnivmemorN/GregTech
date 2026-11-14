@@ -29,7 +29,11 @@ import net.minecraft.init.SoundEvents;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
-import net.minecraft.util.*;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.EnumParticleTypes;
+import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.SoundCategory;
+import net.minecraft.util.SoundEvent;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentTranslation;
@@ -49,11 +53,13 @@ import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.drawable.UITexture;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.DoubleSyncValue;
+import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.widget.Widget;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.ProgressWidget;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
 import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
@@ -79,19 +85,16 @@ public abstract class SteamBoiler extends MetaTileEntity implements IDataInfoPro
 
     protected final boolean isHighPressure;
     private final ICubeRenderer renderer;
-
+    private final ItemStackHandler containerInventory;
     protected FluidTank waterFluidTank;
     protected FluidTank steamFluidTank;
-
     private int fuelBurnTimeLeft;
     private int fuelMaxBurnTime;
     private int currentTemperature;
     private boolean hasNoWater;
     private int timeBeforeCoolingDown;
-
     private boolean isBurning;
     private boolean wasBurningAndNeedsUpdate;
-    private final ItemStackHandler containerInventory;
 
     public SteamBoiler(ResourceLocation metaTileEntityId, boolean isHighPressure, ICubeRenderer renderer) {
         super(metaTileEntityId);
@@ -100,6 +103,22 @@ public abstract class SteamBoiler extends MetaTileEntity implements IDataInfoPro
         this.bronzeSlotBackgroundTexture = getGuiTexture("slot_%s");
         this.slotFurnaceBackground = getGuiTexture("slot_%s_furnace_background");
         this.containerInventory = new GTItemStackHandler(this, 2);
+    }
+
+    public int getCurrentTemperature() {
+        return currentTemperature;
+    }
+
+    public boolean isBurning() {
+        return isBurning;
+    }
+
+    public void setBurning(boolean burning) {
+        this.isBurning = burning;
+        if (!getWorld().isRemote) {
+            markDirty();
+            writeCustomData(IS_WORKING, buf -> buf.writeBoolean(burning));
+        }
     }
 
     @Override
@@ -158,19 +177,21 @@ public abstract class SteamBoiler extends MetaTileEntity implements IDataInfoPro
     }
 
     @Override
-    public void writeInitialSyncData(PacketBuffer buf) {
+    public void writeInitialSyncData(@NotNull PacketBuffer buf) {
         super.writeInitialSyncData(buf);
         buf.writeBoolean(isBurning);
+        buf.writeVarInt(currentTemperature);
     }
 
     @Override
-    public void receiveInitialSyncData(PacketBuffer buf) {
+    public void receiveInitialSyncData(@NotNull PacketBuffer buf) {
         super.receiveInitialSyncData(buf);
         this.isBurning = buf.readBoolean();
+        this.currentTemperature = buf.readVarInt();
     }
 
     @Override
-    public void receiveCustomData(int dataId, PacketBuffer buf) {
+    public void receiveCustomData(int dataId, @NotNull PacketBuffer buf) {
         super.receiveCustomData(dataId, buf);
         if (dataId == IS_WORKING) {
             this.isBurning = buf.readBoolean();
@@ -235,7 +256,7 @@ public abstract class SteamBoiler extends MetaTileEntity implements IDataInfoPro
                 currentTemperature -= getCoolDownRate();
                 timeBeforeCoolingDown = getCooldownInterval();
             }
-        } else--timeBeforeCoolingDown;
+        } else --timeBeforeCoolingDown;
     }
 
     protected abstract int getBaseSteamOutput();
@@ -287,18 +308,6 @@ public abstract class SteamBoiler extends MetaTileEntity implements IDataInfoPro
         }
     }
 
-    public boolean isBurning() {
-        return isBurning;
-    }
-
-    public void setBurning(boolean burning) {
-        this.isBurning = burning;
-        if (!getWorld().isRemote) {
-            markDirty();
-            writeCustomData(IS_WORKING, buf -> buf.writeBoolean(burning));
-        }
-    }
-
     protected abstract void tryConsumeNewFuel();
 
     protected abstract int getCooldownInterval();
@@ -311,10 +320,6 @@ public abstract class SteamBoiler extends MetaTileEntity implements IDataInfoPro
 
     public double getTemperaturePercent() {
         return currentTemperature / (getMaxTemperate() * 1.0);
-    }
-
-    public int getCurrentTemperature() {
-        return currentTemperature;
     }
 
     public double getFuelLeftPercent() {
@@ -345,18 +350,23 @@ public abstract class SteamBoiler extends MetaTileEntity implements IDataInfoPro
     }
 
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager panelSyncManager, UISettings settings) {
+        IntSyncValue temp = new IntSyncValue(this::getCurrentTemperature);
+        panelSyncManager.syncValue("temperature", temp);
         return GTGuis.defaultPanel(this)
                 .child(IKey.lang(getMetaFullName()).asWidget().pos(5, 5))
                 .child(new ProgressWidget()
                         .texture(getEmptyBarDrawable(), GTGuiTextures.PROGRESS_BAR_BOILER_HEAT, -1)
                         .direction(ProgressWidget.Direction.UP)
-                        .debugName("temp")
+                        .name("temp")
+                        .tooltipBuilder(
+                                tooltip -> tooltip.addLine(IKey.lang("gregtech.machine.steam_boiler.heat_tooltip",
+                                        temp.getIntValue(), getMaxTemperate())))
                         .value(new DoubleSyncValue(this::getTemperaturePercent))
                         .pos(96, 26)
                         .size(10, 54))
                 .child(new GTFluidSlot()
-                        .debugName("water")
+                        .name("water")
                         .background(getEmptyBarDrawable())
                         .syncHandler(GTFluidSlot.sync(waterFluidTank)
                                 .showAmountOnSlot(false)
@@ -364,7 +374,7 @@ public abstract class SteamBoiler extends MetaTileEntity implements IDataInfoPro
                         .pos(83, 26)
                         .size(10, 54))
                 .child(new GTFluidSlot()
-                        .debugName("steam")
+                        .name("steam")
                         .background(getEmptyBarDrawable())
                         .syncHandler(GTFluidSlot.sync(steamFluidTank)
                                 .showAmountOnSlot(false)
@@ -372,13 +382,13 @@ public abstract class SteamBoiler extends MetaTileEntity implements IDataInfoPro
                         .pos(70, 26)
                         .size(10, 54))
                 .child(new ItemSlot()
-                        .debugName("fluid in")
+                        .name("fluid in")
                         .background(getSlotBackground(false))
                         .slot(new ModularSlot(containerInventory, 0)
                                 .singletonSlotGroup())
                         .pos(43, 26))
                 .child(new ItemSlot()
-                        .debugName("fluid out")
+                        .name("fluid out")
                         .background(getSlotBackground(true))
                         .slot(new ModularSlot(containerInventory, 1)
                                 .accessibility(false, true))

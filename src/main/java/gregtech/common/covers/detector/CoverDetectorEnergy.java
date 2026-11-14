@@ -4,9 +4,11 @@ import gregtech.api.capability.GregtechCapabilities;
 import gregtech.api.capability.IEnergyContainer;
 import gregtech.api.cover.CoverDefinition;
 import gregtech.api.cover.CoverableView;
+import gregtech.api.cover.ICustomEnergyCover;
 import gregtech.api.util.RedstoneUtil;
 import gregtech.client.renderer.texture.Textures;
 import gregtech.common.metatileentities.multi.electric.MetaTileEntityPowerSubstation;
+import gregtech.common.metatileentities.storage.MetaTileEntityCreativeEnergy;
 
 import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.EnumFacing;
@@ -27,12 +29,17 @@ public class CoverDetectorEnergy extends CoverDetectorBase implements ITickable 
 
     @Override
     public boolean canAttach(@NotNull CoverableView coverable, @NotNull EnumFacing side) {
-        return coverable.getCapability(GregtechCapabilities.CAPABILITY_ENERGY_CONTAINER, null) != null ||
+        // do not attach for creative energy emitter
+        if (coverable instanceof MetaTileEntityCreativeEnergy) return false;
+        if (coverable instanceof ICustomEnergyCover) return true;
+        return coverable.hasCapability(GregtechCapabilities.CAPABILITY_ENERGY_CONTAINER, null) ||
                 coverable instanceof MetaTileEntityPowerSubstation; // todo check this
     }
 
     public long getCoverHolderCapacity() {
-        if (getCoverableView() instanceof MetaTileEntityPowerSubstation pss) {
+        if (getCoverableView() instanceof ICustomEnergyCover custom) {
+            return custom.getCoverCapacity();
+        } else if (getCoverableView() instanceof MetaTileEntityPowerSubstation pss) {
             return pss.getCapacityLong();
         } else {
             IEnergyContainer energyContainer = getCoverableView()
@@ -43,7 +50,9 @@ public class CoverDetectorEnergy extends CoverDetectorBase implements ITickable 
     }
 
     public long getCoverHolderStored() {
-        if (getCoverableView() instanceof MetaTileEntityPowerSubstation pss) {
+        if (getCoverableView() instanceof ICustomEnergyCover custom) {
+            return custom.getCoverStored();
+        } else if (getCoverableView() instanceof MetaTileEntityPowerSubstation pss) {
             return pss.getStoredLong();
         } else {
             IEnergyContainer energyContainer = getCoverableView()

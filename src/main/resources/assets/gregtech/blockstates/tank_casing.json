@@ -1,0 +1,35 @@
+{
+  "forge_marker": 1,
+  "defaults": {
+    "model": "minecraft:cube_all"
+  },
+  "variants": {
+    "variant": {
+      "bronze": {
+        "textures": {
+          "all": "gregtech:blocks/casings/tank/tank_casing_bronze"
+        }
+      },
+      "chrome": {
+        "textures": {
+          "all": "gregtech:blocks/casings/tank/tank_casing_chrome"
+        }
+      },
+      "aluminium": {
+        "textures": {
+          "all": "gregtech:blocks/casings/tank/tank_casing_aluminium"
+        }
+      },
+      "stainless_steel": {
+        "textures": {
+          "all": "gregtech:blocks/casings/tank/tank_casing_stainless_steel"
+        }
+      },
+      "titanium": {
+        "textures": {
+          "all": "gregtech:blocks/casings/tank/tank_casing_titanium"
+        }
+      }
+    }
+  }
+}

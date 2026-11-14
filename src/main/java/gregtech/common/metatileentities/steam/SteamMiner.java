@@ -1,6 +1,10 @@
 package gregtech.common.metatileentities.steam;
 
-import gregtech.api.capability.*;
+import gregtech.api.capability.GregtechDataCodes;
+import gregtech.api.capability.GregtechTileCapabilities;
+import gregtech.api.capability.IControllable;
+import gregtech.api.capability.IMiner;
+import gregtech.api.capability.IVentable;
 import gregtech.api.capability.impl.CommonFluidFilters;
 import gregtech.api.capability.impl.FilteredFluidHandler;
 import gregtech.api.capability.impl.FluidTankList;
@@ -14,12 +18,12 @@ import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuiTheme;
 import gregtech.api.mui.GTGuis;
+import gregtech.api.mui.TextStandards;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.KeyUtil;
 import gregtech.client.renderer.texture.Textures;
 import gregtech.client.renderer.texture.cube.SimpleSidedCubeRenderer;
 import gregtech.common.ConfigHolder;
-import gregtech.common.mui.widget.ScrollableTextWidget;
 
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
@@ -30,7 +34,11 @@ import net.minecraft.init.SoundEvents;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
-import net.minecraft.util.*;
+import net.minecraft.util.EntitySelectors;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.EnumParticleTypes;
+import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.SoundCategory;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.ITextComponent;
@@ -50,14 +58,11 @@ import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
-import com.cleanroommc.modularui.utils.Alignment;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.SyncHandlers;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
-import com.cleanroommc.modularui.widgets.layout.Grid;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
@@ -68,14 +73,12 @@ import java.util.List;
 
 public class SteamMiner extends MetaTileEntity implements IMiner, IControllable, IVentable, IDataInfoProvider {
 
-    private boolean needsVenting = false;
-    private boolean ventingStuck = false;
-
     private final int inventorySize;
     private final int energyPerTick;
-    private boolean isInventoryFull = false;
-
     private final MinerLogic minerLogic;
+    private boolean needsVenting = false;
+    private boolean ventingStuck = false;
+    private boolean isInventoryFull = false;
 
     public SteamMiner(ResourceLocation metaTileEntityId, int speed, int maximumRadius, int fortune) {
         super(metaTileEntityId);
@@ -135,10 +138,7 @@ public class SteamMiner extends MetaTileEntity implements IMiner, IControllable,
 
     @SuppressWarnings("DuplicatedCode")
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager panelSyncManager) {
-        int rowSize = (int) Math.sqrt(inventorySize);
-        panelSyncManager.registerSlotGroup("export_items", rowSize);
-
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager panelSyncManager, UISettings settings) {
         IntSyncValue radiusSync = new IntSyncValue(() -> getWorkingArea(minerLogic.getCurrentRadius()));
         BooleanSyncValue isDoneSync = new BooleanSyncValue(minerLogic::isDone);
         BooleanSyncValue isWorkingSync = new BooleanSyncValue(minerLogic::isWorking);
@@ -165,59 +165,65 @@ public class SteamMiner extends MetaTileEntity implements IMiner, IControllable,
                 .child(IKey.lang(getMetaFullName())
                         .asWidget()
                         .pos(5, 5))
-                .child(new ScrollableTextWidget()
-                        .pos(7 + 3, 15 + 3)
-                        .size(105 - 3 * 2, 75 - 3 * 2)
-                        .autoUpdate(true)
-                        .alignment(Alignment.TopLeft)
-                        .textBuilder(text -> {
-                            text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_at"));
-                            text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_pos_x",
-                                    xPosSync.getIntValue()));
-                            text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_pos_y",
-                                    yPosSync.getIntValue()));
-                            text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_pos_z",
-                                    zPosSync.getIntValue()));
+                .child(createMinerWidgets(panelSyncManager, exportItems, inventorySize, GTGuiTextures.DISPLAY_BRONZE,
+                        text -> {
+                            boolean isDone = isDoneSync.getBoolValue();
+                            boolean isWorking = isWorkingSync.getBoolValue();
+                            boolean isWorkingEnabled = isWorkingEnabledSync.getBoolValue();
+                            boolean isInventoryFull = isInventoryFullSync.getBoolValue();
+                            boolean hasEnoughEnergy = hasEnoughEnergySync.getBoolValue();
+                            boolean isVentBlocked = isVentBlockedSync.getBoolValue();
+
+                            int xPos = xPosSync.getIntValue();
+                            int yPos = yPosSync.getIntValue();
+                            int zPos = zPosSync.getIntValue();
+                            int radius = radiusSync.getIntValue();
+
+                            if (isWorking) {
+                                text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_at"));
+                                text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_pos_x",
+                                        xPos));
+                                text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_pos_y",
+                                        yPos));
+                                text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.mining_pos_z",
+                                        zPos));
+                            }
 
                             text.addLine(KeyUtil.lang(TextFormatting.WHITE, "gregtech.machine.miner.working_area",
-                                    radiusSync.getIntValue(), radiusSync.getIntValue()));
+                                    radius, radius));
 
-                            if (isDoneSync.getBoolValue()) {
-                                text.addLine(KeyUtil.lang(TextFormatting.GREEN, "gregtech.machine.miner.done"));
-                            } else if (isWorkingSync.getBoolValue()) {
-                                text.addLine(KeyUtil.lang(TextFormatting.GOLD, "gregtech.machine.miner.working"));
-                            } else if (!isWorkingEnabledSync.getBoolValue()) {
-                                text.addLine(KeyUtil.lang("gregtech.multiblock.work_paused"));
+                            if (isDone) {
+                                text.addLine(KeyUtil.lang(TextStandards.Colors.MACHINE_DONE,
+                                        "gregtech.machine.miner.done"));
+                            } else if (isWorking) {
+                                text.addLine(KeyUtil.lang(TextStandards.Colors.MACHINE_WORKING,
+                                        "gregtech.machine.miner.working"));
+                            } else if (!isWorkingEnabled) {
+                                text.addLine(TextStandards.Keys.MACHINE_PAUSED);
                             }
 
-                            if (isInventoryFullSync.getBoolValue()) {
-                                text.addLine(KeyUtil.lang(TextFormatting.RED, "gregtech.machine.miner.invfull"));
+                            if (isInventoryFull) {
+                                text.addLine(KeyUtil.lang(TextStandards.Colors.NO_OUTPUT_SPACE,
+                                        "gregtech.machine.miner.invfull"));
                             }
 
-                            if (isVentBlockedSync.getBoolValue()) {
-                                text.addLine(KeyUtil.lang(TextFormatting.RED, "gregtech.machine.steam_miner.vent"));
+                            if (isVentBlocked) {
+                                text.addLine(KeyUtil.lang(TextStandards.Colors.STEAM_VENT_BLOCKED,
+                                        "gregtech.machine.steam_miner.vent"));
                             }
 
                             // Drain energy always returns false when the vent is blocked, so check that it isn't
                             // blocked.
                             // It should be fine since I don't think it can even enter the vent blocked state without
                             // having steam.
-                            if (!hasEnoughEnergySync.getBoolValue() && !isVentBlockedSync.getBoolValue()) {
-                                text.addLine(KeyUtil.lang(TextFormatting.RED, "gregtech.machine.steam_miner.steam"));
+                            if (!hasEnoughEnergy && !isVentBlocked) {
+                                text.addLine(KeyUtil.lang(TextStandards.Colors.NO_POWER,
+                                        "gregtech.machine.steam_miner.steam"));
                             }
                         })
-                        .background(GTGuiTextures.DISPLAY_BRONZE.asIcon()
-                                .margin(-3)))
-                .child(new Grid()
-                        .pos(151 - 18 * 2, 15)
-                        .minElementMargin(0)
-                        .minColWidth(18)
-                        .minRowHeight(18)
-                        .mapTo(rowSize, inventorySize, index -> new ItemSlot()
-                                .slot(SyncHandlers.itemSlot(exportItems, index)
-                                        .slotGroup("export_items")
-                                        .accessibility(false, true))))
-                .child(SlotGroupWidget.playerInventory()
+                        .left(10)
+                        .top(18))
+                .child(SlotGroupWidget.playerInventory(false)
                         .left(7)
                         .bottom(7));
     }
@@ -313,26 +319,6 @@ public class SteamMiner extends MetaTileEntity implements IMiner, IControllable,
                 getPaintingColorForRendering());
     }
 
-    public void setVentingStuck(boolean ventingStuck) {
-        this.ventingStuck = ventingStuck;
-        if (!this.getWorld().isRemote) {
-            this.markDirty();
-            this.writeCustomData(GregtechDataCodes.VENTING_STUCK, (buf) -> buf.writeBoolean(ventingStuck));
-        }
-    }
-
-    @Override
-    public void setNeedsVenting(boolean needsVenting) {
-        this.needsVenting = needsVenting;
-        if (!needsVenting && this.ventingStuck)
-            this.setVentingStuck(false);
-
-        if (!this.getWorld().isRemote) {
-            this.markDirty();
-            this.writeCustomData(GregtechDataCodes.NEEDS_VENTING, (buf) -> buf.writeBoolean(needsVenting));
-        }
-    }
-
     @Override
     public <T> T getCapability(Capability<T> capability, EnumFacing side) {
         if (capability == GregtechTileCapabilities.CAPABILITY_CONTROLLABLE) {
@@ -367,6 +353,18 @@ public class SteamMiner extends MetaTileEntity implements IMiner, IControllable,
     }
 
     @Override
+    public void setNeedsVenting(boolean needsVenting) {
+        this.needsVenting = needsVenting;
+        if (!needsVenting && this.ventingStuck)
+            this.setVentingStuck(false);
+
+        if (!this.getWorld().isRemote) {
+            this.markDirty();
+            this.writeCustomData(GregtechDataCodes.NEEDS_VENTING, (buf) -> buf.writeBoolean(needsVenting));
+        }
+    }
+
+    @Override
     public void tryDoVenting() {
         BlockPos machinePos = this.getPos();
         EnumFacing ventingSide = EnumFacing.UP;
@@ -397,6 +395,14 @@ public class SteamMiner extends MetaTileEntity implements IMiner, IControllable,
     @Override
     public boolean isVentingStuck() {
         return ventingStuck;
+    }
+
+    public void setVentingStuck(boolean ventingStuck) {
+        this.ventingStuck = ventingStuck;
+        if (!this.getWorld().isRemote) {
+            this.markDirty();
+            this.writeCustomData(GregtechDataCodes.VENTING_STUCK, (buf) -> buf.writeBoolean(ventingStuck));
+        }
     }
 
     @NotNull

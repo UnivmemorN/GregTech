@@ -1,5 +1,6 @@
 package gregtech.common.pipelike.fluidpipe;
 
+import gregtech.api.fluids.attribute.FluidAttribute;
 import gregtech.api.pipenet.block.material.IMaterialPipeType;
 import gregtech.api.unification.material.properties.FluidPipeProperties;
 import gregtech.api.unification.ore.OrePrefix;
@@ -58,14 +59,20 @@ public enum FluidPipeType implements IMaterialPipeType<FluidPipeProperties> {
 
     @Override
     public FluidPipeProperties modifyProperties(FluidPipeProperties baseProperties) {
-        return new FluidPipeProperties(
+        FluidPipeProperties modified = new FluidPipeProperties(
                 baseProperties.getMaxFluidTemperature(),
                 baseProperties.getThroughput() * capacityMultiplier,
                 baseProperties.isGasProof(),
                 baseProperties.isAcidProof(),
                 baseProperties.isCryoProof(),
                 baseProperties.isPlasmaProof(),
+                baseProperties.isBaseProof(),
                 channels);
+        // inherit custom fluid attributes from the material, which the constructor cannot carry over
+        for (FluidAttribute attribute : baseProperties.getContainedAttributes()) {
+            modified.setCanContain(attribute, baseProperties.canContain(attribute));
+        }
+        return modified;
     }
 
     @Override

@@ -11,24 +11,26 @@ import gregtech.api.capability.impl.FluidTankList;
 import gregtech.api.metatileentity.ITieredMetaTileEntity;
 import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
-import gregtech.api.metatileentity.multiblock.*;
+import gregtech.api.metatileentity.multiblock.IMultiblockPart;
+import gregtech.api.metatileentity.multiblock.MultiblockAbility;
+import gregtech.api.metatileentity.multiblock.MultiblockWithDisplayBase;
+import gregtech.api.metatileentity.multiblock.ProgressBarMultiblock;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIBuilder;
 import gregtech.api.metatileentity.multiblock.ui.TemplateBarBuilder;
 import gregtech.api.mui.GTGuiTextures;
-import gregtech.api.pattern.BlockPattern;
-import gregtech.api.pattern.FactoryBlockPattern;
-import gregtech.api.pattern.PatternMatchContext;
-import gregtech.api.pattern.TraceabilityPredicate;
-import gregtech.api.unification.material.Materials;
+import gregtech.api.pattern.FormedStructureView;
+import gregtech.api.pattern.casing.DeclarativePatternBuilder;
+import gregtech.api.pattern.element.Elements;
+import gregtech.api.pattern.element.StructureDefinition;
 import gregtech.api.util.GTTransferUtils;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.KeyUtil;
 import gregtech.api.util.TextFormattingUtil;
+import gregtech.api.util.tooltips.AbstractTooltipComponent;
+import gregtech.api.util.tooltips.TooltipBuilder;
 import gregtech.api.worldgen.bedrockFluids.BedrockFluidVeinHandler;
 import gregtech.client.renderer.ICubeRenderer;
 import gregtech.client.renderer.texture.Textures;
-import gregtech.common.blocks.BlockMetalCasing;
-import gregtech.common.blocks.MetaBlocks;
 
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.resources.I18n;
@@ -62,22 +64,56 @@ import java.util.function.UnaryOperator;
 public class MetaTileEntityFluidDrill extends MultiblockWithDisplayBase
         implements ITieredMetaTileEntity, IWorkable, ProgressBarMultiblock {
 
-    private final FluidDrillLogic minerLogic;
-    private final int tier;
+    private static final String STRUCTURE_POOL_KEY = "gregtech:fluid_drilling_rig";
 
+    private final FluidDrillLogic minerLogic;
+    private final IFluidDrillType type;
+    private int productionBoostMultiplier = 1;
+    private long productionBoostExpiresAt;
     protected IMultipleTankHandler inputFluidInventory;
     protected IMultipleTankHandler outputFluidInventory;
     protected IEnergyContainer energyContainer;
 
-    public MetaTileEntityFluidDrill(ResourceLocation metaTileEntityId, int tier) {
+    public MetaTileEntityFluidDrill(ResourceLocation metaTileEntityId, IFluidDrillType type) {
         super(metaTileEntityId);
+        this.type = type;
         this.minerLogic = new FluidDrillLogic(this);
-        this.tier = tier;
+    }
+
+    private static StructureDefinition<?> buildStructureDefinition(IFluidDrillType type,
+                                                                   ResourceLocation controllerId) {
+        return DeclarativePatternBuilder.start()
+                .aisle("XXX", "#F#", "#F#", "#F#", "###", "###", "###")
+                .aisle("XXX", "FCF", "FCF", "FCF", "#F#", "#F#", "#F#")
+                .aisle("XSX", "#F#", "#F#", "#F#", "###", "###", "###")
+                .where('S', Elements.self(MetaTileEntityFluidDrill.class, controllerId))
+                .block('C', type.getCasingState())
+                .frames('F', type.getFrameMaterial())
+                .any('#')
+                .casing('X', type.getCasingState())
+                .energyInput(1, 3)
+                .fluidOutput(1)
+                .buildStructureDefinition();
+    }
+
+    private static @NotNull String getDepletionLang(IntSyncValue operationsValue) {
+        int percent = (int) Math.round(100.0 * operationsValue.getIntValue() /
+                BedrockFluidVeinHandler.MAXIMUM_VEIN_OPERATIONS);
+        if (percent > 40) {
+            return TextFormatting.GREEN + IKey
+                    .lang("gregtech.multiblock.fluid_rig.vein_depletion.high", percent).get();
+        } else if (percent > 10) {
+            return TextFormatting.YELLOW + IKey
+                    .lang("gregtech.multiblock.fluid_rig.vein_depletion.medium", percent).get();
+        } else {
+            return TextFormatting.RED + IKey
+                    .lang("gregtech.multiblock.fluid_rig.vein_depletion.low", percent).get();
+        }
     }
 
     @Override
     public MetaTileEntity createMetaTileEntity(IGregTechTileEntity tileEntity) {
-        return new MetaTileEntityFluidDrill(metaTileEntityId, tier);
+        return new MetaTileEntityFluidDrill(metaTileEntityId, type);
     }
 
     protected void initializeAbilities() {
@@ -93,8 +129,8 @@ public class MetaTileEntityFluidDrill extends MultiblockWithDisplayBase
     }
 
     @Override
-    protected void formStructure(PatternMatchContext context) {
-        super.formStructure(context);
+    protected void formStructure(@NotNull FormedStructureView formed) {
+        formStructureWithDisplay(formed);
         initializeAbilities();
     }
 
@@ -113,53 +149,17 @@ public class MetaTileEntityFluidDrill extends MultiblockWithDisplayBase
         }
     }
 
-    @Override
-    protected @NotNull BlockPattern createStructurePattern() {
-        return FactoryBlockPattern.start()
-                .aisle("XXX", "#F#", "#F#", "#F#", "###", "###", "###")
-                .aisle("XXX", "FCF", "FCF", "FCF", "#F#", "#F#", "#F#")
-                .aisle("XSX", "#F#", "#F#", "#F#", "###", "###", "###")
-                .where('S', selfPredicate())
-                .where('X', states(getCasingState()).setMinGlobalLimited(3)
-                        .or(abilities(MultiblockAbility.INPUT_ENERGY).setMinGlobalLimited(1).setMaxGlobalLimited(3))
-                        .or(abilities(MultiblockAbility.EXPORT_FLUIDS).setMaxGlobalLimited(1)))
-                .where('C', states(getCasingState()))
-                .where('F', getFramePredicate())
-                .where('#', any())
-                .build();
-    }
-
-    private IBlockState getCasingState() {
-        if (tier == GTValues.MV)
-            return MetaBlocks.METAL_CASING.getState(BlockMetalCasing.MetalCasingType.STEEL_SOLID);
-        if (tier == GTValues.HV)
-            return MetaBlocks.METAL_CASING.getState(BlockMetalCasing.MetalCasingType.TITANIUM_STABLE);
-        if (tier == GTValues.EV)
-            return MetaBlocks.METAL_CASING.getState(BlockMetalCasing.MetalCasingType.TUNGSTENSTEEL_ROBUST);
-        return MetaBlocks.METAL_CASING.getState(BlockMetalCasing.MetalCasingType.STEEL_SOLID);
-    }
-
     @NotNull
-    private TraceabilityPredicate getFramePredicate() {
-        if (tier == GTValues.MV)
-            return frames(Materials.Steel);
-        if (tier == GTValues.HV)
-            return frames(Materials.Titanium);
-        if (tier == GTValues.EV)
-            return frames(Materials.TungstenSteel);
-        return frames(Materials.Steel);
+    @Override
+    protected StructureDefinition<?> createStructureDefinition() {
+        return StructureDefinition.getOrBuild(STRUCTURE_POOL_KEY, type.getName(),
+                () -> buildStructureDefinition(type, metaTileEntityId));
     }
 
     @SideOnly(Side.CLIENT)
     @Override
     public ICubeRenderer getBaseTexture(IMultiblockPart sourcePart) {
-        if (tier == GTValues.MV)
-            return Textures.SOLID_STEEL_CASING;
-        if (tier == GTValues.HV)
-            return Textures.STABLE_TITANIUM_CASING;
-        if (tier == GTValues.EV)
-            return Textures.ROBUST_TUNGSTENSTEEL_CASING;
-        return Textures.SOLID_STEEL_CASING;
+        return type.getCasingRenderer();
     }
 
     @Override
@@ -216,17 +216,10 @@ public class MetaTileEntityFluidDrill extends MultiblockWithDisplayBase
     }
 
     @Override
-    public void addInformation(ItemStack stack, @Nullable World world, List<String> tooltip, boolean advanced) {
-        tooltip.add(I18n.format("gregtech.machine.fluid_drilling_rig.description"));
-        tooltip.add(I18n.format("gregtech.machine.fluid_drilling_rig.depletion",
-                TextFormattingUtil.formatNumbers(100.0 / getDepletionChance())));
-        tooltip.add(I18n.format("gregtech.universal.tooltip.energy_tier_range", GTValues.VNF[this.tier],
-                GTValues.VNF[this.tier + 1]));
-        tooltip.add(I18n.format("gregtech.machine.fluid_drilling_rig.production", getRigMultiplier(),
-                TextFormattingUtil.formatNumbers(getRigMultiplier() * 1.5)));
-        if (tier > GTValues.MV) {
-            tooltip.add(I18n.format("gregtech.machine.fluid_drilling_rig.shows_depletion"));
-        }
+    public void addInformation(ItemStack stack, @Nullable World world, @NotNull List<String> tooltip,
+                               boolean advanced) {
+        super.addInformation(stack, world, tooltip, advanced);
+        TooltipBuilder.create().add(new DrillInformation(type.getTier())).build(this, tooltip);
     }
 
     @Override
@@ -238,27 +231,32 @@ public class MetaTileEntityFluidDrill extends MultiblockWithDisplayBase
 
     @Override
     public int getTier() {
-        return this.tier;
+        return this.type.getTier();
+    }
+
+    /** Applies a temporary, non-stacking production boost to this drill instance. */
+    public void applyProductionBoost(int multiplier, int durationTicks) {
+        if (multiplier < 1 || durationTicks <= 0) {
+            throw new IllegalArgumentException("Invalid fluid drill production boost");
+        }
+        World world = getWorld();
+        if (world == null || world.isRemote) return;
+        productionBoostMultiplier = multiplier;
+        productionBoostExpiresAt = world.getTotalWorldTime() + durationTicks;
+    }
+
+    public int getProductionBoostMultiplier() {
+        World world = getWorld();
+        return world != null && world.getTotalWorldTime() < productionBoostExpiresAt ?
+                productionBoostMultiplier : 1;
     }
 
     public int getRigMultiplier() {
-        if (this.tier == GTValues.MV)
-            return 1;
-        if (this.tier == GTValues.HV)
-            return 16;
-        if (this.tier == GTValues.EV)
-            return 64;
-        return 1;
+        return type.getRigMultiplier() * getProductionBoostMultiplier();
     }
 
     public int getDepletionChance() {
-        if (this.tier == GTValues.MV)
-            return 1;
-        if (this.tier == GTValues.HV)
-            return 2;
-        if (this.tier == GTValues.EV)
-            return 8;
-        return 1;
+        return type.getDepletionChance();
     }
 
     @SideOnly(Side.CLIENT)
@@ -266,6 +264,11 @@ public class MetaTileEntityFluidDrill extends MultiblockWithDisplayBase
     @Override
     protected ICubeRenderer getFrontOverlay() {
         return Textures.FLUID_RIG_OVERLAY;
+    }
+
+    @Override
+    public IBlockState getCasingBlock() {
+        return type.getCasingState();
     }
 
     @Override
@@ -291,9 +294,9 @@ public class MetaTileEntityFluidDrill extends MultiblockWithDisplayBase
     }
 
     public int getEnergyTier() {
-        if (energyContainer == null) return this.tier;
-        return Math.min(this.tier + 1,
-                Math.max(this.tier, GTUtility.getFloorTierByVoltage(energyContainer.getInputVoltage())));
+        if (energyContainer == null) return this.type.getTier();
+        return Math.min(this.type.getTier() + 1,
+                Math.max(this.type.getTier(), GTUtility.getFloorTierByVoltage(energyContainer.getInputVoltage())));
     }
 
     public long getEnergyInputPerSecond() {
@@ -370,6 +373,7 @@ public class MetaTileEntityFluidDrill extends MultiblockWithDisplayBase
         return false;
     }
 
+    @Override
     public boolean allowsExtendedFacing() {
         return false;
     }
@@ -377,7 +381,7 @@ public class MetaTileEntityFluidDrill extends MultiblockWithDisplayBase
     @Override
     public int getProgressBarCount() {
         // only show for T2/3 fluid rigs
-        return tier > GTValues.MV ? 1 : 0;
+        return type.getTier() > GTValues.MV ? 1 : 0;
     }
 
     @Override
@@ -404,18 +408,28 @@ public class MetaTileEntityFluidDrill extends MultiblockWithDisplayBase
                 }));
     }
 
-    private static @NotNull String getDepletionLang(IntSyncValue operationsValue) {
-        int percent = (int) Math.round(100.0 * operationsValue.getIntValue() /
-                BedrockFluidVeinHandler.MAXIMUM_VEIN_OPERATIONS);
-        if (percent > 40) {
-            return TextFormatting.GREEN + IKey
-                    .lang("gregtech.multiblock.fluid_rig.vein_depletion.high", percent).get();
-        } else if (percent > 10) {
-            return TextFormatting.YELLOW + IKey
-                    .lang("gregtech.multiblock.fluid_rig.vein_depletion.medium", percent).get();
-        } else {
-            return TextFormatting.RED + IKey
-                    .lang("gregtech.multiblock.fluid_rig.vein_depletion.low", percent).get();
+    public class DrillInformation extends AbstractTooltipComponent {
+
+        private final int tier;
+
+        public DrillInformation(int tier) {this.tier = tier;}
+
+        @Override
+        public void addInformation(MetaTileEntity metaTileEntity, List<String> tooltip) {
+            tooltip.add(I18n.format("gregtech.machine.fluid_drilling_rig.description"));
+            if (getDepletionChance() > 0) {
+                tooltip.add(I18n.format("gregtech.machine.fluid_drilling_rig.depletion",
+                        TextFormattingUtil.formatNumbers(100.0 / getDepletionChance())));
+            } else {
+                tooltip.add(I18n.format("gregtech.machine.fluid_drilling_rig.depletion", 0));
+            }
+            tooltip.add(I18n.format("gregtech.universal.tooltip.energy_tier_range", GTValues.VNF[this.tier],
+                    GTValues.VNF[this.tier + 1]));
+            tooltip.add(I18n.format("gregtech.machine.fluid_drilling_rig.production", getRigMultiplier(),
+                    TextFormattingUtil.formatNumbers(getRigMultiplier() * 1.5)));
+            if (tier > GTValues.MV) {
+                tooltip.add(I18n.format("gregtech.machine.fluid_drilling_rig.shows_depletion"));
+            }
         }
     }
 }

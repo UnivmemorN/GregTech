@@ -7,14 +7,19 @@ import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.metatileentity.multiblock.IMultiblockPart;
 import gregtech.api.metatileentity.multiblock.RecipeMapMultiblockController;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIBuilder;
-import gregtech.api.pattern.BlockPattern;
-import gregtech.api.pattern.FactoryBlockPattern;
-import gregtech.api.pattern.PatternMatchContext;
+import gregtech.api.pattern.FormedStructureView;
+import gregtech.api.pattern.casing.DeclarativePatternBuilder;
+import gregtech.api.pattern.casing.GTCasingGroups;
+
+import gregtech.api.pattern.casing.HatchPresets;
+import gregtech.api.pattern.casing.ICasing;
+import gregtech.api.pattern.element.StructureDefinition;
 import gregtech.api.recipes.RecipeMaps;
 import gregtech.api.recipes.logic.OCResult;
 import gregtech.api.recipes.properties.RecipePropertyStorage;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.KeyUtil;
+import gregtech.api.util.tooltips.TooltipBuilder;
 import gregtech.client.renderer.ICubeRenderer;
 import gregtech.client.renderer.texture.Textures;
 import gregtech.common.blocks.BlockMachineCasing.MachineCasingType;
@@ -39,11 +44,31 @@ import java.util.List;
 
 public class MetaTileEntityPyrolyseOven extends RecipeMapMultiblockController {
 
+    private static final StructureDefinition<?> STRUCTURE_DEFINITION = StructureDefinition.getOrBuild(
+            "gregtech:pyrolyse_oven", () ->
+                    DeclarativePatternBuilder.start()
+                            .aisle("XXX", "XXX", "XXX")
+                            .aisle("CCC", "C#C", "CCC")
+                            .aisle("CCC", "C#C", "CCC")
+                            .aisle("XXX", "XSX", "XXX")
+                            .self('S', MetaTileEntityPyrolyseOven.class)
+                            .air('#')
+                            .casing('X', getCasingState())
+                            .preset(HatchPresets.ELECTRIC_STANDARD)
+                            .tieredCasing('C', GTCasingGroups.heatingCoils().group())
+                            .withChannel(GTCasingGroups.heatingCoils().channel())
+                            .buildStructureDefinition()
+    );
+
     private int coilTier;
 
     public MetaTileEntityPyrolyseOven(ResourceLocation metaTileEntityId) {
         super(metaTileEntityId, RecipeMaps.PYROLYSE_RECIPES);
         this.recipeMapWorkable = new PyrolyseOvenWorkableHandler(this);
+    }
+
+    public static IBlockState getCasingState() {
+        return MetaBlocks.MACHINE_CASING.getState(MachineCasingType.ULV);
     }
 
     @Override
@@ -52,27 +77,14 @@ public class MetaTileEntityPyrolyseOven extends RecipeMapMultiblockController {
     }
 
     @Override
-    protected BlockPattern createStructurePattern() {
-        return FactoryBlockPattern.start()
-                .aisle("XXX", "XXX", "XXX")
-                .aisle("CCC", "C#C", "CCC")
-                .aisle("CCC", "C#C", "CCC")
-                .aisle("XXX", "XSX", "XXX")
-                .where('S', selfPredicate())
-                .where('X', states(getCasingState()).setMinGlobalLimited(6).or(autoAbilities()))
-                .where('C', heatingCoils())
-                .where('#', air())
-                .build();
+    protected StructureDefinition<?> createStructureDefinition() {
+        return STRUCTURE_DEFINITION;
     }
 
     @SideOnly(Side.CLIENT)
     @Override
     public ICubeRenderer getBaseTexture(IMultiblockPart sourcePart) {
         return Textures.VOLTAGE_CASINGS[0];
-    }
-
-    protected IBlockState getCasingState() {
-        return MetaBlocks.MACHINE_CASING.getState(MachineCasingType.ULV);
     }
 
     @Override
@@ -88,13 +100,16 @@ public class MetaTileEntityPyrolyseOven extends RecipeMapMultiblockController {
     }
 
     @Override
-    protected void formStructure(PatternMatchContext context) {
-        super.formStructure(context);
-        Object type = context.get("CoilType");
-        if (type instanceof IHeatingCoilBlockStats)
-            this.coilTier = ((IHeatingCoilBlockStats) type).getTier();
-        else
+    protected void formStructure(@NotNull FormedStructureView formed) {
+        formRecipeMapStructure(formed);
+        ICasing matchedCoil = GTCasingGroups.heatingCoils().channel().getMatchedCasing(formed);
+        IHeatingCoilBlockStats stats = matchedCoil != null ?
+                matchedCoil.getPayloadAs(IHeatingCoilBlockStats.class) : null;
+        if (stats != null) {
+            this.coilTier = stats.getTier();
+        } else {
             this.coilTier = 0;
+        }
     }
 
     private TextFormatting getSpeedColor(int speed) {
@@ -128,14 +143,17 @@ public class MetaTileEntityPyrolyseOven extends RecipeMapMultiblockController {
                     textList.add(KeyUtil.setHover(body, hover));
                 })
                 .addParallelsLine(recipeMapWorkable.getParallelLimit())
-                .addWorkingStatusLine()
-                .addProgressLine(recipeMapWorkable.getProgress(), recipeMapWorkable.getMaxProgress())
-                .addRecipeOutputLine(recipeMapWorkable);
+                .addWorkingStatusLine();
+
+        // Cross-recipe parallel display (synced via builder to prevent client/server buffer desync)
+        builder.addCrossRecipeOrProgressDisplay(recipeMapWorkable);
     }
 
     @Override
-    public void addInformation(ItemStack stack, @Nullable World player, List<String> tooltip, boolean advanced) {
+    public void addInformation(ItemStack stack, @Nullable World player, @NotNull List<String> tooltip,
+                               boolean advanced) {
         super.addInformation(stack, player, tooltip, advanced);
+        TooltipBuilder.create().addCoilLogic().build(this, tooltip);
         tooltip.add(I18n.format("gregtech.machine.pyrolyse_oven.tooltip.1"));
     }
 

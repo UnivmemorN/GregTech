@@ -10,7 +10,6 @@ import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.metatileentity.multiblock.AbilityInstances;
 import gregtech.api.metatileentity.multiblock.IMultiblockAbilityPart;
 import gregtech.api.metatileentity.multiblock.MultiblockAbility;
-import gregtech.api.metatileentity.multiblock.MultiblockControllerBase;
 import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuiTheme;
 import gregtech.api.mui.GTGuis;
@@ -18,7 +17,6 @@ import gregtech.api.mui.sync.GTFluidSyncHandler;
 import gregtech.client.renderer.ICubeRenderer;
 import gregtech.client.renderer.texture.Textures;
 import gregtech.client.renderer.texture.cube.SimpleOverlayRenderer;
-import gregtech.common.ConfigHolder;
 import gregtech.common.metatileentities.multi.multiblockpart.MetaTileEntityMultiblockPart;
 import gregtech.common.metatileentities.storage.MetaTileEntityQuantumTank;
 import gregtech.common.mui.widget.GTFluidSlot;
@@ -39,13 +37,14 @@ import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.utils.Color;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.SyncHandlers;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.RichTextWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -55,7 +54,6 @@ public class MetaTileEntitySteamHatch extends MetaTileEntityMultiblockPart
         implements IMultiblockAbilityPart<IFluidTank> {
 
     private static final int INVENTORY_SIZE = 64000;
-    private static final boolean IS_STEEL = ConfigHolder.machines.steelSteamMultiblocks;
 
     public MetaTileEntitySteamHatch(ResourceLocation metaTileEntityId) {
         super(metaTileEntityId, 0);
@@ -96,10 +94,9 @@ public class MetaTileEntitySteamHatch extends MetaTileEntityMultiblockPart
 
     @Override
     public ICubeRenderer getBaseTexture() {
-        MultiblockControllerBase controller = getController();
-        if (controller == null)
-            return IS_STEEL ? Textures.STEAM_CASING_STEEL : Textures.STEAM_CASING_BRONZE;
-        return controller.getBaseTexture(this);
+        if(getController()==null)
+            return Textures.STEAM_CASING_BRONZE;
+        return super.getBaseTexture();
     }
 
     @Override
@@ -140,7 +137,7 @@ public class MetaTileEntitySteamHatch extends MetaTileEntityMultiblockPart
     }
 
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
         guiSyncManager.registerSlotGroup("item_inv", 2);
 
         GTFluidSyncHandler tankSyncHandler = GTFluidSlot.sync(this.importFluids.getTankAt(0))
@@ -148,8 +145,8 @@ public class MetaTileEntitySteamHatch extends MetaTileEntityMultiblockPart
 
         return GTGuis.createPanel(this, 176, 166)
                 .child(IKey.lang(getMetaFullName()).asWidget().pos(5, 5))
-                .child(SlotGroupWidget.playerInventory().left(7).bottom(7))
-                .child((IS_STEEL ? GTGuiTextures.DISPLAY_STEEL : GTGuiTextures.DISPLAY_BRONZE).asWidget()
+                .child(SlotGroupWidget.playerInventory(false).left(7).bottom(7))
+                .child((GTGuiTextures.DISPLAY_BRONZE).asWidget()
                         .left(7).top(16)
                         .size(81, 55))
                 .child(GTGuiTextures.TANK_ICON.asWidget()
@@ -172,11 +169,11 @@ public class MetaTileEntitySteamHatch extends MetaTileEntityMultiblockPart
                 .child(new GTFluidSlot().syncHandler(tankSyncHandler)
                         .pos(69, 52)
                         .disableBackground())
-                .child(new ItemSlot().slot(SyncHandlers.itemSlot(this.importItems, 0)
+                .child(new ItemSlot().slot(new ModularSlot(this.importItems, 0)
                                 .slotGroup("item_inv")
                                 .filter(itemStack -> FluidUtil.getFluidHandler(itemStack) != null))
                         .pos(90, 16))
-                .child(new ItemSlot().slot(SyncHandlers.itemSlot(this.exportItems, 0)
+                .child(new ItemSlot().slot(new ModularSlot(this.exportItems, 0)
                                 .slotGroup("item_inv")
                                 .accessibility(false, true))
                         .pos(90, 53));
@@ -184,7 +181,7 @@ public class MetaTileEntitySteamHatch extends MetaTileEntityMultiblockPart
 
     @Override
     public GTGuiTheme getUITheme() {
-        return IS_STEEL ? GTGuiTheme.STEEL : GTGuiTheme.BRONZE;
+        return GTGuiTheme.BRONZE;
     }
 
     @Override

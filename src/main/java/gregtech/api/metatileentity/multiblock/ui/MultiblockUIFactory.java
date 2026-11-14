@@ -3,41 +3,57 @@ package gregtech.api.metatileentity.multiblock.ui;
 import gregtech.api.capability.IBatch;
 import gregtech.api.capability.IControllable;
 import gregtech.api.capability.IDistinctBusController;
+import gregtech.api.capability.IGenerator;
+import gregtech.api.capability.IRecipeControl;
 import gregtech.api.metatileentity.multiblock.MultiblockWithDisplayBase;
 import gregtech.api.metatileentity.multiblock.ProgressBarMultiblock;
 import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuis;
+import gregtech.api.mui.sync.MultiblockPartsSyncHandler;
+import gregtech.api.mui.widget.MultiblockPartsWidget;
+import gregtech.api.mui.widget.SidePanel;
 import gregtech.api.util.GTLambdaUtils;
+import gregtech.api.util.GTUtility;
 import gregtech.api.util.KeyUtil;
+import gregtech.common.metatileentities.MetaTileEntities;
 import gregtech.common.mui.widget.ScrollableTextWidget;
 
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.text.TextComponentTranslation;
 import net.minecraft.util.text.TextFormatting;
 
+import com.cleanroommc.modularui.api.IPanelHandler;
 import com.cleanroommc.modularui.api.drawable.IDrawable;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.value.IBoolValue;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.drawable.DynamicDrawable;
+import com.cleanroommc.modularui.drawable.GuiTextures;
 import com.cleanroommc.modularui.drawable.Icon;
+import com.cleanroommc.modularui.drawable.ItemDrawable;
 import com.cleanroommc.modularui.drawable.Rectangle;
 import com.cleanroommc.modularui.drawable.UITexture;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.utils.Color;
+import com.cleanroommc.modularui.utils.MouseData;
 import com.cleanroommc.modularui.value.BoolValue;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
+import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import com.cleanroommc.modularui.widget.ParentWidget;
 import com.cleanroommc.modularui.widget.Widget;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.CycleButtonWidget;
+import com.cleanroommc.modularui.widgets.PageButton;
+import com.cleanroommc.modularui.widgets.PagedWidget;
 import com.cleanroommc.modularui.widgets.ProgressWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.ToggleButton;
 import com.cleanroommc.modularui.widgets.layout.Flow;
+import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -56,7 +72,10 @@ public class MultiblockUIFactory {
     protected Consumer<MultiblockUIBuilder> displayText, warningText, errorText;
     protected BiFunction<PosGuiData, PanelSyncManager, IWidget> flexButton = (guiData, syncManager) -> null;
     protected BiFunction<PosGuiData, PanelSyncManager, IWidget> gcymButton = (guiData, syncManager) -> null;
-
+    protected BiFunction<PosGuiData, PanelSyncManager, IWidget> parallelButton = (guiData, syncManager) -> null;
+    protected BiFunction<PosGuiData, PanelSyncManager, IWidget> threadButton = (guiData, syncManager) -> null;
+    protected BiFunction<PosGuiData, PanelSyncManager, IWidget> overclockButton = (guiData, syncManager) -> null;
+    protected BiFunction<PosGuiData, PanelSyncManager, IWidget> accelerateButton = (guiData, syncManager) -> null;
     private int width = 198, height = 202;
     private int screenHeight = 109;
     private ScreenFunction screenFunction;
@@ -66,7 +85,9 @@ public class MultiblockUIFactory {
 
     public MultiblockUIFactory(@NotNull MultiblockWithDisplayBase mte) {
         this.mte = mte;
-        configureDisplayText(builder -> builder.title(mte.getMetaFullName()).structureFormed(mte.isStructureFormed()));
+        configureDisplayText(builder -> builder.title(mte.getMetaFullName())
+                .structureFormed(mte.isStructureFormed())
+                .addMissingStructureAbilities(mte.getMissingStructureAbilities()));
     }
 
     private static int calculateRows(int count) {
@@ -106,7 +127,7 @@ public class MultiblockUIFactory {
     private Widget<?> createIndicator(PanelSyncManager syncManager) {
         if (warningText == NO_OP && errorText == NO_OP) {
             return new Widget<>()
-                    .debugName("indicator_none")
+                    .name("indicator_none")
                     .size(18)
                     .pos(174 - 5, screenHeight - 18 - 3)
                     .overlay(GTGuiTextures.GREGTECH_LOGO_DARK);
@@ -132,7 +153,7 @@ public class MultiblockUIFactory {
         });
 
         return new Widget<>()
-                .debugName("indicator")
+                .name("indicator")
                 .size(18)
                 .pos(174 - 5, screenHeight - 18 - 3)
                 .overlay(indicator)
@@ -245,6 +266,26 @@ public class MultiblockUIFactory {
         return this;
     }
 
+    public MultiblockUIFactory createParallelButton(BiFunction<PosGuiData, PanelSyncManager, IWidget> flexButton) {
+        this.parallelButton = flexButton;
+        return this;
+    }
+
+    public MultiblockUIFactory createThreadButton(BiFunction<PosGuiData, PanelSyncManager, IWidget> flexButton) {
+        this.threadButton = flexButton;
+        return this;
+    }
+
+    public MultiblockUIFactory createOverclockButton(BiFunction<PosGuiData, PanelSyncManager, IWidget> flexButton) {
+        this.overclockButton = flexButton;
+        return this;
+    }
+
+    public MultiblockUIFactory createAccelerateButton(BiFunction<PosGuiData, PanelSyncManager, IWidget> flexButton) {
+        this.accelerateButton = flexButton;
+        return this;
+    }
+
     public MultiblockUIFactory setSize(int width, int height) {
         this.width = width;
         this.height = height;
@@ -268,47 +309,143 @@ public class MultiblockUIFactory {
      * <i>It is not recommended to override this method</i>
      */
     public @NotNull ModularPanel buildUI(PosGuiData guiData, PanelSyncManager panelSyncManager) {
-        var panel = GTGuis.createPanel(mte, width, height)
-                .debugName("root_panel")
-                .childIf(!disableDisplay, () -> createScreen(panelSyncManager));
+        ProgressBarMultiblock progressBarMultiblock = null;
+        int barRows = 0;
+        if (mte instanceof ProgressBarMultiblock progressBar && progressBar.hasBars()) {
+            progressBarMultiblock = progressBar;
+            barRows = calculateRows(progressBar.getProgressBarCount());
+        }
+        int totalHeight = height + (progressBarMultiblock != null ? Bars.HEIGHT * barRows - 2 : 0);
+
+        var panel = GTGuis.createPanel(mte, width, totalHeight);
+
+        var pageController = new PagedWidget.Controller();
+        var partsSyncHandler = new MultiblockPartsSyncHandler(mte);
+        panelSyncManager.syncValue("multiblock_parts", 0, partsSyncHandler);
+
+        var pages = new PagedWidget<>()
+                .name("multiblock_pages")
+                .pos(0, 0)
+                .size(width, totalHeight)
+                .controller(pageController);
+
+        var infoPage = new ParentWidget<>()
+                .name("multiblock_info_page")
+                .pos(0, 0)
+                .size(width, totalHeight);
+        if (!disableDisplay) {
+            infoPage.child(createScreen(panelSyncManager));
+        }
+        if (progressBarMultiblock != null) {
+            infoPage.child(createBars(progressBarMultiblock, panelSyncManager));
+        }
 
         // TODO createExtras() hook for overrides?
-        if (mte instanceof ProgressBarMultiblock progressBarMultiblock && progressBarMultiblock.hasBars()) {
-            panel.height(height + (Bars.HEIGHT * calculateRows(progressBarMultiblock.getProgressBarCount())) - 2);
-            panel.child(createBars(progressBarMultiblock, panelSyncManager));
-        }
-
         if (disableDisplay && screenFunction != null) {
-            this.screenFunction.addWidgets(panel, panelSyncManager);
+            this.screenFunction.addWidgets(infoPage, panelSyncManager);
         }
 
-        var playerInv = SlotGroupWidget.playerInventory(0);
+        pages.addPage(infoPage);
+        pages.addPage(createPartsPage(partsSyncHandler, totalHeight));
+        pages.addPage(createPreviewPage(panelSyncManager, totalHeight));
+        panel.child(pages);
+
+        var playerInv = SlotGroupWidget.playerInventory(false);
         if (disableButtons) {
-            playerInv.alignX(0.5f);
+            playerInv.leftRel(0.5f).anchorLeft(0.5f);
         } else {
             playerInv.left(4);
         }
 
-        return panel
-                .child(Flow.row()
-                        .debugName("bottom_row")
-                        .bottom(7)
-                        .coverChildrenHeight()
-                        .margin(4, 0)
-                        .crossAxisAlignment(Alignment.CrossAxis.CENTER)
-                        .child(playerInv)
-                        .childIf(!disableButtons, () -> createButtons(panel, panelSyncManager, guiData))
-                )
+        // 原来夹在信息区和玩家背包之间的按钮行，改成面板右侧的竖排侧边栏
+        if (mte.hasSideUI()) {
+            SidePanel sidePanel = new SidePanel(guiData, panelSyncManager);
+            if (!disableButtons) {
+                List<IWidget> sideButtons = createSideButtonWidgets(panel, panelSyncManager, guiData);
+                // SidePanel 的列是 reverseLayout，按从下到上注册；这里倒序添加以保持原来从左到右的顺序
+                for (int i = sideButtons.size() - 1; i >= 0; i--) {
+                    sidePanel.add(sideButtons.get(i));
+                }
+            }
+            sidePanel.attachTo(panel);
+        }
 
-                .childIf(mte.hasSideUI(), Flow.column()
-                        .debugName("side_row")
-                        .size(18, 4 * 18 + 4)
-                        .bottom(7)
-                        .coverChildrenHeight()
-                        .right(-18 - 7)
-                        .margin(4, 0)
-                        .childIf(!disableButtons, () -> createSideButtons(panel, panelSyncManager, guiData))
-                );
+        panel.child(Flow.row()
+                .name("bottom_row")
+                .bottom(7)
+                .coverChildrenHeight()
+                .margin(4, 0)
+                .crossAxisAlignment(Alignment.CrossAxis.CENTER)
+                .child(playerInv)
+                .childIf(!disableButtons, () -> createButtons(panel, panelSyncManager, guiData))
+        );
+
+        // 页签条悬在面板上沿之外：页签 0 是原有的信息页，页签 1 是仓室索引页
+        panel.child(Flow.row()
+                .name("tab_row")
+                .widthRel(1f)
+                .leftRel(0.5f)
+                .margin(3, 0)
+                .coverChildrenHeight()
+                .topRel(0f, 3, 1f)
+                .child(new PageButton(0, pageController)
+                        .tab(GuiTextures.TAB_TOP, 0)
+                        .addTooltipLine(IKey.lang("gregtech.multiblock.tab.info"))
+                        .overlay(new ItemDrawable(mte.getStackForm()).asIcon().size(16)))
+                .child(new PageButton(1, pageController)
+                        .tab(GuiTextures.TAB_TOP, 0)
+                        .addTooltipLine(IKey.lang("gregtech.multiblock.tab.parts"))
+                        .overlay(new ItemDrawable(MetaTileEntities.ITEM_IMPORT_BUS[0].getStackForm())
+                                .asIcon().size(16)))
+                .child(new PageButton(2, pageController)
+                        .tab(GuiTextures.TAB_TOP, 0)
+                        .addTooltipLine(IKey.lang("gregtech.multiblock.tab.preview"))
+                        .overlay(GTGuiTextures.BUTTON_STRUCTURE.asIcon().size(16))));
+
+        return panel;
+    }
+
+    private IWidget createPartsPage(MultiblockPartsSyncHandler partsSyncHandler, int totalHeight) {
+        var root = new ParentWidget<>();
+        // 只有主控页（信息页）需要背景，其余页签保持干净
+        root.name("parts_root")
+                .size(190, screenHeight)
+                .pos(4, 4);
+        root.child(new MultiblockPartsWidget(partsSyncHandler)
+                .pos(2, 2)
+                .size(186, screenHeight - 4));
+
+        var page = new ParentWidget<>();
+        page.name("multiblock_parts_page")
+                .pos(0, 0)
+                .size(width, totalHeight);
+        page.child(root);
+        return page;
+    }
+
+    /**
+     * 朝向预览页：把原来侧边栏里的"机器朝向预览"搬进页签。
+     * <p>
+     * 预览的同步值只能注册一次，所以 {@link MultiblockWithDisplayBase} 那边同时把侧边按钮关掉了。
+     * 预览不可用（配置关闭 / 客户端没有世界）时给一段提示，页签本身仍然存在，避免页签下标错位。
+     */
+    private IWidget createPreviewPage(PanelSyncManager panelSyncManager, int totalHeight) {
+        var page = new ParentWidget<>();
+        page.name("multiblock_preview_page")
+                .pos(0, 0)
+                .size(width, totalHeight);
+
+        IWidget content = mte.createWorldPreviewPage(panelSyncManager, 190, screenHeight);
+        if (content != null) {
+            page.child(new ParentWidget<>()
+                    .name("preview_root")
+                    .size(190, screenHeight)
+                    .pos(4, 4)
+                    .child(content));
+        } else {
+            page.child(IKey.lang("gregtech.multiblock.tab.preview.unavailable").asWidget().pos(8, 8));
+        }
+        return page;
     }
 
     /**
@@ -322,7 +459,7 @@ public class MultiblockUIFactory {
         final int calculatedRows = calculateRows(count);
 
         Flow column = Flow.column()
-                .debugName("bar_col")
+                .name("bar_col")
                 .margin(4, 0)
                 .top(5 + screenHeight)
                 .widthRel(1f)
@@ -336,7 +473,7 @@ public class MultiblockUIFactory {
             final int calculatedCols = calculateCols(count, r);
 
             Flow row = Flow.row()
-                    .debugName("bar_row:" + r)
+                    .name("bar_row:" + r)
                     .widthRel(1f)
                     .mainAxisAlignment(Alignment.MainAxis.SPACE_BETWEEN)
                     .height(Bars.HEIGHT);
@@ -358,11 +495,11 @@ public class MultiblockUIFactory {
                 } else {
                     widget = new ProgressWidget()
                             .addTooltipLine("Error! no bar for index: " + i)
-                            .background(new Rectangle().setColor(Color.RED.main));
+                            .background(new Rectangle().color(Color.RED.main));
                 }
 
                 row.child(widget.size(barWidth, Bars.HEIGHT)
-                        .debugName(mte.getClass().getSimpleName() + ":bar:" + i)
+                        .name(mte.getClass().getSimpleName() + ":bar:" + i)
                         .direction(ProgressWidget.Direction.RIGHT));
             }
 
@@ -380,10 +517,10 @@ public class MultiblockUIFactory {
             display.sync("display", syncManager);
 
             parent.child(new ScrollableTextWidget()
-                    .debugName("display_text")
+                    .name("display_text")
                     .sizeRel(1f)
                     .alignment(Alignment.TopLeft)
-                    .margin(4, 4)
+                    .margin(4)
                     .autoUpdate(true)
                     .textBuilder(display::build));
         }
@@ -393,7 +530,7 @@ public class MultiblockUIFactory {
         }
 
         return parent.childIf(!disableIndicator, () -> createIndicator(syncManager))
-                .debugName("display_root")
+                .name("display_root")
                 .background(getDisplayBackground())
                 .size(190, screenHeight)
                 .pos(4, 4);
@@ -409,7 +546,7 @@ public class MultiblockUIFactory {
         IWidget flexButton = this.flexButton.apply(guiData, panelSyncManager);
         if (flexButton == null) {
             flexButton = new ToggleButton()
-                    .debugName("flex_none")
+                    .name("flex_none")
                     .value(ALWAYS_ON)
                     .overlay(GTGuiTextures.OVERLAY_NO_FLEX)
                     .size(18)
@@ -418,41 +555,19 @@ public class MultiblockUIFactory {
         var powerButton = createPowerButton(mainPanel, panelSyncManager);
 
         return Flow.column()
-                .debugName("button_col")
+                .name("button_col")
                 .right(4)
                 .coverChildren()
                 .child(createDistinctButton(mainPanel, panelSyncManager))
                 .child(createVoidingButton(mainPanel, panelSyncManager))
                 .child(flexButton)
-                .childIf(powerButton != null, powerButton);
+                .childIf(powerButton != null, () -> powerButton);
     }
-
-    @NotNull
-    protected Flow createSideButtons(@NotNull ModularPanel mainPanel, @NotNull PanelSyncManager panelSyncManager,
-                                     PosGuiData guiData) {
-        IWidget gcymButton = this.gcymButton.apply(guiData, panelSyncManager);
-        if (gcymButton == null) {
-            gcymButton = new ToggleButton()
-                    .debugName("flex_none")
-                    .value(ALWAYS_ON)
-                    .overlay(GTGuiTextures.OVERLAY_NO_FLEX)
-                    .size(18)
-                    .addTooltipLine(IKey.lang("gregtech.multiblock.universal.no_multi_recipemap"));
-        }
-
-        return Flow.column()
-                .debugName("side_col")
-                .coverChildren()
-                .child(createBatchButton(mainPanel, panelSyncManager))
-                .child(gcymButton)
-                .child(createStructureCheckButton(mainPanel, panelSyncManager));
-    }
-
     protected IWidget createDistinctButton(@NotNull ModularPanel mainPanel,
                                            @NotNull PanelSyncManager panelSyncManager) {
         if (!(mte instanceof IDistinctBusController distinct) || !distinct.canBeDistinct()) {
             return new ToggleButton()
-                    .debugName("distinct_none")
+                    .name("distinct_none")
                     .value(ALWAYS_ON)
                     .size(18)
                     .overlay(GTGuiTextures.OVERLAY_DISTINCT_BUSES[0])
@@ -460,7 +575,7 @@ public class MultiblockUIFactory {
         }
 
         return new ToggleButton()
-                .debugName("distinct_button")
+                .name("distinct_button")
                 .size(18)
                 .value(new BooleanSyncValue(distinct::isDistinct, distinct::setDistinct))
                 .disableHoverBackground()
@@ -473,7 +588,7 @@ public class MultiblockUIFactory {
     protected IWidget createVoidingButton(@NotNull ModularPanel mainPanel, @NotNull PanelSyncManager panelSyncManager) {
         if (!mte.shouldShowVoidingModeButton()) {
             return new ToggleButton()
-                    .debugName("voiding_none")
+                    .name("voiding_none")
                     .value(ALWAYS_ON)
                     .size(18)
                     .overlay(GTGuiTextures.OVERLAY_VOID_NONE)
@@ -483,7 +598,7 @@ public class MultiblockUIFactory {
         IntSyncValue voidingValue = new IntSyncValue(mte::getVoidingMode, mte::setVoidingMode);
 
         return new CycleButtonWidget()
-                .debugName("voiding_button")
+                .name("voiding_button")
                 .size(18)
                 .value(voidingValue)
                 .length(4)
@@ -495,22 +610,67 @@ public class MultiblockUIFactory {
                         IKey.lang(MultiblockWithDisplayBase.getVoidingModeTooltip(voidingValue.getIntValue()))));
     }
 
+    @NotNull
+    protected Flow createSideButtons(@NotNull ModularPanel mainPanel, @NotNull PanelSyncManager panelSyncManager,
+                                     PosGuiData guiData) {
+        return Flow.row()
+                .name("side_col")
+                .coverChildren()
+                .posRel(Alignment.CenterLeft)
+                .children(createSideButtonWidgets(mainPanel, panelSyncManager, guiData));
+    }
+
+    /**
+     * 侧边栏里那排按钮的完整列表（原来的横向按钮行，现在挪到面板右侧竖排）。
+     * <p>
+     * 顺序与旧版的从左到右一致；调用方负责按竖排方向摆放。
+     */
+    @NotNull
+    protected List<IWidget> createSideButtonWidgets(@NotNull ModularPanel mainPanel,
+                                                   @NotNull PanelSyncManager panelSyncManager,
+                                                   PosGuiData guiData) {
+        List<IWidget> buttons = new ArrayList<>();
+        // 结构调整按钮对所有多方块都可用
+        buttons.add(createStructureDelayCheckButton(mainPanel, panelSyncManager));
+        if (mte instanceof IBatch batch && batch.isBatchAllowed()) {
+            buttons.add(createBatchButton(mainPanel, panelSyncManager));
+        }
+        if (mte instanceof IRecipeControl recipeControl && recipeControl.enableExtendControl()) {
+            buttons.add(lockRecipesButton(mainPanel, panelSyncManager));
+            buttons.add(lackEnergyWarningButton(mainPanel, panelSyncManager));
+        }
+        if (mte instanceof IGenerator) {
+            buttons.add(overFlowButton(mainPanel, panelSyncManager));
+        }
+        // 这些按钮由具体多方块通过 configure*Button 提供，没提供就不显示（不再放空按钮占位）
+        addIfNotNull(buttons, this.gcymButton.apply(guiData, panelSyncManager));
+        addIfNotNull(buttons, this.parallelButton.apply(guiData, panelSyncManager));
+        addIfNotNull(buttons, this.threadButton.apply(guiData, panelSyncManager));
+        addIfNotNull(buttons, this.overclockButton.apply(guiData, panelSyncManager));
+        addIfNotNull(buttons, this.accelerateButton.apply(guiData, panelSyncManager));
+        return buttons;
+    }
+
+    private static void addIfNotNull(@NotNull List<IWidget> buttons, @Nullable IWidget button) {
+        if (button != null) {
+            buttons.add(button);
+        }
+    }
+
+
     protected IWidget createBatchButton(@NotNull ModularPanel mainPanel,
                                         @NotNull PanelSyncManager panelSyncManager) {
         if (!(mte instanceof IBatch controllable) || !controllable.isBatchAllowed()) {
             return new ToggleButton()
-                    .debugName("distinct_none")
-                    .bottom(3 * 18 + 4)
+                    .name("distinct_none")
                     .size(18)
                     .value(ALWAYS_ON)
-                    .size(18)
                     .overlay(GTGuiTextures.OVERLAY_BATCH[0])
                     .addTooltipLine(IKey.lang("gregtech.gui.multiblock_batch_not_supported"));
         }
 
         return new ToggleButton()
-                .debugName("batch_button")
-                .bottom(3 * 18 + 4)
+                .name("batch_button")
                 .size(18)
                 .value(new BooleanSyncValue(controllable::isBatchEnable, controllable::setBatchEnable))
                 .disableHoverBackground()
@@ -520,21 +680,239 @@ public class MultiblockUIFactory {
                 .addTooltip(false, IKey.lang("gregtech.multiblock.universal.batch_disabled"));
     }
 
-    protected IWidget createStructureCheckButton(@NotNull ModularPanel mainPanel,
-                                                 @NotNull PanelSyncManager panelSyncManager) {
-        return new ButtonWidget<>()
-                .debugName("structure_button")
+    //lockRecipesButton
+    protected IWidget lockRecipesButton(@NotNull ModularPanel mainPanel, @NotNull PanelSyncManager panelSyncManager) {
+        if (!(mte instanceof IRecipeControl controllable) || !controllable.enableExtendControl()) {
+            return new ToggleButton()
+                    .name("lock_none")
+                    .size(18)
+                    .value(ALWAYS_ON)
+                    .overlay(GTGuiTextures.OVERLAY_RECIPE_LOCK[0])
+                    .addTooltipLine(IKey.lang("gregtech.gui.multiblock_lock_not_supported"));
+        }
+
+        return new ToggleButton()
+                .name("lock_button")
                 .size(18)
+                .value(new BooleanSyncValue(controllable::isRecipeLocked, controllable::setRecipeLocked))
+                .disableHoverBackground()
+                .overlay(true, GTGuiTextures.OVERLAY_RECIPE_LOCK[1])
+                .overlay(false, GTGuiTextures.OVERLAY_RECIPE_LOCK[0])
+                .addTooltip(true, IKey.lang("gregtech.multiblock.universal.lock_enabled"))
+                .addTooltip(false, IKey.lang("gregtech.multiblock.universal.lock_disabled"));
+    }
+
+    protected IWidget lackEnergyWarningButton(@NotNull ModularPanel mainPanel, @NotNull PanelSyncManager panelSyncManager) {
+        if (!(mte instanceof IRecipeControl controllable) || !controllable.enableExtendControl()) {
+            return new ToggleButton()
+                    .name("lack_energy_none")
+                    .size(18)
+                    .value(ALWAYS_ON)
+                    .overlay(GTGuiTextures.OVERLAY_LACK_ENERGY[0])
+                    .addTooltipLine(IKey.lang("gregtech.gui.multiblock_lack_not_supported"));
+        }
+
+        return new ToggleButton()
+                .name("lack_energy")
+                .size(18)
+                .value(new BooleanSyncValue(controllable::isEnergyLackWarningEnabled, controllable::setEnergyLackWarningEnabled))
+                .disableHoverBackground()
+                .overlay(true, GTGuiTextures.OVERLAY_LACK_ENERGY[1])
+                .overlay(false, GTGuiTextures.OVERLAY_LACK_ENERGY[0])
+                .addTooltip(true, IKey.lang("gregtech.multiblock.universal.lack_energy_enabled"))
+                .addTooltip(false, IKey.lang("gregtech.multiblock.universal.lack_energy_disabled"));
+    }
+
+    protected IWidget overFlowButton(@NotNull ModularPanel mainPanel, @NotNull PanelSyncManager panelSyncManager) {
+        if (!(mte instanceof IGenerator controllable)) {
+            return new ToggleButton()
+                    .name("over_flow_none")
+                    .size(18)
+                    .value(ALWAYS_ON)
+                    .overlay(GTGuiTextures.OVERLAY_LACK_ENERGY[0])
+                    .addTooltipLine(IKey.lang("gregtech.gui.multiblock_over_flow_not_supported"));
+        }
+
+        return new ToggleButton()
+                .name("over_flow")
+                .size(18)
+                .value(new BooleanSyncValue(controllable::isEnergyOverFlow, controllable::setEnergyOverFlowMode))
+                .disableHoverBackground()
+                .overlay(true, GTGuiTextures.OVERLAY_LACK_ENERGY[1])
+                .overlay(false, GTGuiTextures.OVERLAY_LACK_ENERGY[0])
+                .addTooltip(true, IKey.lang("gregtech.multiblock.universal.over_flow_enabled"))
+                .addTooltip(false, IKey.lang("gregtech.multiblock.universal.over_flow_disabled"));
+    }
+
+
+    protected IWidget createStructureDelayCheckButton(@NotNull ModularPanel mainPanel,
+                                                 @NotNull PanelSyncManager panelSyncManager) {
+
+        var throttlePanel = panelSyncManager.syncedPanel("structure_button", true, this::createStructureCheckPanel);
+        // 配置按钮 - 打开结构调整UI
+        return new ButtonWidget<>()
+                .size(18)
+                .overlay( new ItemDrawable(mte.getStackForm()).asIcon().size(16))
+                .addTooltipLine(IKey.lang("结构调整"))
                 .onMousePressed(mouseButton -> {
-                    mte.checkStructurePattern();
-                    panelSyncManager.getPlayer().sendMessage(new TextComponentTranslation(
-                            "位于" + mte.getPos() + "的" + mte.getStackForm().getDisplayName() + "结构" +
-                                    (mte.isStructureFormed() ? "成型" : "不成型")));
+                    if (throttlePanel.isPanelOpen()) {
+                        throttlePanel.closePanel();
+                    } else {
+                        throttlePanel.openPanel();
+                    }
                     return true;
-                })
-                .overlay(GTGuiTextures.BUTTON_STRUCTURE)
-                .addTooltipLine(IKey.lang("gregtech.multiblock.universal.structure_check"))
-                .disableHoverBackground();
+                });
+    }
+
+    protected ModularPanel createStructureCheckPanel(PanelSyncManager syncManager, IPanelHandler syncHandler) {
+        //两个按钮 一个开启延迟检测 一个进行多方块成型检查
+        BooleanSyncValue delayCheckSync = new BooleanSyncValue(mte::isDelayCheck, mte::setDelayCheck);
+        IntSyncValue delayStructureCheckStandbyValue = new IntSyncValue(mte::getDelayStructureCheckStandby, mte::setDelayStructureCheckStandby);
+        IntSyncValue delayStructureCheckWorkValue = new IntSyncValue(mte::getDelayStructureCheckWork, mte::setDelayStructureCheckWork);
+        syncManager.syncValue("delay_standby", delayStructureCheckStandbyValue);
+        syncManager.syncValue("delay_work", delayStructureCheckWorkValue);
+
+        // 为待机延迟创建字符串同步值
+        StringSyncValue standbyDelayStringValue = new StringSyncValue(
+                () -> "待机延迟: " + mte.getDelayStructureCheckStandby() + "t",
+                str -> {}
+        );
+
+        // 为工作延迟创建字符串同步值
+        StringSyncValue workDelayStringValue = new StringSyncValue(
+                () -> "工作延迟: " + mte.getDelayStructureCheckWork() + "t",
+                str -> {}
+        );
+
+        return GTGuis.createPopupPanel("structure_button", 180, 100)
+                .child(Flow.row()
+                        .pos(4, 4)
+                        .height(16)
+                        .coverChildrenWidth()
+                        .child(new ItemDrawable(mte.getStackForm())
+                                .asWidget()
+                                .size(16)
+                                .marginRight(4))
+                        .child(IKey.lang("设备结构模式")
+                                .asWidget()
+                                .heightRel(1.0f)))
+
+                .child(Flow.row()
+                        .pos(4, 24)
+                        .height(18)
+                        .child(new ButtonWidget<>()
+                                .name("structure_check_button")
+                                .size(18)
+                                .onMousePressed(mouseButton -> {
+                                    mte.checkStructurePattern();
+                                    syncManager.getPlayer().sendMessage(new TextComponentTranslation(
+                                            "位于" + mte.getPos() + "的" + mte.getStackForm().getDisplayName() + "结构" +
+                                                    (mte.isStructureFormed() ? "成型" : "不成型")));
+                                    return true;
+                                })
+                                .overlay(GTGuiTextures.BUTTON_STRUCTURE)
+                                .addTooltipLine(IKey.lang("gregtech.multiblock.universal.structure_check"))
+                                .disableHoverBackground())
+
+                        .child(new ToggleButton()
+                                .name("delay_check_button")
+                                .size(18)
+                                .disableHoverBackground()
+                                .overlay(true,  GTGuiTextures.BUTTON_POWER[1])
+                                .overlay(false,  GTGuiTextures.BUTTON_POWER[0])
+                                .value(delayCheckSync)
+                                .addTooltipLine(IKey.str("延迟检测多方块（延长多方块成型检测的时间间隔）"))
+                                .disableHoverBackground()
+                        )
+                )
+
+                // 添加待机检测延迟控制行
+                .child(Flow.row()
+                        .top(48)
+                        .height(20)
+                        .child(new ButtonWidget<>()
+                                .left(5).width(40)
+                                .height(18)
+                                .tooltip(tooltip -> tooltip
+                                        .addLine(IKey.str("减小待机检测延迟")))
+                                .onMousePressed(mouseButton -> {
+                                    delayStructureCheckStandbyValue.setValue(MathHelper.clamp(
+                                            delayStructureCheckStandbyValue.getValue() -
+                                                    GTUtility.getIncrementValue(MouseData.create(mouseButton)),
+                                            20, 1200));
+                                    return true;
+                                })
+                                .onUpdateListener(widget -> widget.overlay(GTUtility.createAdjustOverlay(false)))
+                        )
+                        .child(new TextFieldWidget()
+                                .left(50)
+                                .width(76)
+                                .height(18)
+                                .setValidator(str -> standbyDelayStringValue.getValue())
+                                .value(standbyDelayStringValue)
+                                .background(GTGuiTextures.DISPLAY)
+                                .setTextColor(0x404040)
+                        )
+                        .child(new ButtonWidget<>()
+                                .left(131)
+                                .width(40)
+                                .height(18)
+                                .tooltip(tooltip -> tooltip
+                                        .addLine(IKey.str("增大待机检测延迟")))
+                                .onMousePressed(mouseButton -> {
+                                    delayStructureCheckStandbyValue.setValue(MathHelper.clamp(
+                                            delayStructureCheckStandbyValue.getValue() +
+                                                    GTUtility.getIncrementValue(MouseData.create(mouseButton)),
+                                            20, 1200));
+                                    return true;
+                                })
+                                .onUpdateListener(widget -> widget.overlay(GTUtility.createAdjustOverlay(true)))
+                        )
+                )
+
+                // 添加工作检测延迟控制行
+                .child(Flow.row()
+                        .top(72)
+                        .height(20)
+                        .child(new ButtonWidget<>()
+                                .left(5).width(40)
+                                .height(18)
+                                .tooltip(tooltip -> tooltip
+                                        .addLine(IKey.str("减小工作检测延迟")))
+                                .onMousePressed(mouseButton -> {
+                                    delayStructureCheckWorkValue.setValue(MathHelper.clamp(
+                                            delayStructureCheckWorkValue.getValue() -
+                                                    GTUtility.getIncrementValue(MouseData.create(mouseButton)),
+                                            20, 1200));
+                                    return true;
+                                })
+                                .onUpdateListener(widget -> widget.overlay(GTUtility.createAdjustOverlay(false)))
+                        )
+                        .child(new TextFieldWidget()
+                                .left(50)
+                                .width(76)
+                                .height(18)
+                                .setValidator(str -> workDelayStringValue.getValue())
+                                .value(workDelayStringValue)
+                                .background(GTGuiTextures.DISPLAY)
+                                .setTextColor(0x404040)
+                        )
+                        .child(new ButtonWidget<>()
+                                .left(131)
+                                .width(40)
+                                .height(18)
+                                .tooltip(tooltip -> tooltip
+                                        .addLine(IKey.str("增大工作检测延迟")))
+                                .onMousePressed(mouseButton -> {
+                                    delayStructureCheckWorkValue.setValue(MathHelper.clamp(
+                                            delayStructureCheckWorkValue.getValue() +
+                                                    GTUtility.getIncrementValue(MouseData.create(mouseButton)),
+                                            20, 1200));
+                                    return true;
+                                })
+                                .onUpdateListener(widget -> widget.overlay(GTUtility.createAdjustOverlay(true)))
+                        )
+                );
     }
 
     @Nullable
@@ -545,7 +923,7 @@ public class MultiblockUIFactory {
                     controllable::setWorkingEnabled);
 
             return new ToggleButton()
-                    .debugName("power_button")
+                    .name("power_button")
                     .size(18)
                     .disableHoverBackground()
                     .overlay(true, detail, GTGuiTextures.BUTTON_POWER[1])

@@ -17,6 +17,7 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.World;
+import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.FluidTank;
 import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
@@ -31,6 +32,7 @@ import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.BoolValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
@@ -87,7 +89,7 @@ public class MetaTileEntityCreativeTank extends MetaTileEntityQuantumTank {
     }
 
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
         return appendCreativeUI(GTGuis.createPanel(this, 176, 166), true,
                 new BoolValue.Dynamic(() -> active, b -> active = b),
                 new IntSyncValue(() -> mBPerCycle, v -> mBPerCycle = v),
@@ -156,6 +158,14 @@ public class MetaTileEntityCreativeTank extends MetaTileEntityQuantumTank {
         // do not append the normal tooltips
     }
 
+    @Override
+    public <T> T getCapability(Capability<T> capability, EnumFacing side) {
+        if (capability == CapabilityFluidHandler.FLUID_HANDLER_CAPABILITY) {
+            return CapabilityFluidHandler.FLUID_HANDLER_CAPABILITY.cast(this.fluidTank);
+        }
+        return super.getCapability(capability, side);
+    }
+
     private class CreativeFluidTank extends FluidTank {
 
         private final FluidTank internal;
@@ -198,6 +208,11 @@ public class MetaTileEntityCreativeTank extends MetaTileEntityQuantumTank {
         }
 
         @Override
+        public void setFluid(FluidStack fluid) {
+            this.internal.setFluid(fluid);
+        }
+
+        @Override
         public int getFluidAmount() {
             return this.internal.getFluidAmount();
         }
@@ -205,11 +220,6 @@ public class MetaTileEntityCreativeTank extends MetaTileEntityQuantumTank {
         @Override
         public int getCapacity() {
             return mBPerCycle;
-        }
-
-        @Override
-        public void setFluid(FluidStack fluid) {
-            this.internal.setFluid(fluid);
         }
 
         @Override

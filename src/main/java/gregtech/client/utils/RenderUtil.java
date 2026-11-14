@@ -6,7 +6,12 @@ import gregtech.api.util.JEIUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.ScaledResolution;
-import net.minecraft.client.renderer.*;
+import net.minecraft.client.renderer.BufferBuilder;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.OpenGlHelper;
+import net.minecraft.client.renderer.RenderHelper;
+import net.minecraft.client.renderer.RenderItem;
+import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureMap;
@@ -29,9 +34,9 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.drawable.GuiDraw;
-import com.cleanroommc.modularui.integration.jei.JeiGhostIngredientSlot;
-import com.cleanroommc.modularui.theme.WidgetSlotTheme;
-import com.cleanroommc.modularui.theme.WidgetTheme;
+import com.cleanroommc.modularui.integration.recipeviewer.RecipeViewerGhostIngredientSlot;
+import com.cleanroommc.modularui.theme.SlotTheme;
+import com.cleanroommc.modularui.theme.WidgetThemeEntry;
 import com.cleanroommc.modularui.utils.Color;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -40,7 +45,11 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
 import java.awt.image.BufferedImage;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @SideOnly(Side.CLIENT)
 public class RenderUtil {
@@ -382,6 +391,26 @@ public class RenderUtil {
         GlStateManager.popMatrix();
     }
 
+    public static void renderTextSized(String text, double x, double y, int color, boolean dropShadow, float scale,
+                                       boolean center) {
+        GlStateManager.pushMatrix();
+        FontRenderer fontRenderer = Minecraft.getMinecraft().fontRenderer;
+        double scaledTextWidth = center ? fontRenderer.getStringWidth(text) * scale : 0.0;
+        GlStateManager.translate(x - scaledTextWidth / 2.0, y, 0.0f);
+        GlStateManager.scale(scale, scale, scale);
+        fontRenderer.drawString(text, 0, 0, color, dropShadow);
+        GlStateManager.popMatrix();
+    }
+
+    public static void renderTextFixedCorner(String text, double x, double y, int color, boolean dropShadow,
+                                             float scale) {
+        FontRenderer fontRenderer = Minecraft.getMinecraft().fontRenderer;
+        double scaledWidth = fontRenderer.getStringWidth(text) * scale;
+        double scaledHeight = fontRenderer.FONT_HEIGHT * scale;
+        renderTextSized(text, x - scaledWidth, y - scaledHeight, color, dropShadow, scale, false);
+    }
+
+
     public static void renderItemOverLay(float x, float y, float z, float scale, ItemStack itemStack) {
         RenderHelper.enableStandardItemLighting();
         GlStateManager.pushMatrix();
@@ -706,36 +735,18 @@ public class RenderUtil {
     public static void drawItemStack(ItemStack itemStack, int x, int y, boolean drawCount) {
         int cache = itemStack.getCount();
         if (!drawCount) itemStack.setCount(1);
-        drawItemStack(itemStack, x, y, null);
+        drawItemStack(itemStack, x, y);
         if (!drawCount) itemStack.setCount(cache);
     }
 
     @SideOnly(Side.CLIENT)
-    public static void drawItemStack(ItemStack itemStack, int x, int y, @Nullable String altTxt) {
-        drawItemStack(itemStack, x, y, 16, 16, altTxt);
+    public static void drawItemStack(ItemStack itemStack, int x, int y) {
+        drawItemStack(itemStack, x, y, 16, 16);
     }
 
     @SideOnly(Side.CLIENT)
-    public static void drawItemStack(ItemStack itemStack, int x, int y, int w, int h, @Nullable String altTxt) {
-        GlStateManager.pushMatrix();
-        GlStateManager.translate(0.0F, 0.0F, 32.0F);
-        GlStateManager.scale(w / 16F, h / 16F, 1);
-        GlStateManager.color(1F, 1F, 1F, 1F);
-        GlStateManager.enableDepth();
-        GlStateManager.enableRescaleNormal();
-        GlStateManager.enableLighting();
-        RenderHelper.enableGUIStandardItemLighting();
-        OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240.0f, 240.0f);
-        Minecraft mc = Minecraft.getMinecraft();
-        RenderItem itemRender = mc.getRenderItem();
-        itemRender.renderItemAndEffectIntoGUI(itemStack, x, y);
-        itemRender.renderItemOverlayIntoGUI(mc.fontRenderer, itemStack, x, y, altTxt);
-        GlStateManager.disableRescaleNormal();
-        GlStateManager.disableLighting();
-        GlStateManager.color(1F, 1F, 1F, 1F);
-        GlStateManager.popMatrix();
-        GlStateManager.enableBlend();
-        GlStateManager.disableDepth();
+    public static void drawItemStack(ItemStack itemStack, int x, int y, int w, int h) {
+        GuiDraw.drawItem(itemStack, x, y, w, h, 0);
     }
 
     public static void drawSlotOverlay(@NotNull IWidget slot, int overlayColor) {
@@ -744,33 +755,44 @@ public class RenderUtil {
         GlStateManager.colorMask(true, true, true, true);
     }
 
-    public static void drawSlotOverlay(@NotNull IWidget slot, WidgetTheme widgetTheme) {
-        drawSlotOverlay(slot, widgetTheme instanceof WidgetSlotTheme slotTheme ? slotTheme.getSlotHoverColor() :
-                defaultSlotHoverColor);
+    public static void drawSlotOverlay(@NotNull IWidget slot, SlotTheme theme) {
+        drawSlotOverlay(slot, theme.getSlotHoverColor());
     }
 
-    public static void handleSlotOverlay(@NotNull IWidget slot, @NotNull WidgetTheme widgetTheme) {
+    public static void handleSlotOverlay(@NotNull IWidget slot, @NotNull WidgetThemeEntry<?> themeEntry) {
         if (slot.isHovering()) {
-            drawSlotOverlay(slot, widgetTheme);
+            if (themeEntry.getTheme() instanceof SlotTheme slotTheme) {
+                drawSlotOverlay(slot, slotTheme);
+            } else {
+                drawSlotOverlay(slot, defaultSlotHoverColor);
+            }
         }
     }
 
     public static <
-            T extends IWidget & JeiGhostIngredientSlot<?>> void drawJEIGhostSlotOverlay(@NotNull T jeiGhostIngredientSlot) {
+            T extends IWidget & RecipeViewerGhostIngredientSlot<?>> void drawJEIGhostSlotOverlay(@NotNull T jeiGhostIngredientSlot) {
         GlStateManager.colorMask(true, true, true, false);
         jeiGhostIngredientSlot.drawHighlight(jeiGhostIngredientSlot.getArea(), jeiGhostIngredientSlot.isHovering());
         GlStateManager.colorMask(true, true, true, true);
     }
 
+    @SuppressWarnings("UnusedReturnValue")
     public static <
-            T extends IWidget & JeiGhostIngredientSlot<?>> boolean handleJEIGhostSlotOverlay(@NotNull T jeiGhostIngredientSlot,
-                                                                                             @NotNull WidgetTheme widgetTheme) {
+            T extends IWidget & RecipeViewerGhostIngredientSlot<?>> boolean handleJEIGhostSlotOverlay(@NotNull T jeiGhostIngredientSlot,
+                                                                                                      @NotNull WidgetThemeEntry<?> themeEntry) {
         if (JEIUtil.hoveringOverIngredient(jeiGhostIngredientSlot)) {
             drawJEIGhostSlotOverlay(jeiGhostIngredientSlot);
             return true;
         }
 
-        handleSlotOverlay(jeiGhostIngredientSlot, widgetTheme);
+        handleSlotOverlay(jeiGhostIngredientSlot, themeEntry);
         return false;
+    }
+
+    public static void clearTextureCache() {
+        for (int id : textureMap.values()) {
+            TextureUtil.deleteTexture(id);
+        }
+        textureMap.clear();
     }
 }

@@ -5,6 +5,7 @@ import gregtech.api.GregTechAPI;
 import gregtech.api.block.machines.MachineItemBlock;
 import gregtech.api.capability.IMultipleTankHandler;
 import gregtech.api.capability.impl.FluidTankList;
+import gregtech.api.capability.impl.LargeSlotItemStackHandler;
 import gregtech.api.cover.CoverDefinition;
 import gregtech.api.fluids.GTFluid;
 import gregtech.api.gui.widgets.ProgressWidget;
@@ -20,17 +21,15 @@ import gregtech.api.metatileentity.registry.MTERegistry;
 import gregtech.api.recipes.RecipeMap;
 import gregtech.api.unification.OreDictUnifier;
 import gregtech.api.unification.ore.OrePrefix;
-
 import gregtech.api.unification.stack.ItemAndMetadata;
-
-import it.unimi.dsi.fastutil.objects.Object2IntMap;
 
 import net.minecraft.block.BlockRedstoneWire;
 import net.minecraft.block.BlockSnow;
 import net.minecraft.block.material.MapColor;
 import net.minecraft.block.state.IBlockState;
-import net.minecraft.client.resources.I18n;
 import net.minecraft.creativetab.CreativeTabs;
+import net.minecraft.entity.item.EntityItem;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.SoundEvents;
 import net.minecraft.inventory.Slot;
@@ -58,19 +57,32 @@ import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
 import net.minecraftforge.fluids.capability.IFluidHandlerItem;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import net.minecraftforge.fml.relauncher.ReflectionHelper;
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
 
+import com.cleanroommc.modularui.api.drawable.IKey;
+import com.cleanroommc.modularui.api.widget.Interactable;
+import com.cleanroommc.modularui.utils.Color;
+import com.cleanroommc.modularui.utils.MouseData;
 import com.google.common.util.concurrent.AtomicDouble;
+import it.unimi.dsi.fastutil.Hash;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenCustomHashSet;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Range;
 
+import java.awt.geom.Rectangle2D;
+import java.time.MonthDay;
+import java.time.ZoneId;
 import java.util.AbstractList;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -561,6 +573,12 @@ public class GTUtility {
 
     public static int getRedstonePower(World world, BlockPos blockPos, EnumFacing side) {
         BlockPos offsetPos = blockPos.offset(side);
+        // World#getStrongPower probes all six neighbours of offsetPos, so this reads up to two blocks away.
+        // Never force-load a chunk for that: doing it from TileEntity#onLoad re-enters chunk loading and
+        // throws ConcurrentModificationException in World#addTileEntities.
+        if (!world.isAreaLoaded(offsetPos, 1, true)) {
+            return 0;
+        }
         int worldPower = world.getRedstonePower(offsetPos, side);
         if (worldPower < 15) {
             IBlockState offsetState = world.getBlockState(offsetPos);
@@ -651,6 +669,66 @@ public class GTUtility {
 
     public static final Function<Integer, Integer> genericGeneratorTankSizeFunction = tier -> Math
             .min(4000 * (1 << (tier - 1)), 16000);
+    /**
+     * 通用发电机效率函数，根据发电机等级返回对应的效率值
+     * 发电效率表：
+     * 0级：100%
+     * 1级：95%
+     * 2级：90%
+     * 3级：85%
+     * 4级：80%
+     * 5级：60%
+     * 其他级别：100%
+     *
+     * @param tier 发电机等级
+     * @return 对应的效率值（0.0-1.0之间）
+     */
+    public static final Function<Integer, Double> genericGeneratorEfficiencyFunction = tier -> {
+        //发电效率表
+        //0 100%
+        //1 95%
+        //2 90%
+        //3 85%
+        //4 80%
+        //5 60%
+
+        return switch (tier) {
+            case 0 -> 1.00;
+            case 1 -> 0.95;
+            case 2 -> 0.90;
+            case 3 -> 0.85;
+            case 4 -> 0.80;
+            case 5 -> 0.60;
+            default -> 1.0;
+        };
+    };
+
+    /**
+     * 带偏移量的通用发电机效率函数工厂方法
+     * 创建一个效率函数，该函数会将输入的等级减去指定偏移量后再计算效率
+     * 例如：offset=5时，输入tier=5会对应效率表中的0级（100%效率）
+     *
+     * @param offset 偏移量，用于调整输入等级与效率表的对应关系
+     * @return 返回一个新的效率计算函数
+     */
+    //Function<Integer, Double> efficiencyFromTier5 = genericGeneratorEfficiencyFunctionWithOffset(5);
+    public static Function<Integer, Double> genericGeneratorEfficiencyFunctionWithOffset(int offset) {
+        return tier -> {
+            // 调整等级，减去偏移量
+            int adjustedTier = tier - offset;
+
+            return switch (adjustedTier) {
+                case 0 -> 1.00;
+                case 1 -> 0.95;
+                case 2 -> 0.90;
+                case 3 -> 0.85;
+                case 4 -> 0.80;
+                case 5 -> 0.60;
+                default -> 1.0;
+
+            };
+        };
+    }
 
     public static ItemStack toItem(IBlockState state) {
         return toItem(state, 1);
@@ -926,13 +1004,38 @@ public class GTUtility {
     }
 
     /**
-     * Safely cast a Long to an Int without overflow.
+     * Safely multiply two Integers without overflow or underflow, returning {@link Integer#MAX_VALUE} or
+     * {@link Integer#MIN_VALUE} if it would have.
      *
-     * @param v The Long value to cast to an Int.
-     * @return v, cast to Int, or Integer.MAX_VALUE if it would overflow.
+     * @param num The Long value to cast to an Int.
      */
-    public static int safeCastLongToInt(long v) {
-        return v > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) v;
+    public static int safeCastLongToInt(long num) {
+        if (num > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        } else if (num < Integer.MIN_VALUE) {
+            return Integer.MIN_VALUE;
+        } else {
+            return (int) num;
+        }
+    }
+
+    /**
+     * Safely multiply two Ints without overflow or underflow.
+     */
+    public static int multiplySaturated(int a, int b) {
+        return safeCastLongToInt((long) a * b);
+    }
+
+    /**
+     * Safely multiply two Longs without overflow or underflow, returning {@link Long#MAX_VALUE} or
+     * {@link Long#MIN_VALUE} if it would have.
+     */
+    public static long multiplySaturated(long a, long b) {
+        if (a > 0 && b > 0 && a > Long.MAX_VALUE / b) return Long.MAX_VALUE;
+        if (a < 0 && b < 0 && a < Long.MAX_VALUE / b) return Long.MAX_VALUE;
+        if (a > 0 && b < 0 && b < Long.MIN_VALUE / a) return Long.MIN_VALUE;
+        if (a < 0 && b > 0 && a < Long.MIN_VALUE / b) return Long.MIN_VALUE;
+        return a * b;
     }
 
     /**
@@ -974,43 +1077,6 @@ public class GTUtility {
         return Math.min(voltage, GTValues.VA[workingTier]);
     }
 
-    public static void collapseInventorySlotContents(IItemHandlerModifiable inventory) {
-        // Gather a snapshot of the provided inventory
-        Object2IntMap<ItemStack> inventoryContents = GTHashMaps.fromItemHandler(inventory, true);
-
-        List<ItemStack> inventoryItemContents = new ArrayList<>();
-
-        // Populate the list of item stacks in the inventory with apportioned item stacks, for easy replacement
-        for (Object2IntMap.Entry<ItemStack> e : inventoryContents.object2IntEntrySet()) {
-            ItemStack stack = e.getKey();
-            int count = e.getIntValue();
-            int maxStackSize = stack.getMaxStackSize();
-            while (count >= maxStackSize) {
-                ItemStack copy = stack.copy();
-                copy.setCount(maxStackSize);
-                inventoryItemContents.add(copy);
-                count -= maxStackSize;
-            }
-            if (count > 0) {
-                ItemStack copy = stack.copy();
-                copy.setCount(count);
-                inventoryItemContents.add(copy);
-            }
-        }
-
-        for (int i = 0; i < inventory.getSlots(); i++) {
-            ItemStack stackToMove;
-            // Ensure that we are not exceeding the List size when attempting to populate items
-            if (i >= inventoryItemContents.size()) {
-                stackToMove = ItemStack.EMPTY;
-            } else {
-                stackToMove = inventoryItemContents.get(i);
-            }
-
-            // Populate the slots
-            inventory.setStackInSlot(i, stackToMove);
-        }
-    }
     public static void collapseFluidTankContents(FluidTankList fluidInventory) {
         // 获取所有流体槽中的流体内容
         List<FluidStack> fluidContents = new ArrayList<>();
@@ -1076,6 +1142,105 @@ public class GTUtility {
         return map.get(key.toWildcard());
     }
 
+    /**
+     * Attempts to collapse a {@link List} of {@link ItemStack}s by combining similar stacks downwards (towards index
+     * 0). <br>
+     * WARNING: Mutates original item stacks and list, you might want to make a new list with copies!
+     *
+     * @param stacks       the list to collapse
+     * @param maxStackSize the max stack size of the to-be combined stack
+     * @param removeEmpty  if true, will remove entries from the list if they're empty after collapsing
+     */
+    public static void collapseItemList(@NotNull List<ItemStack> stacks,
+                                        @Range(from = 1, to = Integer.MAX_VALUE) int maxStackSize,
+                                        boolean removeEmpty) {
+        stacks.removeIf(Objects::isNull);
+        Hash.Strategy<ItemStack> stackStrategy = ItemStackHashStrategy.comparingAllButCount();
+
+        for (int checkingSlot = 0; checkingSlot < stacks.size(); checkingSlot++) {
+            ItemStack stackToCheck = stacks.get(checkingSlot);
+            if (stackToCheck.getCount() >= maxStackSize) continue;
+
+            for (int collapsingSlot = stacks.size() - 1; collapsingSlot > checkingSlot; collapsingSlot--) {
+                ItemStack collapsingStack = stacks.get(collapsingSlot);
+                if (collapsingStack.isEmpty()) continue;
+
+                if (stackStrategy.equals(stackToCheck, collapsingStack)) {
+                    final int checkingSize = stackToCheck.getCount();
+                    final int collapsingSize = collapsingStack.getCount();
+
+                    final int maxFinalSize = Math.min(maxStackSize, checkingSize + collapsingSize);
+                    final int toTransfer = maxFinalSize - checkingSize;
+
+                    stackToCheck.grow(toTransfer);
+                    collapsingStack.shrink(toTransfer);
+                }
+            }
+        }
+
+        if (removeEmpty) {
+            stacks.removeIf(ItemStack::isEmpty);
+        }
+    }
+
+    /**
+     * The same as {@link #collapseItemList(List, int, boolean)} but has a stack size limit of {@link Integer#MAX_VALUE}
+     * and removes empty stacks. <br>
+     * WARNING: Mutates original item stacks, you might want to make a new list with copies!
+     */
+    public static void collapseItemList(List<ItemStack> stacks) {
+        collapseItemList(stacks, Integer.MAX_VALUE, true);
+    }
+
+    /**
+     * Attempts to collapse a {@link List} of {@link FluidStack}s by combining similar stacks downwards (towards index
+     * 0). <br>
+     * WARNING: Mutates original fluid stacks and list, you might want to make a new list with copies!
+     *
+     * @param stacks       the list to collapse
+     * @param maxStackSize the max stack size of the to-be combined stack
+     * @param removeEmpty  if true, will remove entries from the list if they're empty after collapsing
+     */
+    public static void collapseFluidList(@NotNull List<FluidStack> stacks,
+                                         @Range(from = 1, to = Integer.MAX_VALUE) int maxStackSize,
+                                         boolean removeEmpty) {
+        stacks.removeIf(Objects::isNull);
+
+        for (int checkingSlot = 0; checkingSlot < stacks.size(); checkingSlot++) {
+            FluidStack stackToCheck = stacks.get(checkingSlot);
+            if (stackToCheck.amount >= maxStackSize) continue;
+
+            for (int collapsingSlot = stacks.size() - 1; collapsingSlot > checkingSlot; collapsingSlot--) {
+                FluidStack collapsingStack = stacks.get(collapsingSlot);
+                if (collapsingStack.amount < 1) continue;
+
+                if (FluidStackHashStrategy.comparingAllButAmount().equals(stackToCheck, collapsingStack)) {
+                    final int checkingSize = stackToCheck.amount;
+                    final int collapsingSize = collapsingStack.amount;
+
+                    final int maxFinalSize = Math.min(maxStackSize, checkingSize + collapsingSize);
+                    final int toTransfer = maxFinalSize - checkingSize;
+
+                    stackToCheck.amount += toTransfer;
+                    collapsingStack.amount -= toTransfer;
+                }
+            }
+        }
+
+        if (removeEmpty) {
+            stacks.removeIf(stack -> stack.amount < 1);
+        }
+    }
+
+    /**
+     * The same as {@link #collapseFluidList(List, int, boolean)} but has a stack size limit of
+     * {@link Integer#MAX_VALUE} and removes empty stacks. <br>
+     * WARNING: Mutates original fluid stacks, you might want to make a new list with copies!
+     */
+    public static void collapseFluidList(List<FluidStack> stacks) {
+        collapseFluidList(stacks, Integer.MAX_VALUE, true);
+    }
+
     public static boolean areFluidStacksEqual(@Nullable FluidStack a, @Nullable FluidStack b) {
         if (a == b) return true;
         if (a == null) return false;
@@ -1139,10 +1304,64 @@ public class GTUtility {
         }
     }
 
-    public static String getTableBarNameByItemStack(@NotNull ItemStack stack){
-        if(stack.getItem().getCreativeTab()==null)return  "";
-        String tabelBar= "itemGroup."+stack.getItem().getCreativeTab().tabLabel;
-        return  I18n.format(tabelBar);
+    public static void collapseInventorySlotContents(IItemHandlerModifiable inventory) {
+        // Gather a snapshot of the provided inventory
+        Object2IntMap<ItemStack> inventoryContents = GTHashMaps.fromItemHandler(inventory, true);
+
+        List<ItemStack> inventoryItemContents = new ArrayList<>();
+
+        // Populate the list of item stacks in the inventory with apportioned item stacks, for easy replacement
+        for (Object2IntMap.Entry<ItemStack> e : inventoryContents.object2IntEntrySet()) {
+            ItemStack stack = e.getKey();
+            int count = e.getIntValue();
+            int maxStackSize = stack.getMaxStackSize();
+            if(inventory instanceof LargeSlotItemStackHandler)
+                maxStackSize = Integer.MAX_VALUE;
+            while (count >= maxStackSize) {
+                ItemStack copy = stack.copy();
+                copy.setCount(maxStackSize);
+                inventoryItemContents.add(copy);
+                count -= maxStackSize;
+            }
+            if (count > 0) {
+                ItemStack copy = stack.copy();
+                copy.setCount(count);
+                inventoryItemContents.add(copy);
+            }
+        }
+
+        for (int i = 0; i < inventory.getSlots(); i++) {
+            ItemStack stackToMove;
+            // Ensure that we are not exceeding the List size when attempting to populate items
+            if (i >= inventoryItemContents.size()) {
+                stackToMove = ItemStack.EMPTY;
+            } else {
+                stackToMove = inventoryItemContents.get(i);
+            }
+
+            // Populate the slots
+            inventory.setStackInSlot(i, stackToMove);
+        }
+    }
+
+    public static boolean hasMatchingItem(ItemStack targetItem, IItemHandlerModifiable importItems) {
+        for (int slot = 0; slot < importItems.getSlots(); slot++) {
+            ItemStack slotStack = importItems.getStackInSlot(slot);
+            if (!slotStack.isEmpty() && slotStack.isItemEqual(targetItem)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean hasMatchingFluid(FluidStack targetFluid, FluidTankList fluidTankList) {
+        for (IFluidTank tank : fluidTankList) {
+            FluidStack tankFluid = tank.getFluid();
+            if (tankFluid != null && tankFluid.isFluidEqual(targetFluid)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1165,5 +1384,112 @@ public class GTUtility {
      */
     public static double calculateDurabilityFromRemaining(int remainingDurability, int maxDurability) {
         return (double) (maxDurability - remainingDurability) / maxDurability;
+    }
+
+    public static String generateRandomString(int length) {
+        Random random = new Random();
+        StringBuilder stringBuilder = new StringBuilder(length);
+
+        for (int i = 0; i < length; i++) {
+            stringBuilder.append(random.nextInt(10));
+        }
+
+        return stringBuilder.toString();
+    }
+
+    public static int getIncrementValue(MouseData data) {
+        int adjust = 1;
+        if (data.shift) adjust *= 4;
+        if (data.ctrl) adjust *= 16;
+        if (data.alt) adjust *= 64;
+        return adjust;
+    }
+    public static IKey createAdjustOverlay(boolean increment) {
+        final StringBuilder builder = new StringBuilder();
+        builder.append(increment ? '+' : '-');
+        builder.append(getIncrementValue(MouseData.create(-1)));
+
+        float scale = 1f;
+        if (builder.length() == 3) {
+            scale = 0.9f;
+        } else if (builder.length() == 4) {
+            scale = 0.8f;
+        } else if (builder.length() > 4) {
+            scale = 0.7f;
+        }
+        return IKey.str(builder.toString())
+                .color(Color.WHITE.main)
+                .scale(scale);
+    }
+
+    public static void spawnDropsAtPlayer(List<ItemStack> drops, EntityPlayer player, World world, Random random) {
+        BlockPos spawnPos = player.getPosition().up(); // 玩家脚上方1格
+
+        for (ItemStack drop : drops) {
+            if (drop.isEmpty()) continue;
+
+            // 分散生成避免卡顿
+            double offsetX = (random.nextDouble() - 0.5) * 0.8;
+            double offsetZ = (random.nextDouble() - 0.5) * 0.8;
+
+            EntityItem entity = new EntityItem(
+                    world,
+                    spawnPos.getX() + 0.5 + offsetX,
+                    spawnPos.getY() + 0.1, // 贴近地面
+                    spawnPos.getZ() + 0.5 + offsetZ,
+                    drop.copy()
+            );
+
+            world.spawnEntity(entity);
+        }
+    }
+
+    public static <T> @NotNull List<T> unmodifiableOrEmpty(@Nullable List<T> sourceList) {
+        return sourceList == null ? Collections.emptyList() : Collections.unmodifiableList(sourceList);
+    }
+
+    public static boolean isToday(@NotNull MonthDay monthDay, @Nullable ZoneId tz) {
+        MonthDay now = tz == null ? MonthDay.now() : MonthDay.now(tz);
+        return now.equals(monthDay);
+    }
+
+    public static boolean isToday(@NotNull MonthDay monthDay) {
+        return isToday(monthDay, null);
+    }
+
+    public static boolean rectanglesCollide(@NotNull Rectangle2D a, @NotNull Rectangle2D b) {
+        return (a.getX() <= b.getX() + b.getWidth()) &&
+                (a.getX() + a.getWidth() >= b.getX()) &&
+                (a.getY() <= b.getY() + b.getHeight()) &&
+                (a.getY() + a.getHeight() >= b.getY());
+    }
+
+    /**
+     * Get a value multiplier based on what modifier keys the player is holding down. <br/>
+     * Returns {@code 1} if no modifiers are pressed, otherwise: <br/>
+     * - {@code shift}: x4 <br/>
+     * - {@code ctrl}: x16 <br/>
+     * - {@code alt}: x64 <br/>
+     * Holding down multiple modifiers multiplies their effects, so if the player is holding down {@code shift},
+     * {@code ctrl}, and {@code alt} all at the same time, this method will return {@code 4096}.
+     */
+    @SideOnly(Side.CLIENT)
+    public static int getButtonIncrementValue() {
+        int adjust = 1;
+        if (Interactable.hasShiftDown()) adjust *= 4;
+        if (Interactable.hasControlDown()) adjust *= 16;
+        if (Interactable.hasAltDown()) adjust *= 64;
+        return adjust;
+    }
+
+    public static String replace(String str, int index, char replace) {
+        if (str == null) {
+            return null;
+        } else if (index < 0 || index >= str.length()) {
+            return str;
+        }
+        char[] chars = str.toCharArray();
+        chars[index] = replace;
+        return String.valueOf(chars);
     }
 }

@@ -2,9 +2,12 @@ package gregtech.api.fluids;
 
 import gregtech.api.GTValues;
 import gregtech.api.GregTechAPI;
+import gregtech.api.metatileentity.multiblock.nuclear.fission.CoolantRegistry;
 import gregtech.api.unification.material.Material;
+import gregtech.api.unification.material.properties.CoolantProperty;
 import gregtech.api.unification.material.properties.FluidProperty;
 import gregtech.api.unification.material.properties.PropertyKey;
+import gregtech.api.util.GTLog;
 import gregtech.common.blocks.MetaBlocks;
 
 import net.minecraft.client.renderer.texture.TextureMap;
@@ -84,6 +87,19 @@ public class GTFluidRegistration {
             if (property != null) {
                 property.registerFluids(material);
             }
+        }
+
+        for (Material material : GregTechAPI.materialManager.getRegisteredMaterials()) {
+            if (!material.hasProperty(PropertyKey.COOLANT)) continue;
+
+            CoolantProperty coolant = material.getProperty(PropertyKey.COOLANT);
+            Fluid fluid = material.getFluid(coolant.getCoolantKey());
+            if (fluid == null) {
+                GTLog.logger.warn("Skipping coolant registration for {} because fluid storage {} is unavailable",
+                        material.getResourceLocation(), coolant.getCoolantKey());
+                continue;
+            }
+            CoolantRegistry.registerCoolant(fluid, coolant);
         }
     }
 

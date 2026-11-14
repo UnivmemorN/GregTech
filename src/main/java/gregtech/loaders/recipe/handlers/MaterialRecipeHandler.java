@@ -46,18 +46,29 @@ public class MaterialRecipeHandler {
                     OrePrefix.gemFlawed,
                     OrePrefix.gem,
                     OrePrefix.gemFlawless,
-                    OrePrefix.gemExquisite) :
+                    OrePrefix.gemExquisite,
+                    OrePrefix.gemLegendary) :
             Arrays.asList(
                     OrePrefix.gem,
                     OrePrefix.gemFlawless,
-                    OrePrefix.gemExquisite);
+                    OrePrefix.gemExquisite,
+                    OrePrefix.gemLegendary);
 
     public static void register() {
         OrePrefix.ingot.addProcessingHandler(PropertyKey.INGOT, MaterialRecipeHandler::processIngot);
+        OrePrefix.ingotDouble.addProcessingHandler(PropertyKey.INGOT, MaterialRecipeHandler::processDoubleIngot);
+        OrePrefix.ingotTriple.addProcessingHandler(PropertyKey.INGOT,
+                (p, m, prop) -> processMultiIngot(p, m, 3));
+        OrePrefix.ingotQuadruple.addProcessingHandler(PropertyKey.INGOT,
+                (p, m, prop) -> processMultiIngot(p, m, 4));
+        OrePrefix.ingotQuintuple.addProcessingHandler(PropertyKey.INGOT,
+                (p, m, prop) -> processMultiIngot(p, m, 5));
+
         OrePrefix.nugget.addProcessingHandler(PropertyKey.DUST, MaterialRecipeHandler::processNugget);
 
         OrePrefix.block.addProcessingHandler(PropertyKey.DUST, MaterialRecipeHandler::processBlock);
         OrePrefix.frameGt.addProcessingHandler(PropertyKey.DUST, MaterialRecipeHandler::processFrame);
+        OrePrefix.sheet.addProcessingHandler(PropertyKey.DUST, MaterialRecipeHandler::processSheet);
 
         OrePrefix.dust.addProcessingHandler(PropertyKey.DUST, MaterialRecipeHandler::processDust);
         OrePrefix.dustSmall.addProcessingHandler(PropertyKey.DUST, MaterialRecipeHandler::processSmallDust);
@@ -210,18 +221,24 @@ public class MaterialRecipeHandler {
         if (EUt <= 0) EUt = VA[MV];
 
         int amount = 0;
+        int type = 0;
         // generate builder
+        for (MaterialStack component : material.getMaterialComponents()) {
+            amount += (int) component.amount;
+            type += 1;
+
+        }
         RecipeBuilder<?> builder;
 
         builder = RecipeMaps.MIXER_RECIPES.recipeBuilder();
+        if (type > 6)
+            builder = LARGE_MIXER_RECIPES.recipeBuilder();
 
         for (MaterialStack component : material.getMaterialComponents()) {
-            amount += (int) component.amount;
             builder.input(dust, component.material, (int) component.amount);
         }
 
-
-        if(circuit<0) builder.circuitMeta(amount % 10);
+        if (circuit <= 0) builder.circuitMeta(amount % 10 == 0 ? 10 : amount % 10);
         else builder.circuitMeta(circuit);
 
         builder.output(dust, material, amount)
@@ -253,18 +270,31 @@ public class MaterialRecipeHandler {
                 .EUt(EUt);
 
         if (gasTier != null) {
-            FluidStack gas = CraftingComponent.EBF_GASES.get(gasTier).copy();
-
             blastBuilder.copy()
                     .circuitMeta(1)
                     .duration(duration)
                     .buildAndRegister();
 
-            blastBuilder.copy()
-                    .circuitMeta(2)
-                    .fluidInputs(gas)
-                    .duration((int) (duration * 0.67))
-                    .buildAndRegister();
+            int baseGasDuration = (int) (duration * 0.75);
+
+            for (BlastProperty.GasTier tier : BlastProperty.GasTier.values()) {
+                if (tier.ordinal() >= gasTier.ordinal()) {
+                    List<FluidStack> gases = CraftingComponent.EBF_GASES.get(tier);
+                    if (gases != null) {
+                        for (FluidStack gas : gases) {
+                            int tierDiff = tier.ordinal() - gasTier.ordinal();
+                            int newDuration = (int) (baseGasDuration * (1 - 0.1 * tierDiff));
+                            if (newDuration < 1) newDuration = 1;
+
+                            blastBuilder.copy()
+                                    .circuitMeta(2)
+                                    .fluidInputs(gas.copy())
+                                    .duration(newDuration)
+                                    .buildAndRegister();
+                        }
+                    }
+                }
+            }
         } else {
             blastBuilder.duration(duration);
             if (material == Materials.Silicon) {
@@ -461,6 +491,36 @@ public class MaterialRecipeHandler {
             }
         }
     }
+    private static void processDoubleIngot(OrePrefix ingotPrefix, Material material, IngotProperty property) {
+        int workingTier = material.getWorkingTier();
+
+        if (workingTier <= HV) {
+            ModHandler.addShapedRecipe(String.format("ingot_double_%s", material),
+                    OreDictUnifier.get(ingotPrefix, material),
+                    "h", "I", "I", 'I', new UnificationEntry(ingot, material));
+        }
+
+        processMultiIngot(ingotPrefix, material, 2);
+    }
+    private static void processMultiIngot(OrePrefix ingotPrefix, Material material, int multiplier) {
+        int workingTier = material.getWorkingTier();
+
+        RecipeMaps.BENDER_RECIPES.recipeBuilder()
+                .input(ingot, material, multiplier)
+                .circuitMeta(multiplier)
+                .output(ingotPrefix, material)
+                .duration((int) Math.max(material.getMass() * (long) multiplier, 1L))
+                .EUt(GTUtility.scaleVoltage(48, workingTier))
+                .buildAndRegister();
+
+
+        RecipeMaps.UNPACKER_RECIPES.recipeBuilder()
+                .input(ingotPrefix, material)
+                .output(ingot, material, multiplier)
+                .duration((int) Math.max(material.getMass() * (long) multiplier, 1L))
+                .EUt(GTUtility.scaleVoltage(36, workingTier))
+                .buildAndRegister();
+    }
 
     public static void processGemConversion(OrePrefix gemPrefix, @Nullable OrePrefix prevPrefix, Material material) {
         long materialAmount = gemPrefix.getMaterialAmount(material);
@@ -541,6 +601,26 @@ public class MaterialRecipeHandler {
                 ModHandler.addShapedRecipe(String.format("nugget_assembling_%s", material),
                         gemStack, "XXX", "XXX", "XXX", 'X', new UnificationEntry(orePrefix, material));
             }
+        }
+    }
+
+    public static void processSheet(OrePrefix sheetPrefix, Material material, DustProperty property) {
+        if (material.hasFlag(GENERATE_SHEET)) {
+            int workingTier = material.getWorkingTier();
+            boolean isWoodenFrame = ModHandler.isMaterialWood(material);
+            ModHandler.addShapedRecipe(String.format("sheet_%s", material),
+                    OreDictUnifier.get(sheetPrefix, material, 2),
+                    "PSP", isWoodenFrame ? "SsS" : "SwS", "PSP",
+                    'S', new UnificationEntry(OrePrefix.stick, material),
+                    'P', new UnificationEntry(OrePrefix.plate, material));
+
+            RecipeMaps.ASSEMBLER_RECIPES.recipeBuilder()
+                    .input(OrePrefix.plate, material, 2)
+                    .input(OrePrefix.stick, material, 2)
+                    .circuitMeta(4)
+                    .outputs(OreDictUnifier.get(sheetPrefix, material, 1))
+                    .EUt(GTUtility.scaleVoltage(VA[ULV], workingTier)).duration(64)
+                    .buildAndRegister();
         }
     }
 

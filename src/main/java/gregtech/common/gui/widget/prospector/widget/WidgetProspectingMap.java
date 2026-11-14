@@ -6,8 +6,16 @@ import gregtech.api.unification.OreDictUnifier;
 import gregtech.api.unification.ore.OrePrefix;
 import gregtech.api.unification.ore.StoneType;
 import gregtech.api.unification.stack.MaterialStack;
-import gregtech.api.util.*;
+import gregtech.api.util.FileUtility;
+import gregtech.api.util.GTUtility;
+import gregtech.api.util.Mods;
+import gregtech.api.util.Position;
+import gregtech.api.util.Size;
+import gregtech.api.util.TextFormattingUtil;
 import gregtech.api.worldgen.bedrockFluids.BedrockFluidVeinHandler;
+import gregtech.api.worldgen.bedrockOres.OreEntry;
+import gregtech.api.worldgen.bedrockOres.OreVeinHandler;
+import gregtech.api.worldgen.bedrockOres.VeinHelper;
 import gregtech.api.worldgen.config.OreDepositDefinition;
 import gregtech.api.worldgen.config.WorldGenRegistry;
 import gregtech.api.worldgen.filler.FillerEntry;
@@ -40,9 +48,12 @@ import org.jetbrains.annotations.NotNull;
 
 import java.awt.*;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Consumer;
 
@@ -167,7 +178,7 @@ public class WidgetProspectingMap extends Widget {
                         }
                     }
                     break;
-                case FLUID:
+                case BEDROCK_FLUID:
                     BedrockFluidVeinHandler.FluidVeinWorldEntry fStack = BedrockFluidVeinHandler
                             .getFluidVeinWorldEntry(world, chunk.x, chunk.z);
                     if (fStack != null && fStack.getDefinition() != null) {
@@ -181,6 +192,26 @@ public class WidgetProspectingMap extends Widget {
                         if (fluid != null) {
                             packet.addBlock(0, 1, 0, fluid.getName());
                         }
+                    }
+                    break;
+                case BEDROCK_ORE:
+                    OreVeinHandler.OreVeinWorldEntry oreEntry = OreVeinHandler
+                            .getOreVeinWorldEntry(world, chunk.x, chunk.z);
+                    if (oreEntry != null && oreEntry.getType() != null) {
+                        packet.addBlock(0, 3, 0, TextFormattingUtil.formatNumbers(100.0 *
+                                oreEntry.getOperationsRemaining() /
+                                OreVeinHandler.MAXIMUM_VEIN_OPERATIONS));
+                        packet.addBlock(0, 2, 0, String.valueOf(oreEntry.getOreYield()));
+                        // y=1: ore registry names (client looks up display name)
+                        StringBuilder sb = new StringBuilder();
+                        for (OreEntry oe : oreEntry.getType().getOrePool()) {
+                            if (sb.length() > 0) sb.append(",");
+                            sb.append(oe.oreName);
+                        }
+                        String oreNames = sb.length() > 0 ? sb.toString() : oreEntry.getType().id;
+                        packet.addBlock(0, 1, 0, oreNames);
+                        // y=4: vein type id for internal lookup
+                        packet.addBlock(0, 4, 0, oreEntry.getType().id);
                     }
                     break;
                 default:
@@ -271,7 +302,7 @@ public class WidgetProspectingMap extends Widget {
                                 if (ProspectingTexture.SELECTED_ALL.equals(texture.getSelected()) ||
                                         texture.getSelected().equals(dict)) {
                                     oreInfo.put(name, oreInfo.getOrDefault(name, 0) + 1);
-                                    oreHeight.put(name, oreHeight.getOrDefault(name, 0) + height.intValue());
+                                    oreHeight.put(name, oreHeight.getOrDefault(name, 0) + Byte.toUnsignedInt(height));
                                     if (oreInfo.get(name) > maxAmount[0]) {
                                         maxAmount[0] = oreInfo.get(name);
                                         MaterialStack m = OreDictUnifier.getMaterial(OreDictUnifier.get(dict));
@@ -299,7 +330,7 @@ public class WidgetProspectingMap extends Widget {
                     tooltips.add(name + " --- §e" + count + "§r, §cy" + height + "§r");
                     hoveredNames.add(name);
                 });
-            } else if (this.mode == ProspectorMode.FLUID) {
+            } else if (this.mode == ProspectorMode.BEDROCK_FLUID) {
                 tooltips.add(I18n.format("terminal.prospector.fluid"));
                 if (texture.map[cX][cZ] != null && !texture.map[cX][cZ].isEmpty()) {
                     if (ProspectingTexture.SELECTED_ALL.equals(texture.getSelected()) ||
@@ -319,9 +350,23 @@ public class WidgetProspectingMap extends Widget {
                         }
                     }
                 }
+            } else if (this.mode == ProspectorMode.BEDROCK_ORE) {
+                tooltips.add(I18n.format("terminal.prospector.bedrock_ore"));
+                if (texture.map[cX][cZ] != null && !texture.map[cX][cZ].isEmpty()) {
+                    String oreNames = texture.map[cX][cZ].get((byte) 1);
+                    if (ProspectingTexture.SELECTED_ALL.equals(texture.getSelected()) ||
+                            oreNames.contains(texture.getSelected())) {
+                        String displayNames = resolveOreDisplayNames(oreNames);
+                        tooltips.add(I18n.format("terminal.prospector.bedrock_ore.info",
+                                displayNames,
+                                texture.map[cX][cZ].get((byte) 2),
+                                texture.map[cX][cZ].get((byte) 3)));
+                        hoveredNames.add(oreNames);
+                    }
+                }
             }
 
-            if (Mods.JourneyMap.isModLoaded() || Mods.VoxelMap.isModLoaded() || Mods.XaerosMinimap.isModLoaded()) {
+            if (Mods.XaerosMinimap.isModLoaded()) {
                 tooltips.add(I18n.format("terminal.prospector.waypoint.add"));
             }
             this.drawHoveringText(ItemStack.EMPTY, tooltips, 300, mouseX, mouseY);
@@ -350,11 +395,7 @@ public class WidgetProspectingMap extends Widget {
             boolean added = false;
             trimHoveredNames();
 
-            if (Mods.JourneyMap.isModLoaded()) {
-                added = addJourneymapWaypoint(b);
-            } else if (Mods.VoxelMap.isModLoaded()) {
-                added = addVoxelMapWaypoint(b);
-            } else if (Mods.XaerosMinimap.isModLoaded()) {
+            if (Mods.XaerosMinimap.isModLoaded()) {
                 added = addXaeroMapWaypoint(b);
             }
             if (added) {
@@ -394,49 +435,6 @@ public class WidgetProspectingMap extends Widget {
         // remove the [] surrounding the array
         String s = hoveredNames.toString();
         return s.substring(1, s.length() - 1);
-    }
-
-    @Optional.Method(modid = Mods.Names.JOURNEY_MAP)
-    private boolean addJourneymapWaypoint(BlockPos b) {
-        journeymap.client.model.Waypoint journeyMapWaypoint = new journeymap.client.model.Waypoint(createVeinName(),
-                b,
-                new Color(color),
-                journeymap.client.model.Waypoint.Type.Normal,
-                Minecraft.getMinecraft().world.provider.getDimension());
-        if (!journeymap.client.waypoint.WaypointStore.INSTANCE.getAll().contains(journeyMapWaypoint)) {
-            journeymap.client.waypoint.WaypointStore.INSTANCE.save(journeyMapWaypoint);
-            return true;
-        }
-        return false;
-    }
-
-    @Optional.Method(modid = Mods.Names.VOXEL_MAP)
-    private boolean addVoxelMapWaypoint(@NotNull BlockPos b) {
-        Color c = new Color(color);
-        TreeSet<Integer> world = new TreeSet<>();
-        world.add(Minecraft.getMinecraft().world.provider.getDimension());
-
-        com.mamiyaotaru.voxelmap.interfaces.IWaypointManager waypointManager = com.mamiyaotaru.voxelmap.interfaces.AbstractVoxelMap
-                .getInstance().getWaypointManager();
-        com.mamiyaotaru.voxelmap.util.Waypoint voxelMapWaypoint = new com.mamiyaotaru.voxelmap.util.Waypoint(
-                createVeinName(),
-                b.getX(),
-                b.getZ(),
-                b.getY(),
-                true,
-                c.getRed() / 255F,
-                c.getGreen() / 255F,
-                c.getBlue() / 255F,
-                Minecraft.getMinecraft().world.provider.getDimensionType().getSuffix(),
-                Minecraft.getMinecraft().world.provider.getDimensionType().getName(),
-                world);
-
-        if (!waypointManager.getWaypoints().contains(voxelMapWaypoint)) {
-            waypointManager.addWaypoint(voxelMapWaypoint);
-            waypointManager.saveWaypoints();
-            return true;
-        }
-        return false;
     }
 
     @Optional.Method(modid = Mods.Names.XAEROS_MINIMAP)
@@ -518,4 +516,17 @@ public class WidgetProspectingMap extends Widget {
             ColorUtility.getLab(new Color(255, 255, 0)),
             ColorUtility.getLab(new Color(255, 255, 255)),
     };
+
+    private static String resolveOreDisplayNames(String oreNames) {
+        StringBuilder sb = new StringBuilder();
+        for (String name : oreNames.split(",")) {
+            ItemStack stack = VeinHelper.oreNameToItemStack(name.trim());
+            if (!stack.isEmpty()) {
+                MaterialStack ms = OreDictUnifier.getMaterial(stack);
+                if (sb.length() > 0) sb.append(", ");
+                sb.append(ms != null ? ms.material.getLocalizedName() : stack.getDisplayName());
+            }
+        }
+        return sb.length() > 0 ? sb.toString() : oreNames;
+    }
 }

@@ -36,20 +36,21 @@ import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.utils.Color;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.SyncHandlers;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.RichTextWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
 public class MetaTileEntityPumpHatch extends MetaTileEntityMultiblockPart
-                                     implements IMultiblockAbilityPart<IFluidTank> {
+        implements IMultiblockAbilityPart<IFluidTank> {
 
     private static final int FLUID_TANK_SIZE = 1000;
 
@@ -125,7 +126,7 @@ public class MetaTileEntityPumpHatch extends MetaTileEntityMultiblockPart
     }
 
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
         guiSyncManager.registerSlotGroup("item_inv", 2);
 
         GTFluidSyncHandler tankSyncHandler = GTFluidSlot.sync(this.exportFluids.getTankAt(0))
@@ -135,7 +136,7 @@ public class MetaTileEntityPumpHatch extends MetaTileEntityMultiblockPart
         // TODO: Change the position of the name when it's standardized.
         return GTGuis.createPanel(this, 176, 166)
                 .child(IKey.lang(getMetaFullName()).asWidget().pos(5, 5))
-                .child(SlotGroupWidget.playerInventory().left(7).bottom(7))
+                .child(SlotGroupWidget.playerInventory(false).left(7).bottom(7))
                 .child(GTGuiTextures.DISPLAY.asWidget()
                         .left(7).top(16)
                         .size(81, 55))
@@ -159,14 +160,14 @@ public class MetaTileEntityPumpHatch extends MetaTileEntityMultiblockPart
                 .child(new GTFluidSlot().syncHandler(tankSyncHandler)
                         .pos(69, 52)
                         .disableBackground())
-                .child(new ItemSlot().slot(SyncHandlers.itemSlot(this.importItems, 0)
-                        .slotGroup("item_inv")
-                        .filter(itemStack -> FluidUtil.getFluidHandler(itemStack) != null))
+                .child(new ItemSlot().slot(new ModularSlot(this.importItems, 0)
+                                .slotGroup("item_inv")
+                                .filter(itemStack -> FluidUtil.getFluidHandler(itemStack) != null))
                         .background(GTGuiTextures.SLOT, GTGuiTextures.IN_SLOT_OVERLAY)
                         .pos(90, 16))
-                .child(new ItemSlot().slot(SyncHandlers.itemSlot(this.exportItems, 0)
-                        .slotGroup("item_inv")
-                        .accessibility(false, true))
+                .child(new ItemSlot().slot(new ModularSlot(this.exportItems, 0)
+                                .slotGroup("item_inv")
+                                .accessibility(false, true))
                         .background(GTGuiTextures.SLOT, GTGuiTextures.OUT_SLOT_OVERLAY)
                         .pos(90, 53));
     }

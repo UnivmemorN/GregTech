@@ -38,6 +38,13 @@ public class OpticalNetHandler implements IDataAccessHatch, IOpticalComputationP
         return net;
     }
 
+    /**
+     * How much CWU/t a single cable of this pipe's material can physically forward.
+     */
+    public int getMaxCWUt() {
+        return pipe.getOpticalProperties().getMaxCWUt();
+    }
+
     @Override
     public boolean isRecipeAvailable(@NotNull Recipe recipe, @NotNull Collection<IDataAccessHatch> seen) {
         boolean isAvailable = traverseRecipeAvailable(recipe, seen);
@@ -52,9 +59,12 @@ public class OpticalNetHandler implements IDataAccessHatch, IOpticalComputationP
 
     @Override
     public int requestCWUt(int cwut, boolean simulate, @NotNull Collection<IOpticalComputationProvider> seen) {
-        int provided = traverseRequestCWUt(cwut, simulate, seen);
+        // the cable material caps how much computation a single line can carry
+        int cableLimit = getMaxCWUt();
+        int requested = Math.min(cwut, cableLimit);
+        int provided = traverseRequestCWUt(requested, simulate, seen);
         if (provided > 0) setPipesActive();
-        return provided;
+        return Math.min(provided, cableLimit);
     }
 
     @Override
@@ -67,8 +77,19 @@ public class OpticalNetHandler implements IDataAccessHatch, IOpticalComputationP
         return traverseCanBridge(seen);
     }
 
+    /** 上次点亮全网的 tick，用于把 O(N) 的全网扫描限制到每 tick 一次。 */
+    private long lastActivateTick = -1L;
+
     private void setPipesActive() {
+        if (net == null) return;
+        long now = world.getTotalWorldTime();
+        // 点亮只是视觉效果：isRecipeAvailable / requestCWUt 可能一 tick 内被调用很多次
+        if (now == lastActivateTick) return;
+        lastActivateTick = now;
+
         for (BlockPos pos : net.getAllNodes().keySet()) {
+            // 先判区块是否加载，避免因为点亮效果而触碰未加载的区块
+            if (!world.isBlockLoaded(pos)) continue;
             if (world.getTileEntity(pos) instanceof TileEntityOpticalPipe opticalPipe) {
                 opticalPipe.setActive(true, 100);
             }
@@ -79,15 +100,23 @@ public class OpticalNetHandler implements IDataAccessHatch, IOpticalComputationP
         return net == null || pipe == null || pipe.isInvalid();
     }
 
+    /** The route this handler resolves to, or {@code null} if there is nothing on the other end. */
+    @Nullable
+    private OpticalRoutePath getRoute(OpticalRoutePath.Kind kind) {
+        if (isNetInvalidForTraversal()) return null;
+        // decay is already enforced when the route is recorded: the walker refuses to reach past
+        // the material's decay distance, so a cached route is always within reach
+        return net.getNetData(pipe.getPipePos(), facing, kind);
+    }
+
     private boolean traverseRecipeAvailable(@NotNull Recipe recipe, @NotNull Collection<IDataAccessHatch> seen) {
-        if (isNetInvalidForTraversal()) return false;
+        OpticalRoutePath route = getRoute(OpticalRoutePath.Kind.DATA);
+        if (route == null) return false;
 
-        OpticalRoutePath inv = net.getNetData(pipe.getPipePos(), facing);
-        if (inv == null) return false;
+        IOpticalDataAccessHatch hatch = route.getDataHatch();
+        if (hatch == null) return false;
 
-        IOpticalDataAccessHatch hatch = inv.getDataHatch();
-        if (hatch == null || seen.contains(hatch)) return false;
-
+        // a receiver hatch asks the attached transmitter hatch whether it can supply the recipe
         if (hatch.isTransmitter()) {
             return hatch.isRecipeAvailable(recipe, seen);
         }
@@ -114,12 +143,10 @@ public class OpticalNetHandler implements IDataAccessHatch, IOpticalComputationP
 
     @Nullable
     private IOpticalComputationProvider getComputationProvider(@NotNull Collection<IOpticalComputationProvider> seen) {
-        if (isNetInvalidForTraversal()) return null;
+        OpticalRoutePath route = getRoute(OpticalRoutePath.Kind.COMPUTATION);
+        if (route == null) return null;
 
-        OpticalRoutePath inv = net.getNetData(pipe.getPipePos(), facing);
-        if (inv == null) return null;
-
-        IOpticalComputationProvider hatch = inv.getComputationHatch();
+        IOpticalComputationProvider hatch = route.getComputationHatch();
         if (hatch == null || seen.contains(hatch)) return null;
         return hatch;
     }

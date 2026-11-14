@@ -19,6 +19,9 @@ import gregtech.api.pipenet.tile.IPipeTile;
 import gregtech.api.pipenet.tile.TileEntityPipeBase;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.TaskScheduler;
+import gregtech.client.renderer.handler.BlockHighlightRenderer;
+import gregtech.common.items.behaviors.CoverCopyPasteBehavior;
+import gregtech.common.items.behaviors.VajraBehavior;
 import gregtech.common.items.behaviors.spray.AbstractSprayBehavior;
 import gregtech.common.items.tool.rotation.CustomBlockRotations;
 import gregtech.common.items.tool.rotation.ICustomRotationBehavior;
@@ -26,13 +29,20 @@ import gregtech.common.items.tool.rotation.ICustomRotationBehavior;
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.*;
+import net.minecraft.client.renderer.BlockRendererDispatcher;
+import net.minecraft.client.renderer.BufferBuilder;
+import net.minecraft.client.renderer.DestroyBlockProgress;
+import net.minecraft.client.renderer.GLAllocation;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.RenderGlobal;
+import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.item.EntityItemFrame;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.Blocks;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -54,16 +64,24 @@ import net.minecraftforge.event.world.BlockEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
-import codechicken.lib.vec.*;
+import codechicken.lib.vec.Rotation;
+import codechicken.lib.vec.Scale;
+import codechicken.lib.vec.Transformation;
+import codechicken.lib.vec.Translation;
+import codechicken.lib.vec.Vector3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11;
 
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
@@ -129,6 +147,103 @@ public class ToolEventHandlers {
                     event.setCancellationResult(EnumActionResult.SUCCESS);
                 }
             }
+        }
+    }
+
+    /**
+     * Handles Vajra block breaking on left-click. Instant-breaking tiers break the block on the
+     * first click; the other tiers start a mining session that is advanced once per server tick
+     * in {@link #onVajraMiningTick} until the required mining time is reached and the block is
+     * destroyed, showing a block-break progress indicator meanwhile. Mirrors the Laser Destroyer
+     * event flow in GregTech Lite Core, where progress is tick-based instead of click-based so
+     * repeated client clicks cannot double-advance or prematurely finish the mining.
+     */
+    private static final Map<UUID, MiningSession> MINING_SESSIONS = new HashMap<>();
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onLeftClickBlock(@NotNull PlayerInteractEvent.LeftClickBlock event) {
+        EntityPlayer player = event.getEntityPlayer();
+        World world = event.getWorld();
+        if (world.isRemote) return;
+
+        ItemStack heldItem = player.getHeldItemMainhand();
+        if (!VajraBehavior.isVajra(heldItem)) return;
+
+        event.setCanceled(true);
+
+        BlockPos pos = event.getPos();
+        boolean silkTouch = VajraBehavior.isSilkTouchMode(heldItem);
+        long energyCost = VajraBehavior.getEnergyCost(heldItem);
+
+        int neededTicks = VajraBehavior.getMiningTicks(heldItem);
+        if (neededTicks <= 0) {
+            MiningSession old = MINING_SESSIONS.remove(player.getUniqueID());
+            if (old != null) world.sendBlockBreakProgress(player.getEntityId(), old.pos, -1);
+            world.sendBlockBreakProgress(player.getEntityId(), pos, -1);
+            VajraBehavior.breakBlock(heldItem, player, world, pos, energyCost);
+            return;
+        }
+
+        // Start (or keep) a mining session for the clicked block. Subsequent clicks on the same
+        // block leave the running session untouched, so only the tick handler advances progress.
+        MiningSession session = MINING_SESSIONS.get(player.getUniqueID());
+        if (session == null || !session.pos.equals(pos) ||
+                session.dimension != world.provider.getDimension()) {
+            if (session != null) world.sendBlockBreakProgress(player.getEntityId(), session.pos, -1);
+            session = new MiningSession(pos, world.provider.getDimension());
+            session.neededTicks = neededTicks;
+            MINING_SESSIONS.put(player.getUniqueID(), session);
+        }
+    }
+
+    /**
+     * Advances Vajra mining sessions once per server tick until the session's mining time elapses
+     * and the block is destroyed. A session is discarded when the player changes dimensions, the
+     * target block disappears, or the Vajra is no longer held in the main hand.
+     */
+    @SubscribeEvent
+    public static void onVajraMiningTick(@NotNull TickEvent.PlayerTickEvent event) {
+        if (event.phase != TickEvent.Phase.START || event.side.isClient()) return;
+        if (!(event.player instanceof EntityPlayerMP player)) return;
+
+        MiningSession session = MINING_SESSIONS.get(player.getUniqueID());
+        if (session == null) return;
+
+        World world = player.world;
+        ItemStack heldItem = player.getHeldItemMainhand();
+        if (world.provider.getDimension() != session.dimension ||
+                world.getBlockState(session.pos).getBlock() == Blocks.AIR ||
+                !VajraBehavior.isVajra(heldItem)) {
+            MINING_SESSIONS.remove(player.getUniqueID());
+            world.sendBlockBreakProgress(player.getEntityId(), session.pos, -1);
+            return;
+        }
+
+        session.progress++;
+        if (session.progress >= session.neededTicks) {
+            MINING_SESSIONS.remove(player.getUniqueID());
+            world.sendBlockBreakProgress(player.getEntityId(), session.pos, -1);
+            VajraBehavior.breakBlock(heldItem, player, world, session.pos,
+                    VajraBehavior.getEnergyCost(heldItem));
+        } else {
+            int stage = Math.max(1, Math.min(9, session.progress * 9 / session.neededTicks));
+            if (stage != session.lastStage) {
+                world.sendBlockBreakProgress(player.getEntityId(), session.pos, stage);
+                session.lastStage = stage;
+            }
+        }
+    }
+
+    private static class MiningSession {
+        final BlockPos pos;
+        final int dimension;
+        int progress;
+        int neededTicks;
+        int lastStage = -1;
+
+        MiningSession(BlockPos pos, int dimension) {
+            this.pos = pos;
+            this.dimension = dimension;
         }
     }
 
@@ -223,7 +338,7 @@ public class ToolEventHandlers {
         boolean sneaking = player.isSneaking();
 
         // Grid overlays
-        if (shouldRenderGridOverlays(state, tile, stack, player.getHeldItemOffhand(), sneaking) &&
+        if (shouldRenderGridOverlays(state, tile, player, pos, stack, player.getHeldItemOffhand(), sneaking) &&
                 renderGridOverlays(player, pos, state, event.getTarget().sideHit, tile, event.getPartialTicks())) {
             event.setCanceled(true);
             return;
@@ -304,6 +419,7 @@ public class ToolEventHandlers {
 
     @SideOnly(Side.CLIENT)
     private static boolean shouldRenderGridOverlays(@NotNull IBlockState state, @Nullable TileEntity tile,
+                                                    @NotNull EntityPlayer player, BlockPos pos,
                                                     @NotNull ItemStack mainHand, @NotNull ItemStack offHand,
                                                     boolean isSneaking) {
         if (state.getBlock() instanceof BlockPipe<?, ?, ?>pipe) {
@@ -348,7 +464,7 @@ public class ToolEventHandlers {
         }
 
         if (ToolHelper.isTool(mainHand, ToolClasses.WRENCH)) {
-            ICustomRotationBehavior behavior = CustomBlockRotations.getCustomRotation(state.getBlock());
+            ICustomRotationBehavior behavior = CustomBlockRotations.getCustomRotation(state, player.world, pos);
             if (behavior != null && behavior.showGrid()) return true;
         }
 
@@ -359,7 +475,9 @@ public class ToolEventHandlers {
             final boolean hasAnyCover = coverHolder.hasAnyCover();
             final boolean acceptsCovers = coverHolder.acceptsCovers();
 
-            return GTUtility.isCoverBehaviorItem(mainHand, () -> hasAnyCover, coverDefinition -> acceptsCovers);
+            return GTUtility.isCoverBehaviorItem(mainHand, () -> hasAnyCover, coverDefinition -> acceptsCovers) ||
+                    CoverCopyPasteBehavior.isCoverCopyPasteTool(mainHand) ||
+                    CoverCopyPasteBehavior.isCoverCopyPasteTool(offHand);
         }
         return false;
     }
@@ -383,10 +501,40 @@ public class ToolEventHandlers {
             double d4 = player.lastTickPosY + (player.posY - player.lastTickPosY) * (double) partialTicks;
             double d5 = player.lastTickPosZ + (player.posZ - player.lastTickPosZ) * (double) partialTicks;
             AxisAlignedBB box = state.getSelectedBoundingBox(player.world, pos).grow(0.002D).offset(-d3, -d4, -d5);
-            RenderGlobal.drawSelectionBoundingBox(box, 1, 1, 1, 0.4F);
 
-            rColour = gColour = bColour = 0.2F +
+            float boxR = 1, boxG = 1, boxB = 1, boxA = 0.4F;
+            if (tile instanceof MetaTileEntityHolder) {
+                int c = BlockHighlightRenderer.getMachineColor(player.world, pos);
+                boxR = ((c >> 16) & 0xFF) / 255.0f;
+                boxG = ((c >> 8) & 0xFF) / 255.0f;
+                boxB = (c & 0xFF) / 255.0f;
+                boxA = 0.55F;
+            } else if (tile instanceof TileEntityPipeBase) {
+                int c = BlockHighlightRenderer.getCableColor(player.world, pos);
+                boxR = ((c >> 16) & 0xFF) / 255.0f;
+                boxG = ((c >> 8) & 0xFF) / 255.0f;
+                boxB = (c & 0xFF) / 255.0f;
+                boxA = 0.55F;
+            }
+            RenderGlobal.drawSelectionBoundingBox(box, boxR, boxG, boxB, boxA);
+
+            float pulse = 0.2F +
                     (float) Math.sin((float) (System.currentTimeMillis() % (Math.PI * 800)) / 800) / 2;
+            if (tile instanceof MetaTileEntityHolder) {
+                rColour = Math.min(1.0f, boxR * pulse * 2.5F);
+                gColour = Math.min(1.0f, boxG * pulse * 2.5F);
+                bColour = Math.min(1.0f, boxB * pulse * 2.5F);
+            } else if (tile instanceof TileEntityPipeBase) {
+                int c = BlockHighlightRenderer.getCableColor(player.world, pos);
+                float pR = ((c >> 16) & 0xFF) / 255.0f;
+                float pG = ((c >> 8) & 0xFF) / 255.0f;
+                float pB = (c & 0xFF) / 255.0f;
+                rColour = Math.min(1.0f, pR * pulse * 2.5F);
+                gColour = Math.min(1.0f, pG * pulse * 2.5F);
+                bColour = Math.min(1.0f, pB * pulse * 2.5F);
+            } else {
+                rColour = gColour = bColour = pulse;
+            }
 
             if (tile instanceof TileEntityPipeBase) {
                 TileEntityPipeBase<?, ?> tepb = (TileEntityPipeBase<?, ?>) tile;
@@ -397,34 +545,18 @@ public class ToolEventHandlers {
                 drawGridOverlays(facing, box, mte::isSideUsed);
                 if (mte instanceof MultiblockControllerBase multi && multi.allowsExtendedFacing() &&
                         ToolHelper.isTool(player.getHeldItemMainhand(), ToolClasses.WRENCH)) {
-                    // set up some render state first
-                    GL11.glPushMatrix();
-                    GL11.glTranslated(pos.getX() - (int) d3, pos.getY() - (int) d4, pos.getZ() - (int) d5);
-                    GL11.glTranslated(0.5D - (d3 - (int) d3), 0.5D - (d4 - (int) d4), 0.5D - (d5 - (int) d5));
-                    Rotation.sideRotations[facing.getIndex()].glApply();
-                    GL11.glTranslated(0, -0.502, 0);
-                    GL11.glLineWidth(2.5F);
-                    if (multi.getFrontFacing() == facing) {
-                        // render in the center of the grid
-                        drawRotationMarker(ROTATION_MARKER_TRANSFORM_CENTER, player.isSneaking());
-                    } else if (multi.getFrontFacing() == facing.getOpposite()) {
-                        // render in the corners of the grid
-                        for (Transformation t : ROTATION_MARKER_TRANSFORMS_CORNER) {
-                            drawRotationMarker(t, player.isSneaking());
-                        }
-                    } else {
-                        // render on the side of the grid
-                        drawRotationMarker(
-                                ROTATION_MARKER_TRANSFORMS_SIDES_TRANSFORMS[ROTATION_MARKER_TRANSFORMS_SIDES[facing
-                                        .getIndex() * 6 + multi.getFrontFacing().getIndex()]],
-                                player.isSneaking());
-                    }
-                    GL11.glPopMatrix();
+                    setupRotationMarker(pos, player, multi.getFrontFacing(), facing, d3, d4, d5);
                 }
             } else {
-                ICustomRotationBehavior behavior = CustomBlockRotations.getCustomRotation(state.getBlock());
+                ICustomRotationBehavior behavior = CustomBlockRotations.getCustomRotation(state, player.world, pos);
                 if (behavior != null && behavior.showGrid()) {
-                    drawGridOverlays(facing, box, side -> behavior.showXOnSide(state, side));
+                    drawGridOverlays(facing, box, side -> behavior.showXOnSide(state, player.world, pos, side));
+                    if (behavior.allowSpin()) {
+                        EnumFacing spinFacing = behavior.getSpinFrontFacing(state, player.world, pos);
+                        if (spinFacing != null) {
+                            setupRotationMarker(pos, player, spinFacing, facing, d3, d4, d5);
+                        }
+                    }
                 } else {
                     drawGridOverlays(box);
                 }
@@ -679,6 +811,7 @@ public class ToolEventHandlers {
         buffer.pos(vec.x, vec.y, vec.z).color(rColour, gColour, bColour, 1F).endVertex();
     }
 
+
     // Rotation Marker
     // do not question these
     private static final Transformation ROTATION_MARKER_TRANSFORM_CENTER = new Scale(0.5);
@@ -696,6 +829,34 @@ public class ToolEventHandlers {
             new Scale(0.25).with(new Translation(-0.375, 0, -0.375)).compile() };
     private static int rotationMarkerDisplayList;
     private static boolean rotationMarkerDisplayListCompiled = false;
+
+    @SideOnly(Side.CLIENT)
+    private static void setupRotationMarker(BlockPos pos, EntityPlayer player, EnumFacing currentFacing,
+                                            EnumFacing hitFacing, double x, double y, double z) {
+        // set up some render state first
+        GL11.glPushMatrix();
+        GL11.glTranslated(pos.getX() - (int) x, pos.getY() - (int) y, pos.getZ() - (int) z);
+        GL11.glTranslated(0.5D - (x - (int) x), 0.5D - (y - (int) y), 0.5D - (z - (int) z));
+        Rotation.sideRotations[hitFacing.getIndex()].glApply();
+        GL11.glTranslated(0, -0.502, 0);
+        GL11.glLineWidth(2.5F);
+        if (currentFacing == hitFacing) {
+            // render in the center of the grid
+            drawRotationMarker(ROTATION_MARKER_TRANSFORM_CENTER, player.isSneaking());
+        } else if (currentFacing == hitFacing.getOpposite()) {
+            // render in the corners of the grid
+            for (Transformation t : ROTATION_MARKER_TRANSFORMS_CORNER) {
+                drawRotationMarker(t, player.isSneaking());
+            }
+        } else {
+            // render on the side of the grid
+            drawRotationMarker(
+                    ROTATION_MARKER_TRANSFORMS_SIDES_TRANSFORMS[ROTATION_MARKER_TRANSFORMS_SIDES[hitFacing
+                            .getIndex() * 6 + currentFacing.getIndex()]],
+                    player.isSneaking());
+        }
+        GL11.glPopMatrix();
+    }
 
     @SideOnly(Side.CLIENT)
     private static void drawRotationMarker(Transformation transform, boolean flip) {

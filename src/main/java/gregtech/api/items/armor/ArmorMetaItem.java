@@ -29,11 +29,11 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public class ArmorMetaItem<T extends ArmorMetaItem<?>.ArmorMetaValueItem> extends MetaItem<T>
-                          implements IArmorItem, ISpecialArmor, IEnchantabilityHelper {
+        implements IArmorItem, ISpecialArmor, IEnchantabilityHelper {
 
     public ArmorMetaItem() {
         super((short) 0);
-        setCreativeTab(GTCreativeTabs.TAB_GREGTECH_TOOLS);
+        setCreativeTab(GTCreativeTabs.TAB_GREGTECH_ARMOR);
     }
 
     @SuppressWarnings("unchecked")

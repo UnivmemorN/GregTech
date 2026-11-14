@@ -42,13 +42,14 @@ import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.utils.Alignment;
 import com.cleanroommc.modularui.utils.Color;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.SyncHandlers;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.RichTextWidget;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -60,11 +61,12 @@ public class MetaTileEntityReservoirHatch extends MetaTileEntityMultiblockNotifi
                    IGhostSlotConfigurable {
 
     private static final int FLUID_AMOUNT = 2_000_000_000;
+    static FluidStack waterStack = new FluidStack(FluidRegistry.WATER, FLUID_AMOUNT);
     private final InfiniteWaterTank fluidTank;
     private GhostCircuitItemStackHandler circuitInventory;
 
     public MetaTileEntityReservoirHatch(ResourceLocation metaTileEntityId) {
-        super(metaTileEntityId, GTValues.EV, false);
+        super(metaTileEntityId, GTValues.LuV, false);
         this.fluidTank = new InfiniteWaterTank(getInventorySize(), this);
         initializeInventory();
     }
@@ -78,7 +80,6 @@ public class MetaTileEntityReservoirHatch extends MetaTileEntityMultiblockNotifi
     protected void initializeInventory() {
         super.initializeInventory();
         this.circuitInventory = new GhostCircuitItemStackHandler(this);
-        this.circuitInventory.addNotifiableMetaTileEntity(this);
     }
 
     @Override
@@ -149,7 +150,7 @@ public class MetaTileEntityReservoirHatch extends MetaTileEntityMultiblockNotifi
     }
 
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
         guiSyncManager.registerSlotGroup("item_inv", 2);
 
         GTFluidSyncHandler tankSyncHandler = GTFluidSlot.sync(this.fluidTank)
@@ -159,7 +160,7 @@ public class MetaTileEntityReservoirHatch extends MetaTileEntityMultiblockNotifi
         // TODO: Change the position of the name when it's standardized.
         return GTGuis.createPanel(this, 176, 166)
                 .child(IKey.lang(getMetaFullName()).asWidget().pos(5, 5))
-                .child(SlotGroupWidget.playerInventory().left(7).bottom(7))
+                .child(SlotGroupWidget.playerInventory(false).left(7).bottom(7))
                 .child(GTGuiTextures.DISPLAY.asWidget()
                         .left(7).top(16)
                         .size(81, 55))
@@ -183,12 +184,12 @@ public class MetaTileEntityReservoirHatch extends MetaTileEntityMultiblockNotifi
                 .child(new GTFluidSlot().syncHandler(tankSyncHandler)
                         .pos(69, 52)
                         .disableBackground())
-                .child(new ItemSlot().slot(SyncHandlers.itemSlot(this.importItems, 0)
+                .child(new ItemSlot().slot(new ModularSlot(this.importItems, 0)
                                 .slotGroup("item_inv")
                                 .filter(itemStack -> FluidUtil.getFluidHandler(itemStack) != null))
                         .background(GTGuiTextures.SLOT, GTGuiTextures.IN_SLOT_OVERLAY)
                         .pos(90, 16))
-                .child(new ItemSlot().slot(SyncHandlers.itemSlot(this.exportItems, 0)
+                .child(new ItemSlot().slot(new ModularSlot(this.exportItems, 0)
                                 .slotGroup("item_inv")
                                 .accessibility(false, true))
                         .background(GTGuiTextures.SLOT, GTGuiTextures.OUT_SLOT_OVERLAY)
@@ -215,6 +216,14 @@ public class MetaTileEntityReservoirHatch extends MetaTileEntityMultiblockNotifi
     @Override
     public boolean hasGhostCircuitInventory() {
         return true;
+    }
+
+    @Override
+    public int getGhostCircuitConfig() {
+        if (this.circuitInventory == null) {
+            return 0;
+        }
+        return this.circuitInventory.getCircuitValue();
     }
 
     @Override
@@ -269,16 +278,15 @@ public class MetaTileEntityReservoirHatch extends MetaTileEntityMultiblockNotifi
         public InfiniteWaterTank(int capacity, MetaTileEntity entityToNotify) {
             super(capacity, entityToNotify, false);
             // start with the full amount
-            setFluid(new FluidStack(FluidRegistry.WATER, FLUID_AMOUNT));
+            setFluid(waterStack);
             // don't allow external callers to fill this tank
             setCanFill(false);
         }
 
         private void refillWater() {
-            int fillAmount = Math.max(0, FLUID_AMOUNT - getFluidAmount());
-            if (fillAmount > 0) {
+            if (getFluidAmount() < FLUID_AMOUNT) {
                 // call super since our overrides don't allow any kind of filling
-                super.fillInternal(new FluidStack(FluidRegistry.WATER, fillAmount), true);
+                super.fillInternal(waterStack, true);
             }
         }
 

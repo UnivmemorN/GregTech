@@ -1,20 +1,14 @@
 package gregtech.common.metatileentities.steam.multiblockpart;
 
-import codechicken.lib.render.CCRenderState;
-import codechicken.lib.render.pipeline.IVertexOperation;
-import codechicken.lib.vec.Matrix4;
-
 import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.metatileentity.multiblock.AbilityInstances;
 import gregtech.api.metatileentity.multiblock.MultiblockAbility;
-import gregtech.api.metatileentity.multiblock.MultiblockControllerBase;
 import gregtech.api.mui.GTGuiTheme;
 import gregtech.client.renderer.ICubeRenderer;
 import gregtech.client.renderer.texture.Textures;
 import gregtech.client.renderer.texture.cube.SimpleOverlayRenderer;
 import gregtech.client.utils.TooltipHelper;
-import gregtech.common.ConfigHolder;
 import gregtech.common.metatileentities.multi.multiblockpart.MetaTileEntityFluidHatch;
 
 import net.minecraft.client.resources.I18n;
@@ -23,6 +17,9 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.World;
 import net.minecraftforge.fluids.IFluidTank;
 
+import codechicken.lib.render.CCRenderState;
+import codechicken.lib.render.pipeline.IVertexOperation;
+import codechicken.lib.vec.Matrix4;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -30,12 +27,9 @@ import java.util.List;
 
 public class MetaTileEntitySteamFluidHatch extends MetaTileEntityFluidHatch {
 
-    private static final boolean IS_STEEL = ConfigHolder.machines.steelSteamMultiblocks;
-
     public MetaTileEntitySteamFluidHatch(ResourceLocation metaTileEntityId, boolean isExportHatch) {
         super(metaTileEntityId, 1, isExportHatch);
     }
-
 
     @Override
     public MetaTileEntity createMetaTileEntity(IGregTechTileEntity tileEntity) {
@@ -52,13 +46,11 @@ public class MetaTileEntitySteamFluidHatch extends MetaTileEntityFluidHatch {
         abilityInstances.add(isExportHatch ? this.exportFluids : this.importFluids);
     }
 
-    // Override base texture to have a bus with 4 slots, but ULV textures
     @Override
     public ICubeRenderer getBaseTexture() {
-        MultiblockControllerBase controller = getController();
-        if (controller == null)
-            return IS_STEEL ? Textures.STEAM_CASING_STEEL : Textures.STEAM_CASING_BRONZE;
-        return controller.getBaseTexture(this);
+        if(getController()==null)
+            return Textures.STEAM_CASING_BRONZE;
+        return super.getBaseTexture();
     }
 
     @Override
@@ -74,6 +66,10 @@ public class MetaTileEntitySteamFluidHatch extends MetaTileEntityFluidHatch {
         if (this.shouldRenderOverlay()) {
             SimpleOverlayRenderer renderer = this.isExportHatch ? Textures.PIPE_OUT_OVERLAY : Textures.PIPE_IN_OVERLAY;
             renderer.renderSided(this.getFrontFacing(), renderState, translation, pipeline);
+            Textures.PIPE_FLUID_OVERLAY.renderSided(getFrontFacing(), renderState, translation, pipeline);
+            SimpleOverlayRenderer overlay = isExportHatch ? Textures.FLUID_HATCH_OUTPUT_OVERLAY :
+                    Textures.FLUID_HATCH_INPUT_OVERLAY;
+            overlay.renderSided(getFrontFacing(), renderState, translation, pipeline);
         }
     }
 
@@ -84,6 +80,6 @@ public class MetaTileEntitySteamFluidHatch extends MetaTileEntityFluidHatch {
 
     @Override
     public GTGuiTheme getUITheme() {
-        return IS_STEEL ? GTGuiTheme.STEEL : GTGuiTheme.BRONZE;
+        return GTGuiTheme.BRONZE;
     }
 }

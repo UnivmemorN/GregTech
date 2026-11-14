@@ -9,9 +9,9 @@ import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
 import gregtech.api.metatileentity.multiblock.IMultiblockPart;
 import gregtech.api.metatileentity.multiblock.MultiblockAbility;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIBuilder;
-import gregtech.api.pattern.BlockPattern;
-import gregtech.api.pattern.FactoryBlockPattern;
-import gregtech.api.pattern.PatternMatchContext;
+import gregtech.api.pattern.FormedStructureView;
+import gregtech.api.pattern.casing.DeclarativePatternBuilder;
+import gregtech.api.pattern.element.StructureDefinition;
 import gregtech.api.util.KeyUtil;
 import gregtech.api.util.TextFormattingUtil;
 import gregtech.client.renderer.ICubeRenderer;
@@ -22,6 +22,7 @@ import gregtech.common.blocks.MetaBlocks;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.World;
@@ -41,15 +42,43 @@ public class MetaTileEntityNetworkSwitch extends MetaTileEntityDataBank implemen
 
     private static final int EUT_PER_HATCH = GTValues.VA[GTValues.IV];
 
+    private static final StructureDefinition<?> STRUCTURE_DEFINITION = StructureDefinition.getOrBuild(
+            "gregtech:network_switch", () -> DeclarativePatternBuilder.start()
+                    .aisle("XXX", "XXX", "XXX")
+                    .aisle("XXX", "XAX", "XXX")
+                    .aisle("XXX", "XSX", "XXX")
+                    .self('S', MetaTileEntityNetworkSwitch.class)
+                    .block('A', getAdvancedState())
+                    .casing('X', getCasingState())
+                    .energyInput(1, 4)
+                    .maintenance()
+                    .hatch(MultiblockAbility.COMPUTATION_DATA_RECEPTION, 1, 8)
+                    .hatch(MultiblockAbility.COMPUTATION_DATA_TRANSMISSION, 1, 4)
+                    .buildStructureDefinition());
+
     private final MultipleComputationHandler computationHandler = new MultipleComputationHandler();
 
     public MetaTileEntityNetworkSwitch(ResourceLocation metaTileEntityId) {
         super(metaTileEntityId);
     }
 
+    public static IBlockState getCasingState() {
+        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.COMPUTER_CASING);
+    }
+
+    private static @NotNull IBlockState getAdvancedState() {
+        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.ADVANCED_COMPUTER_CASING);
+    }
+
     @Override
     public MetaTileEntity createMetaTileEntity(IGregTechTileEntity tileEntity) {
         return new MetaTileEntityNetworkSwitch(metaTileEntityId);
+    }
+
+    @Override
+    @NotNull
+    public EnumFacing getPreviewFrontFacing() {
+        return EnumFacing.NORTH;
     }
 
     @Override
@@ -60,8 +89,8 @@ public class MetaTileEntityNetworkSwitch extends MetaTileEntityDataBank implemen
     }
 
     @Override
-    protected void formStructure(PatternMatchContext context) {
-        super.formStructure(context);
+    protected void formStructure(@NotNull FormedStructureView formed) {
+        super.formStructure(formed);
         computationHandler.onStructureForm(
                 getAbilities(MultiblockAbility.COMPUTATION_DATA_RECEPTION),
                 getAbilities(MultiblockAbility.COMPUTATION_DATA_TRANSMISSION));
@@ -98,27 +127,8 @@ public class MetaTileEntityNetworkSwitch extends MetaTileEntityDataBank implemen
     }
 
     @Override
-    protected @NotNull BlockPattern createStructurePattern() {
-        return FactoryBlockPattern.start()
-                .aisle("XXX", "XXX", "XXX")
-                .aisle("XXX", "XAX", "XXX")
-                .aisle("XXX", "XSX", "XXX")
-                .where('S', selfPredicate())
-                .where('A', states(getAdvancedState()))
-                .where('X', states(getCasingState()).setMinGlobalLimited(7)
-                        .or(abilities(MultiblockAbility.INPUT_ENERGY).setMinGlobalLimited(1, 1))
-                        .or(maintenancePredicate())
-                        .or(abilities(MultiblockAbility.COMPUTATION_DATA_RECEPTION).setMinGlobalLimited(1, 2))
-                        .or(abilities(MultiblockAbility.COMPUTATION_DATA_TRANSMISSION).setMinGlobalLimited(1, 1)))
-                .build();
-    }
-
-    private static @NotNull IBlockState getCasingState() {
-        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.COMPUTER_CASING);
-    }
-
-    private static @NotNull IBlockState getAdvancedState() {
-        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.ADVANCED_COMPUTER_CASING);
+    protected @NotNull StructureDefinition<?> createStructureDefinition() {
+        return STRUCTURE_DEFINITION;
     }
 
     @SideOnly(Side.CLIENT)

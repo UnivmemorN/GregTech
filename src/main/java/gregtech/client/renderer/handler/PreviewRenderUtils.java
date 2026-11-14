@@ -1,0 +1,586 @@
+package gregtech.client.renderer.handler;
+
+import gregtech.api.metatileentity.MetaTileEntity;
+import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
+import gregtech.api.metatileentity.multiblock.MultiblockControllerBase;
+import gregtech.api.pattern.MultiblockShapeInfo;
+import gregtech.api.util.BlockInfo;
+import gregtech.api.util.RelativeDirection;
+import gregtech.client.renderer.godforge.util.FaceVisibility;
+
+import net.minecraft.block.state.IBlockState;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.BufferBuilder;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.WorldVertexBufferUploader;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import net.minecraft.init.Blocks;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.IBlockAccess;
+import net.minecraft.world.World;
+import net.minecraft.world.WorldType;
+import net.minecraft.world.biome.Biome;
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
+import org.jetbrains.annotations.Nullable;
+import org.lwjgl.opengl.GL11;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
+
+/**
+ * Shared utility methods for multiblock preview rendering, used by both
+ * {@link MultiblockPreviewRenderer} (VBO-based controller preview) and
+ * {@link GhostBlockRenderer} (VBO-based projector preview).
+ */
+@SideOnly(Side.CLIENT)
+public final class PreviewRenderUtils {
+
+    // Tint colors for comparison mode overlay
+    public static final float MISSING_R = 0.3F, MISSING_G = 0.6F, MISSING_B = 1.0F, MISSING_A = 0.5F;
+    public static final float WRONG_R = 1.0F, WRONG_G = 0.3F, WRONG_B = 0.3F, WRONG_A = 0.6F;
+    public static final float PRESENT_R = 0.6F, PRESENT_G = 0.6F, PRESENT_B = 0.6F, PRESENT_A = 0.15F;
+    /** Cap for the "already present" outline list; huge structures would otherwise flood the buffer. */
+    public static final int MAX_PRESENT_BLOCKS = 4096;
+    private static final BufferBuilder COMPARISON_BUFFER = new BufferBuilder(256 * 1024);
+    private static final WorldVertexBufferUploader COMPARISON_UPLOADER = new WorldVertexBufferUploader();
+
+    private PreviewRenderUtils() {}
+
+    // ========== Coordinate Transform Utilities ==========
+
+    /**
+     * Transform a local preview offset into world-space offset using the controller's pattern template.
+     * Used for main pattern preview where the controller defines the coordinate mapping.
+     *
+     * <p>Uses the same facing as structure check/build so the projected cells map to
+     * exactly the same world positions as runtime traversal.</p>
+     */
+    public static BlockPos transformPreviewOffset(MultiblockControllerBase controller, BlockPos previewOffset) {
+        RelativeDirection[] structureDir = controller.getStructureDirForPreview();
+
+        int[] localOffset = new int[3];
+        for (int i = 0; i < structureDir.length; i++) {
+            localOffset[i] = getAxisComponent(previewOffset, structureDir[i].getActualFacing(EnumFacing.SOUTH));
+        }
+
+        EnumFacing facing = controller.getFrontFacingForStructure();
+        return RelativeDirection.setActualRelativeOffset(localOffset[0], localOffset[1], localOffset[2],
+                facing, controller.getUpwardsFacing(),
+                controller.isFlipped(), structureDir);
+    }
+
+    /**
+     * Transform a local preview offset for a piece into world-space offset using the piece's structure directions.
+     *
+     * <p>The supplied facing must be the runtime structure-facing value.</p>
+     */
+    public static BlockPos transformPieceOffset(BlockPos previewOffset, RelativeDirection[] structureDir,
+                                                EnumFacing frontFacing, EnumFacing upwardsFacing,
+                                                boolean isFlipped) {
+        int[] localOffset = new int[3];
+        for (int i = 0; i < structureDir.length; i++) {
+            localOffset[i] = getAxisComponent(previewOffset, structureDir[i].getActualFacing(EnumFacing.SOUTH));
+        }
+        return RelativeDirection.setActualRelativeOffset(localOffset[0], localOffset[1], localOffset[2],
+                frontFacing, upwardsFacing, isFlipped, structureDir);
+    }
+
+    /**
+     * Extract a single axis component from a BlockPos based on the given facing direction.
+     */
+    public static int getAxisComponent(BlockPos pos, EnumFacing axis) {
+        return switch (axis) {
+            case EAST -> pos.getX();
+            case WEST -> -pos.getX();
+            case UP -> pos.getY();
+            case DOWN -> -pos.getY();
+            case SOUTH -> pos.getZ();
+            case NORTH -> -pos.getZ();
+        };
+    }
+
+    // ========== Surface Block Computation ==========
+
+    /**
+     * Compute the set of surface blocks, skipping fully-occluded internal blocks to improve
+     * rendering performance. A block is considered "surface" if at least one neighbor is
+     * missing from blockMap, is air, or is not a full cube (e.g. glass, slabs).
+     */
+    @SuppressWarnings("deprecation")
+    public static Set<BlockPos> computeSurfaceBlocks(Map<BlockPos, BlockInfo> blockMap) {
+        return computeSurfaceBlocks(blockMap, pos -> true);
+    }
+
+    /**
+     * Compute surface blocks against the subset that will actually be rendered. This keeps layer
+     * previews from treating hidden layers as occluding neighbors.
+     */
+    @SuppressWarnings("deprecation")
+    public static Set<BlockPos> computeSurfaceBlocks(Map<BlockPos, BlockInfo> blockMap,
+                                                     Predicate<BlockPos> renderFilter) {
+        Set<BlockPos> surface = new HashSet<>();
+        for (Map.Entry<BlockPos, BlockInfo> entry : blockMap.entrySet()) {
+            BlockPos pos = entry.getKey();
+            if (!renderFilter.test(pos)) continue;
+
+            boolean enclosed = true;
+            for (EnumFacing face : EnumFacing.VALUES) {
+                BlockPos neighbor = pos.offset(face);
+                BlockInfo neighborInfo = blockMap.get(neighbor);
+                if (!renderFilter.test(neighbor)
+                        || neighborInfo == null || neighborInfo.getBlockState() == null
+                        || neighborInfo.getBlockState().getBlock() == Blocks.AIR
+                        || !neighborInfo.getBlockState().isFullCube()) {
+                    enclosed = false;
+                    break;
+                }
+            }
+            if (!enclosed) {
+                surface.add(pos);
+            }
+        }
+        return surface;
+    }
+
+    // ========== Comparison Mode Utilities ==========
+
+    /**
+     * Compute per-face visibility for a block position in the given block map.
+     * A face is visible if the neighboring block in that direction is absent, air, or not opaque.
+     */
+    @SuppressWarnings("deprecation")
+    public static FaceVisibility computeFaceVisibility(BlockPos pos, Map<BlockPos, BlockInfo> blockMap) {
+        return computeFaceVisibility(pos, blockMap, neighbor -> true);
+    }
+
+    /**
+     * Compute visible faces against the subset that will actually be rendered.
+     */
+    @SuppressWarnings("deprecation")
+    public static FaceVisibility computeFaceVisibility(BlockPos pos, Map<BlockPos, BlockInfo> blockMap,
+                                                       Predicate<BlockPos> renderFilter) {
+        FaceVisibility visibility = new FaceVisibility();
+        for (EnumFacing face : EnumFacing.VALUES) {
+            BlockPos neighbor = pos.offset(face);
+            BlockInfo neighborInfo = blockMap.get(neighbor);
+            boolean opaque = renderFilter.test(neighbor)
+                    && neighborInfo != null && neighborInfo.getBlockState() != null
+                    && neighborInfo.getBlockState().getBlock() != Blocks.AIR
+                    && neighborInfo.getBlockState().isOpaqueCube();
+            if (opaque) {
+                switch (face) {
+                    case DOWN -> visibility.bottom = false;
+                    case UP -> visibility.top = false;
+                    case NORTH -> visibility.back = false;
+                    case SOUTH -> visibility.front = false;
+                    case WEST -> visibility.left = false;
+                    case EAST -> visibility.right = false;
+                }
+            }
+        }
+        return visibility;
+    }
+
+    // ========== Comparison Mode Utilities ==========
+
+    /**
+     * Render colored box overlays for missing and wrong block positions.
+     * Should be called within a GL matrix context that has already been translated to camera space.
+     */
+    public static void renderComparisonOverlay(List<BlockPos> missingPositions, List<BlockPos> wrongPositions) {
+        renderComparisonOverlay(missingPositions, wrongPositions, null);
+    }
+
+    /**
+     * Render colored box overlays for missing (blue), wrong (red) and already present (grey) cells.
+     * The present list may be {@code null} or empty.
+     */
+    public static void renderComparisonOverlay(List<BlockPos> missingPositions, List<BlockPos> wrongPositions,
+                                               @Nullable List<BlockPos> presentPositions) {
+        GlStateManager.disableTexture2D();
+        GlStateManager.disableLighting();
+        GlStateManager.depthMask(false);
+        GlStateManager.tryBlendFuncSeparate(
+                GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA,
+                GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ZERO);
+
+        // Render missing blocks (blue)
+        if (!missingPositions.isEmpty()) {
+            renderColoredBoxes(missingPositions, MISSING_R, MISSING_G, MISSING_B, MISSING_A);
+        }
+
+        // Render wrong blocks (red)
+        if (!wrongPositions.isEmpty()) {
+            renderColoredBoxes(wrongPositions, WRONG_R, WRONG_G, WRONG_B, WRONG_A);
+        }
+
+        // Render already satisfied cells (grey, subtle)
+        if (presentPositions != null && !presentPositions.isEmpty()) {
+            renderColoredBoxes(presentPositions, PRESENT_R, PRESENT_G, PRESENT_B, PRESENT_A);
+        }
+
+        GlStateManager.depthMask(true);
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableLighting();
+    }
+
+    private static void renderColoredBoxes(List<BlockPos> positions, float r, float g, float b, float a) {
+        boolean drawing = false;
+        try {
+            COMPARISON_BUFFER.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_COLOR);
+            drawing = true;
+            for (BlockPos pos : positions) {
+                renderColoredBox(COMPARISON_BUFFER, pos, r, g, b, a);
+            }
+            COMPARISON_BUFFER.finishDrawing();
+            drawing = false;
+            COMPARISON_UPLOADER.draw(COMPARISON_BUFFER);
+        } finally {
+            if (drawing) {
+                finishDrawingQuietly(COMPARISON_BUFFER);
+            }
+            COMPARISON_BUFFER.reset();
+        }
+    }
+
+    private static void finishDrawingQuietly(BufferBuilder buffer) {
+        try {
+            buffer.finishDrawing();
+        } catch (IllegalStateException ignored) {
+            // BufferBuilder.reset() does not clear isDrawing in 1.12; finishDrawing does.
+        }
+    }
+
+    /**
+     * Render a colored box at the given block position.
+     */
+    public static void renderColoredBox(BufferBuilder buff, BlockPos pos,
+                                        float r, float g, float b, float a) {
+        float x0 = pos.getX() + 0.0625F;
+        float y0 = pos.getY() + 0.0625F;
+        float z0 = pos.getZ() + 0.0625F;
+        float x1 = pos.getX() + 0.9375F;
+        float y1 = pos.getY() + 0.9375F;
+        float z1 = pos.getZ() + 0.9375F;
+
+        // Bottom face
+        buff.pos(x0, y0, z0).color(r, g, b, a).endVertex();
+        buff.pos(x1, y0, z0).color(r, g, b, a).endVertex();
+        buff.pos(x1, y0, z1).color(r, g, b, a).endVertex();
+        buff.pos(x0, y0, z1).color(r, g, b, a).endVertex();
+
+        // Top face
+        buff.pos(x0, y1, z0).color(r, g, b, a).endVertex();
+        buff.pos(x0, y1, z1).color(r, g, b, a).endVertex();
+        buff.pos(x1, y1, z1).color(r, g, b, a).endVertex();
+        buff.pos(x1, y1, z0).color(r, g, b, a).endVertex();
+
+        // North face (-Z)
+        buff.pos(x0, y0, z0).color(r, g, b, a).endVertex();
+        buff.pos(x0, y1, z0).color(r, g, b, a).endVertex();
+        buff.pos(x1, y1, z0).color(r, g, b, a).endVertex();
+        buff.pos(x1, y0, z0).color(r, g, b, a).endVertex();
+
+        // South face (+Z)
+        buff.pos(x0, y0, z1).color(r, g, b, a).endVertex();
+        buff.pos(x1, y0, z1).color(r, g, b, a).endVertex();
+        buff.pos(x1, y1, z1).color(r, g, b, a).endVertex();
+        buff.pos(x0, y1, z1).color(r, g, b, a).endVertex();
+
+        // West face (-X)
+        buff.pos(x0, y0, z0).color(r, g, b, a).endVertex();
+        buff.pos(x0, y0, z1).color(r, g, b, a).endVertex();
+        buff.pos(x0, y1, z1).color(r, g, b, a).endVertex();
+        buff.pos(x0, y1, z0).color(r, g, b, a).endVertex();
+
+        // East face (+X)
+        buff.pos(x1, y0, z0).color(r, g, b, a).endVertex();
+        buff.pos(x1, y1, z0).color(r, g, b, a).endVertex();
+        buff.pos(x1, y1, z1).color(r, g, b, a).endVertex();
+        buff.pos(x1, y0, z1).color(r, g, b, a).endVertex();
+    }
+
+    /**
+     * Compute comparison data by comparing expected structure against real world blocks.
+     * Populates the provided missing/wrong position lists.
+     *
+     * @param expectedBlocks   map of world positions -> expected block states
+     * @param world            the real world to compare against
+     * @param missingPositions output list for missing block positions (cleared first)
+     * @param wrongPositions   output list for wrong block positions (cleared first)
+     */
+    public static void computeComparisonData(Map<BlockPos, IBlockState> expectedBlocks, World world,
+                                             List<BlockPos> missingPositions, List<BlockPos> wrongPositions) {
+        computeComparisonData(expectedBlocks, world, missingPositions, wrongPositions, null);
+    }
+
+    /**
+     * Compute missing / wrong / already-present cells in one pass.
+     *
+     * @param presentPositions optional output list for cells whose block already matches; capped at
+     *                         {@link #MAX_PRESENT_BLOCKS} to keep the debug overlay cheap. May be {@code null}.
+     */
+    public static void computeComparisonData(Map<BlockPos, IBlockState> expectedBlocks, World world,
+                                             List<BlockPos> missingPositions, List<BlockPos> wrongPositions,
+                                             @Nullable List<BlockPos> presentPositions) {
+        missingPositions.clear();
+        wrongPositions.clear();
+        if (presentPositions != null) {
+            presentPositions.clear();
+        }
+
+        if (world == null) return;
+
+        for (Map.Entry<BlockPos, IBlockState> entry : expectedBlocks.entrySet()) {
+            BlockPos worldPos = entry.getKey();
+            IBlockState expected = entry.getValue();
+
+            if (expected.getBlock() == Blocks.AIR) continue;
+
+            IBlockState actual = world.getBlockState(worldPos);
+            if (actual.getBlock() == Blocks.AIR || actual.getMaterial().isReplaceable()) {
+                // Position is empty — block is missing
+                missingPositions.add(worldPos);
+            } else if (!actual.equals(expected)) {
+                // Position has a block but it's wrong
+                wrongPositions.add(worldPos);
+            } else if (presentPositions != null && presentPositions.size() < MAX_PRESENT_BLOCKS) {
+                // Already satisfied; used for the grey outline overlay
+                presentPositions.add(worldPos);
+            }
+        }
+    }
+
+    /**
+     * Compute comparison data from a controller and its shape info.
+     * Maps virtual block positions to real world positions using the controller's orientation.
+     *
+     * @param controller       the multiblock controller
+     * @param shapeInfo        the expected shape info
+     * @param missingPositions output list for missing block positions
+     * @param wrongPositions   output list for wrong block positions
+     */
+    public static void computeComparisonFromController(MultiblockControllerBase controller,
+                                                       MultiblockShapeInfo shapeInfo,
+                                                       List<BlockPos> missingPositions,
+                                                       List<BlockPos> wrongPositions) {
+        World world = Minecraft.getMinecraft().world;
+        if (world == null) return;
+
+        BlockInfo[][][] blocks = shapeInfo.getBlocks();
+        BlockPos controllerPos = findControllerInPreview(blocks, controller);
+        if (controllerPos == null) return;
+
+        // Build expected blocks map in world coordinates
+        Map<BlockPos, IBlockState> expectedBlocks = new HashMap<>();
+        BlockPos worldControllerPos = controller.getPos();
+
+        for (int x = 0; x < blocks.length; x++) {
+            BlockInfo[][] aisle = blocks[x];
+            for (int y = 0; y < aisle.length; y++) {
+                BlockInfo[] column = aisle[y];
+                for (int z = 0; z < column.length; z++) {
+                    IBlockState state = column[z].getBlockState();
+                    if (state == null || state.getBlock() == Blocks.AIR) continue;
+
+                    BlockPos relPos = new BlockPos(x, y, z).subtract(controllerPos);
+                    BlockPos rotated = transformPreviewOffset(controller, relPos);
+                    BlockPos worldPos = worldControllerPos.add(rotated);
+                    expectedBlocks.put(worldPos, state);
+                }
+            }
+        }
+
+        computeComparisonData(expectedBlocks, world, missingPositions, wrongPositions);
+    }
+
+    // ========== Controller Position Lookup ==========
+
+    /**
+     * Find the controller position in a preview shape's block array.
+     * Uses a two-pass strategy for maximum compatibility:
+     * 1. First pass: exact metaTileEntityId match (precise, handles normal multiblocks)
+     * 2. Second pass (fallback): class-based match (handles selfPredicateByClass variants
+     *    where multiple IDs share the same class, e.g. FluidDrill, LargeMiner)
+     *
+     * @param blocks         the preview block array [x][y][z]
+     * @param controllerBase the actual controller in the world
+     * @return the controller's position in the array, or null if not found
+     */
+    @Nullable
+    public static BlockPos findControllerInPreview(BlockInfo[][][] blocks,
+                                                   MultiblockControllerBase controllerBase) {
+        BlockPos classFallback = null;
+        for (int x = 0; x < blocks.length; x++) {
+            BlockInfo[][] aisle = blocks[x];
+            for (int y = 0; y < aisle.length; y++) {
+                BlockInfo[] column = aisle[y];
+                for (int z = 0; z < column.length; z++) {
+                    MetaTileEntity metaTE = column[z].getTileEntity() instanceof IGregTechTileEntity ?
+                            ((IGregTechTileEntity) column[z].getTileEntity()).getMetaTileEntity() : null;
+                    if (metaTE instanceof MultiblockControllerBase) {
+                        if (metaTE.metaTileEntityId.equals(controllerBase.metaTileEntityId)) {
+                            return new BlockPos(x, y, z);
+                        }
+                        if (classFallback == null &&
+                                controllerBase.getClass().isInstance(metaTE)) {
+                            classFallback = new BlockPos(x, y, z);
+                        }
+                    }
+                }
+            }
+        }
+        return classFallback;
+    }
+
+    // ========== IBlockAccess Adapter ==========
+
+    /**
+     * An IBlockAccess adapter that redirects queries at BlockPos.ORIGIN to a configurable
+     * target position in the delegate world. Used to render blocks at arbitrary positions
+     * while the block renderer thinks it's rendering at the origin.
+     */
+    @SideOnly(Side.CLIENT)
+    public static class TargetBlockAccess implements IBlockAccess {
+
+        private final IBlockAccess delegate;
+        private BlockPos targetPos;
+
+        public TargetBlockAccess(IBlockAccess delegate, BlockPos pos) {
+            this.delegate = delegate;
+            this.targetPos = pos;
+        }
+
+        public void setPos(BlockPos pos) {
+            targetPos = pos;
+        }
+
+        @Override
+        public TileEntity getTileEntity(BlockPos pos) {
+            return pos.equals(BlockPos.ORIGIN) ? delegate.getTileEntity(targetPos) : null;
+        }
+
+        @Override
+        public int getCombinedLight(BlockPos pos, int lightValue) {
+            // Full brightness: skyLight=15 << 20 | blockLight=15 << 4
+            return 15 << 20 | 15 << 4;
+        }
+
+        @Override
+        public IBlockState getBlockState(BlockPos pos) {
+            return pos.equals(BlockPos.ORIGIN) ? delegate.getBlockState(targetPos) : Blocks.AIR.getDefaultState();
+        }
+
+        @Override
+        public boolean isAirBlock(BlockPos pos) {
+            return !pos.equals(BlockPos.ORIGIN) || delegate.isAirBlock(targetPos);
+        }
+
+        @Override
+        public Biome getBiome(BlockPos pos) {
+            return delegate.getBiome(targetPos);
+        }
+
+        @Override
+        public int getStrongPower(BlockPos pos, EnumFacing direction) {
+            return 0;
+        }
+
+        @Override
+        public WorldType getWorldType() {
+            return delegate.getWorldType();
+        }
+
+        @Override
+        public boolean isSideSolid(BlockPos pos, EnumFacing side, boolean _default) {
+            return pos.equals(BlockPos.ORIGIN) && delegate.isSideSolid(targetPos, side, _default);
+        }
+    }
+
+    /**
+     * An IBlockAccess adapter that exposes a local dummy-world block at an arbitrary
+     * render position, preserving relative neighbor lookups for side masks.
+     */
+    @SideOnly(Side.CLIENT)
+    public static class OffsetBlockAccess implements IBlockAccess {
+
+        private final IBlockAccess delegate;
+        private BlockPos sourcePos = BlockPos.ORIGIN;
+        private BlockPos renderPos = BlockPos.ORIGIN;
+        private boolean isolated;
+
+        public OffsetBlockAccess(IBlockAccess delegate) {
+            this.delegate = delegate;
+        }
+
+        public void setPos(BlockPos sourcePos, BlockPos renderPos) {
+            setPos(sourcePos, renderPos, false);
+        }
+
+        public void setPos(BlockPos sourcePos, BlockPos renderPos, boolean isolated) {
+            this.sourcePos = sourcePos;
+            this.renderPos = renderPos;
+            this.isolated = isolated;
+        }
+
+        private BlockPos mapPos(BlockPos pos) {
+            return sourcePos.add(pos.subtract(renderPos));
+        }
+
+        private boolean canUseDelegate(BlockPos pos) {
+            return !isolated || pos.equals(renderPos);
+        }
+
+        @Override
+        public TileEntity getTileEntity(BlockPos pos) {
+            if (!canUseDelegate(pos)) return null;
+            return delegate.getTileEntity(mapPos(pos));
+        }
+
+        @Override
+        public int getCombinedLight(BlockPos pos, int lightValue) {
+            return 15 << 20 | 15 << 4;
+        }
+
+        @Override
+        public IBlockState getBlockState(BlockPos pos) {
+            if (!canUseDelegate(pos)) return Blocks.AIR.getDefaultState();
+            return delegate.getBlockState(mapPos(pos));
+        }
+
+        @Override
+        public boolean isAirBlock(BlockPos pos) {
+            if (!canUseDelegate(pos)) return true;
+            return delegate.isAirBlock(mapPos(pos));
+        }
+
+        @Override
+        public Biome getBiome(BlockPos pos) {
+            return delegate.getBiome(mapPos(pos));
+        }
+
+        @Override
+        public int getStrongPower(BlockPos pos, EnumFacing direction) {
+            return 0;
+        }
+
+        @Override
+        public WorldType getWorldType() {
+            return delegate.getWorldType();
+        }
+
+        @Override
+        public boolean isSideSolid(BlockPos pos, EnumFacing side, boolean _default) {
+            if (!canUseDelegate(pos)) return false;
+            return delegate.isSideSolid(mapPos(pos), side, _default);
+        }
+    }
+}

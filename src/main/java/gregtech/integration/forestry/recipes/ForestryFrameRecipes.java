@@ -5,6 +5,7 @@ import gregtech.api.recipes.RecipeMaps;
 import gregtech.api.unification.OreDictUnifier;
 import gregtech.api.unification.stack.UnificationEntry;
 import gregtech.api.util.GTUtility;
+import gregtech.common.blocks.MetaBlocks;
 import gregtech.integration.forestry.ForestryModule;
 
 import net.minecraft.item.ItemStack;
@@ -14,6 +15,8 @@ import forestry.api.recipes.RecipeManagers;
 import forestry.apiculture.ModuleApiculture;
 import forestry.factory.MachineUIDs;
 import forestry.factory.ModuleFactory;
+import forestry.farming.FarmRegistry;
+import forestry.farming.logic.farmables.FarmableSapling;
 
 import static gregtech.api.unification.material.Materials.*;
 import static gregtech.api.unification.ore.OrePrefix.*;
@@ -21,6 +24,11 @@ import static gregtech.api.unification.ore.OrePrefix.*;
 public class ForestryFrameRecipes {
 
     public static void init() {
+
+        FarmRegistry.getInstance().registerFarmables("farmArboreal", new FarmableSapling(new ItemStack(
+                MetaBlocks.RUBBER_SAPLING), new ItemStack[0]));
+
+
         registerRecipe( // Accelerated Frame
                 new UnificationEntry(stickLong, Electrum),
                 new UnificationEntry(stick, Electrum),

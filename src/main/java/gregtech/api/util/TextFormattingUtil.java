@@ -70,15 +70,66 @@ public class TextFormattingUtil {
         }
 
         int c = 0;
-        while (value.compareTo(metricBigSuffixValues[c]) >= 0) {
+        while (c < metricBigSuffixValues.length && value.compareTo(metricBigSuffixValues[c]) >= 0) {
             c++;
         }
 
-        return stb.append(value.divide(metricBigSuffixValues[c - 1]))
-                .append('.')
-                .append(value.toString(), 4, precision + 1)
-                .append(metricSuffixChars[c - 1])
-                .toString();
+        // The metric suffix system guarantees 1-3 integer digits, so the decimal part
+        // is computed from the remainder instead of extracting a fixed offset substring
+        BigInteger suffix = metricBigSuffixValues[c - 1];
+        BigInteger integerPart = value.divide(suffix);
+        BigInteger remainder = value.remainder(suffix);
+        int digits = Math.max(precision - 3, 0);
+        BigInteger decimalDivisor = suffix.divide(BigInteger.TEN.pow(digits));
+
+        if (digits > 0) {
+            stb.append(integerPart)
+                    .append('.')
+                    .append(String.format("%0" + digits + "d", remainder.divide(decimalDivisor).intValue()));
+        } else {
+            stb.append(integerPart);
+        }
+        return stb.append(metricSuffixChars[c - 1]).toString();
+    }
+
+    public static String formatBigIntToScientificString(BigInteger value, int precision) {
+        if (BigInteger.ZERO.equals(value)) {
+            return "0";
+        }
+        if (precision < 1) {
+            precision = 1;
+        }
+
+        StringBuilder stb = new StringBuilder();
+        if (value.signum() < 0) {
+            stb.append('-');
+            value = value.abs();
+        }
+
+        String digits = value.toString();
+        int exponent = digits.length() - 1;
+        int digitCount = Math.min(precision, digits.length());
+        String significant = digits.substring(0, digitCount);
+
+        if (digits.length() > digitCount && digits.charAt(digitCount) >= '5') {
+            significant = new BigInteger(significant).add(BigInteger.ONE).toString();
+            if (significant.length() > digitCount) {
+                exponent++;
+                significant = significant.substring(0, digitCount);
+            }
+        }
+
+        int end = significant.length();
+        while (end > 1 && significant.charAt(end - 1) == '0') {
+            end--;
+        }
+        significant = significant.substring(0, end);
+
+        stb.append(significant.charAt(0));
+        if (significant.length() > 1) {
+            stb.append('.').append(significant, 1, significant.length());
+        }
+        return stb.append('E').append(exponent).toString();
     }
 
     public static String formatLongToCompactString(long value) {

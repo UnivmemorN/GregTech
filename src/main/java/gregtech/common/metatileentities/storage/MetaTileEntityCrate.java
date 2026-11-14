@@ -35,10 +35,11 @@ import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.SyncHandlers;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.layout.Grid;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -53,9 +54,9 @@ public class MetaTileEntityCrate extends MetaTileEntity {
     private final Material material;
     private final int inventorySize;
     private final int rowSize;
+    private final String TAPED_NBT = "Taped";
     protected ItemStackHandler inventory;
     private boolean isTaped;
-    private final String TAPED_NBT = "Taped";
 
     public MetaTileEntityCrate(ResourceLocation metaTileEntityId, Material material, int inventorySize, int rowSize) {
         super(metaTileEntityId);
@@ -141,7 +142,7 @@ public class MetaTileEntityCrate extends MetaTileEntity {
     }
 
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
         guiSyncManager.registerSlotGroup("item_inv", rowSize);
 
         int rows = inventorySize / rowSize;
@@ -150,7 +151,7 @@ public class MetaTileEntityCrate extends MetaTileEntity {
             widgets.add(new ArrayList<>());
             for (int j = 0; j < this.rowSize; j++) {
                 int index = i * rowSize + j;
-                widgets.get(i).add(new ItemSlot().slot(SyncHandlers.itemSlot(inventory, index)
+                widgets.get(i).add(new ItemSlot().slot(new ModularSlot(inventory, index)
                         .slotGroup("item_inv")
                         .changeListener((newItem, onlyAmountChanged, client, init) -> {
                             if (client || init) return;

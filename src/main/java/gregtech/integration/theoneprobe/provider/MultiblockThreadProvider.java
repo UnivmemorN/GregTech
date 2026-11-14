@@ -1,0 +1,162 @@
+package gregtech.integration.theoneprobe.provider;
+
+import gregtech.api.GTValues;
+import gregtech.api.capability.IThreadMultiblock;
+import gregtech.api.capability.impl.MultiblockRecipeLogic;
+import gregtech.api.metatileentity.MetaTileEntity;
+import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
+import gregtech.api.metatileentity.multiblock.RecipeMapMultiblockController;
+import gregtech.api.recipes.logic.CrossRecipeParallelScheduler;
+import gregtech.api.util.TextFormattingUtil;
+
+import net.minecraft.block.state.IBlockState;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.text.TextFormatting;
+import net.minecraft.world.World;
+
+import mcjty.theoneprobe.api.ElementAlignment;
+import mcjty.theoneprobe.api.IProbeHitData;
+import mcjty.theoneprobe.api.IProbeInfo;
+import mcjty.theoneprobe.api.IProbeInfoProvider;
+import mcjty.theoneprobe.api.NumberFormat;
+import mcjty.theoneprobe.api.ProbeMode;
+import mcjty.theoneprobe.api.TextStyleClass;
+
+import java.util.List;
+
+public class MultiblockThreadProvider implements IProbeInfoProvider {
+
+    private static final int MAX_SLOT_DISPLAY = 2;
+
+    @Override
+    public String getID() {
+        return GTValues.MODID + ":multiblock_thread_provider";
+    }
+
+    private static IProbeInfo newVertical(final IProbeInfo probeInfo) {
+        return probeInfo.vertical(probeInfo.defaultLayoutStyle().spacing(0));
+    }
+
+    private static IProbeInfo newBox(final IProbeInfo info) {
+        return info.horizontal(info.defaultLayoutStyle().borderColor(0x801E90FF));
+    }
+
+    @Override
+    public void addProbeInfo(ProbeMode probeMode, IProbeInfo iProbeInfo, EntityPlayer entityPlayer, World world,
+                             IBlockState iBlockState, IProbeHitData iProbeHitData) {
+        IProbeInfo horizontalPane = iProbeInfo.horizontal(
+                iProbeInfo.defaultLayoutStyle().alignment(ElementAlignment.ALIGN_CENTER));
+        if (iBlockState.getBlock().hasTileEntity(iBlockState)) {
+            TileEntity te = world.getTileEntity(iProbeHitData.getPos());
+            if (te instanceof IGregTechTileEntity igtte) {
+                MetaTileEntity mte = igtte.getMetaTileEntity();
+
+                if (mte instanceof RecipeMapMultiblockController controller &&
+                        mte instanceof IThreadMultiblock threadController) {
+
+                    if (threadController.getThread() <= 1) return;
+
+                    horizontalPane.text(TextStyleClass.INFO + "{*gregtech.top.thread*}");
+                    horizontalPane.text(
+                            TextStyleClass.INFO + " " + TextFormatting.RED + threadController.getThread() + " ");
+
+                    MultiblockRecipeLogic logic = controller.getRecipeMapWorkable();
+                    if (!logic.isActive()) return;
+
+                    IProbeInfo box = newBox(iProbeInfo);
+                    IProbeInfo leftInfo = newVertical(box);
+
+                    int currentProgress = logic.getProgress();
+                    int maxProgress = logic.getMaxProgress();
+
+                    String text;
+                    if (maxProgress < 20) {
+                        text = " / " + maxProgress + " t";
+                    } else {
+                        currentProgress = Math.round(currentProgress / 20.0F);
+                        maxProgress = Math.round(maxProgress / 20.0F);
+                        text = " / " + TextFormattingUtil.formatNumbers(maxProgress) + " s";
+                    }
+
+                    if (maxProgress > 0) {
+                        int color = logic.isWorkingEnabled() ? 0xFF4CBB17 : 0xFFBB1C28;
+                        leftInfo.progress(currentProgress, maxProgress, leftInfo.defaultProgressStyle()
+                                .suffix(text)
+                                .filledColor(color)
+                                .alternateFilledColor(color)
+                                .borderColor(0xFF555555).numberFormat(NumberFormat.COMMAS));
+                    }
+
+                    CrossRecipeParallelScheduler scheduler = logic.getCrossRecipeScheduler();
+                    if (logic.usesParallelScheduler() && scheduler != null) {
+                        // The scheduler's limit is the whole budget the slots are drawing from, not one slot's share
+                        leftInfo.text("{*gregtech.top.parallel*}" + TextFormatting.DARK_PURPLE +
+                                scheduler.getParallelLimit());
+                        addCrossRecipeSlotInfo(leftInfo, scheduler);
+                    } else {
+                        leftInfo.text("{*gregtech.top.parallel*}" + TextFormatting.DARK_PURPLE +
+                                logic.getParallelLimit());
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Appends cross-recipe parallel slot details to the TOP display.
+     * Slots with the same recipe name and duration are merged into a single line.
+     * Shows up to {@link #MAX_SLOT_DISPLAY} merged entries, with "..." if more exist.
+     */
+    private static void addCrossRecipeSlotInfo(IProbeInfo probeInfo, CrossRecipeParallelScheduler scheduler) {
+        List<CrossRecipeParallelScheduler.MergedSlotDisplay> mergedSlots = scheduler.getMergedDisplaySlots();
+        if (mergedSlots.isEmpty()) return;
+
+        int displayed = 0;
+        for (CrossRecipeParallelScheduler.MergedSlotDisplay merged : mergedSlots) {
+            if (displayed >= MAX_SLOT_DISPLAY) {
+                probeInfo.text(TextStyleClass.INFO + TextFormatting.GRAY.toString() + "...");
+                break;
+            }
+            probeInfo.text(TextStyleClass.INFO + formatMergedSlotLine(merged));
+            displayed++;
+        }
+    }
+
+    /**
+     * Formats a merged slot display entry into a compact display line.
+     * Format: "  #1: RecipeName x64(×4) - 3.5s/7.0s (50%)" when batched,
+     *         "  #1: RecipeName x64 - 3.5s/7.0s (50%)" normally.
+     */
+    private static String formatMergedSlotLine(CrossRecipeParallelScheduler.MergedSlotDisplay merged) {
+        float percent = merged.maxProgress > 0
+                ? (float) merged.progress / merged.maxProgress * 100f : 0f;
+
+        int displayCount = Math.max(merged.totalParallelCount, merged.totalOperations);
+        boolean isBatched = merged.totalOperations > merged.totalParallelCount;
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(TextFormatting.GRAY).append("  #").append(merged.slotIndex + 1).append(": ");
+
+        if (!merged.recipeName.isEmpty()) {
+            sb.append(TextFormatting.YELLOW).append(merged.recipeName);
+            if (displayCount > 1) {
+                sb.append(TextFormatting.AQUA).append(" x").append(displayCount);
+                if (isBatched) {
+                    sb.append(TextFormatting.GOLD).append("(×").append(merged.totalOperations / Math.max(1, merged.totalParallelCount)).append(")");
+                }
+            }
+            sb.append(TextFormatting.GRAY).append(" - ");
+        }
+
+        sb.append(TextFormatting.WHITE);
+        if (merged.maxProgress < 20) {
+            sb.append(merged.progress).append("/").append(merged.maxProgress).append("t");
+        } else {
+            sb.append(String.format("%.1fs/%.1fs", merged.progress / 20f, merged.maxProgress / 20f));
+        }
+        sb.append(TextFormatting.GRAY).append(String.format(" (%.0f%%)", percent));
+
+        return sb.toString();
+    }
+}

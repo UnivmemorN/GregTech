@@ -39,7 +39,7 @@ import static gregtech.api.recipes.RecipeMaps.LATHE_RECIPES;
 import static gregtech.api.unification.material.Materials.*;
 import static gregtech.api.unification.material.info.MaterialFlags.*;
 import static gregtech.api.unification.material.properties.PropertyKey.GEM;
-import static gregtech.api.util.Mods.Names.GTQT_CORE;
+import static gregtech.api.util.Mods.Names.GTQT_TEST;
 import static net.minecraftforge.fml.common.Loader.isModLoaded;
 
 public class ToolRecipeHandler {
@@ -100,12 +100,20 @@ public class ToolRecipeHandler {
         ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadDrill, ToolItems.HARD_HAMMER_EV);
         ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadDrill, ToolItems.HARD_HAMMER_IV);
         ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadChainsaw, ToolItems.CHAINSAW_LV);
+        ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadChainsaw, ToolItems.CHAINSAW_HV);
+        ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadChainsaw, ToolItems.CHAINSAW_IV);
         ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadWrench, ToolItems.WRENCH_LV);
         ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadWrench, ToolItems.WRENCH_HV);
         ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadWrench, ToolItems.WRENCH_IV);
-        ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadBuzzSaw, ToolItems.BUZZSAW);
+        ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadBuzzSaw, ToolItems.BUZZSAW_LV);
+        ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadBuzzSaw, ToolItems.BUZZSAW_HV);
+        ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadBuzzSaw, ToolItems.BUZZSAW_IV);
         ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadScrewdriver, ToolItems.SCREWDRIVER_LV);
+        ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadScrewdriver, ToolItems.SCREWDRIVER_HV);
+        ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.toolHeadScrewdriver, ToolItems.SCREWDRIVER_IV);
         ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.pipeSmallFluid, ToolItems.TREE_TAP_LV);
+        ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.pipeSmallFluid, ToolItems.TREE_TAP_HV);
+        ToolHeadReplaceRecipe.setToolHeadForTool(OrePrefix.pipeSmallFluid, ToolItems.TREE_TAP_IV);
 
         ForgeRegistries.RECIPES
                 .register(new ToolHeadReplaceRecipe().setRegistryName(new ResourceLocation(MODID, "replacetoolhead")));
@@ -124,12 +132,13 @@ public class ToolRecipeHandler {
 
                 ModHandler.addShapedEnergyTransferRecipe(recipeName, powerUnitStack,
                         Ingredient.fromStacks(batteryStack), true, false,
-                        "S d", "GMG", "PBP",
-                        'M', motorItems.get(tier).getStackForm(),
-                        'S', new UnificationEntry(OrePrefix.screw, baseMaterials.get(tier)),
+                        "YRf", "PSP", "XPH",
+                        'R', new UnificationEntry(OrePrefix.stick, baseMaterials.get(tier)),
                         'P', new UnificationEntry(OrePrefix.plate, baseMaterials.get(tier)),
-                        'G', new UnificationEntry(OrePrefix.gearSmall, baseMaterials.get(tier)),
-                        'B', batteryStack);
+                        'S', new UnificationEntry(OrePrefix.spring, baseMaterials.get(tier)),
+                        'Y', new UnificationEntry(OrePrefix.screw, baseMaterials.get(tier)),
+                        'H', batteryStack,
+                        'X', motorItems.get(tier).getStackForm());
             }
         }
     }
@@ -157,6 +166,12 @@ public class ToolRecipeHandler {
 
             addToolRecipe(material, ToolItems.AXE, false,
                     "PIh", "PS ", "fS ",
+                    'P', plate,
+                    'I', ingot,
+                    'S', stick);
+
+            addToolRecipe(material, ToolItems.DOUBLE_AXE, false,
+                    "PIP", "PSP", "fSh",
                     'P', plate,
                     'I', ingot,
                     'S', stick);
@@ -214,7 +229,28 @@ public class ToolRecipeHandler {
                     'I', ingot,
                     'P', plate);
 
+            addToolRecipe(material, ToolItems.CLUB, true,
+                    " II", "III", "SI ",
+                    'I', ingot,
+                    'S', stick);
 
+            addToolRecipe(material, ToolItems.BENDING_CYLINDER, false,
+                    "sfh", "III", "III",
+                    'I', ingot);
+
+            addToolRecipe(material, ToolItems.BENDING_CYLINDER_SMALL, false,
+                    "sfh", "III",
+                    'I', ingot);
+
+            // Pocket Multitool
+            if (material.hasFlags(GENERATE_LONG_ROD, GENERATE_RING, GENERATE_BOLT_SCREW)) {
+                addToolRecipe(material, ToolItems.MULTITOOL_CLOSED, true,
+                        "wPR", "PPS", "RSB",
+                        'B', new UnificationEntry(OrePrefix.screw, material),
+                        'S', new UnificationEntry(OrePrefix.stickLong, material),
+                        'P', plate,
+                        'R', new UnificationEntry(OrePrefix.ring, material));
+            }
         }
         if (material.hasFlag(GENERATE_ROD)) {
             UnificationEntry rod = new UnificationEntry(OrePrefix.stick, material);
@@ -224,18 +260,17 @@ public class ToolRecipeHandler {
                         'P', plate,
                         'S', rod);
 
-                // Universal Tool
-                addToolRecipe(material, ToolItems.UNIVERSAL_TOOL, true,
-                        "hPI", "fPS", "IPS",
-                        'I', ingot,
-                        'P', plate,
-                        'S', rod
-                );
-
                 if (material.hasFlag(GENERATE_BOLT_SCREW)) {
                     addToolRecipe(material, ToolItems.WIRE_CUTTER, false,
                             "PfP", "hPd", "STS",
                             'P', plate,
+                            'T', new UnificationEntry(OrePrefix.screw, material),
+                            'S', rod);
+
+                    addToolRecipe(material, ToolItems.SHEARS, false,
+                            "PfP", "hGd", "STS",
+                            'P', plate,
+                            'G', new UnificationEntry(OrePrefix.gearSmall, material),
                             'T', new UnificationEntry(OrePrefix.screw, material),
                             'S', rod);
 
@@ -267,6 +302,14 @@ public class ToolRecipeHandler {
                     'D', new UnificationEntry(OrePrefix.dye, MarkerMaterials.Color.Blue));
         }
 
+        if (material.hasFlag(GENERATE_CURVED_PLATE) && material.hasFlag(GENERATE_BOLT_SCREW)) {
+            addToolRecipe(material, ToolItems.PINCERS, false,
+                    "XhX", " T ", "SdS",
+                    'X', new UnificationEntry(OrePrefix.plateCurved, material),
+                    'T', new UnificationEntry(OrePrefix.screw, material),
+                    'S', stick);
+        }
+
         if (material.hasFlags(GENERATE_PLATE) && material.hasFlags(GENERATE_ROD)) {
             // Universal Spade
             addToolRecipe(material, ToolItems.UNIVERSAL_SPADE, true,
@@ -291,7 +334,7 @@ public class ToolRecipeHandler {
     private static void processTreeTap(OrePrefix orePrefix, Material material, MaterialToolProperty property) {
         // tree tap
         OrePrefix toolPrefix = OrePrefix.pipeSmallFluid;
-        addElectricToolRecipe(toolPrefix, material, new IGTTool[] { ToolItems.TREE_TAP_LV });
+        addElectricToolRecipe(toolPrefix, material, new IGTTool[] { ToolItems.TREE_TAP_LV, ToolItems.TREE_TAP_HV, ToolItems.TREE_TAP_IV });
     }
 
 
@@ -328,7 +371,7 @@ public class ToolRecipeHandler {
                     'S', steelPlate,
                     'R', steelRing);
 
-            addElectricToolRecipe(toolPrefix, material, new IGTTool[] { ToolItems.CHAINSAW_LV });
+            addElectricToolRecipe(toolPrefix, material, new IGTTool[] { ToolItems.CHAINSAW_LV, ToolItems.CHAINSAW_HV,ToolItems.CHAINSAW_IV });
 
             // wrench
             toolPrefix = OrePrefix.toolHeadWrench;
@@ -344,7 +387,7 @@ public class ToolRecipeHandler {
 
             // buzzsaw
             toolPrefix = OrePrefix.toolHeadBuzzSaw;
-            addElectricToolRecipe(toolPrefix, material, new IGTTool[] { ToolItems.BUZZSAW });
+            addElectricToolRecipe(toolPrefix, material, new IGTTool[] { ToolItems.BUZZSAW_LV,ToolItems.BUZZSAW_HV,ToolItems.BUZZSAW_IV });
 
             ModHandler.addShapedRecipe(String.format("buzzsaw_blade_%s", material),
                     OreDictUnifier.get(toolPrefix, material),
@@ -363,12 +406,18 @@ public class ToolRecipeHandler {
             // wirecutter
             addElectricWirecutterRecipe(material,
                     new IGTTool[] { ToolItems.WIRECUTTER_LV, ToolItems.WIRECUTTER_HV, ToolItems.WIRECUTTER_IV });
+            addTrimmerRecipe(material,
+                    new IGTTool[] { ToolItems.TRIMMER_LV, ToolItems.TRIMMER_HV, ToolItems.TRIMMER_IV });
+
+
+            addElectricMotorizedPestleRecipe(material,
+                    new IGTTool[] { ToolItems.MOTORIZED_PESTLE_LV, ToolItems.MOTORIZED_PESTLE_HV, ToolItems.MOTORIZED_PESTLE_IV });
         }
 
         // screwdriver
         if (material.hasFlag(GENERATE_LONG_ROD)) {
             toolPrefix = OrePrefix.toolHeadScrewdriver;
-            addElectricToolRecipe(toolPrefix, material, new IGTTool[] { ToolItems.SCREWDRIVER_LV });
+            addElectricToolRecipe(toolPrefix, material, new IGTTool[] { ToolItems.SCREWDRIVER_LV, ToolItems.SCREWDRIVER_HV, ToolItems.SCREWDRIVER_IV });
 
             ModHandler.addShapedRecipe(String.format("screwdriver_tip_%s", material),
                     OreDictUnifier.get(toolPrefix, material),
@@ -408,6 +457,36 @@ public class ToolRecipeHandler {
         }
     }
 
+    public static void addTrimmerRecipe(Material material, IGTTool[] toolItems) {
+        for (IGTTool toolItem : toolItems) {
+            int tier = toolItem.getElectricTier();
+            ItemStack powerUnitStack = powerUnitItems.get(tier).getStackForm();
+            IElectricItem powerUnit = powerUnitStack.getCapability(GregtechCapabilities.CAPABILITY_ELECTRIC_ITEM, null);
+            ItemStack tool = toolItem.get(material, 0, powerUnit.getMaxCharge());
+            ModHandler.addShapedEnergyTransferRecipe(String.format("%s_%s", toolItem.getToolId(), material), tool,
+                    Ingredient.fromStacks(powerUnitStack), true, true,
+                    "PfP", "hGd", "RUR",
+                    'P', new UnificationEntry(OrePrefix.plate, material),
+                    'G', new UnificationEntry(OrePrefix.gearSmall, material),
+                    'U', powerUnitStack,
+                    'R', new UnificationEntry(OrePrefix.stick, material));
+        }
+    }
+
+    public static void addElectricMotorizedPestleRecipe(Material material, IGTTool[] toolItems) {
+        for (IGTTool toolItem : toolItems) {
+            int tier = toolItem.getElectricTier();
+            ItemStack powerUnitStack = powerUnitItems.get(tier).getStackForm();
+            IElectricItem powerUnit = powerUnitStack.getCapability(GregtechCapabilities.CAPABILITY_ELECTRIC_ITEM, null);
+            ItemStack tool = toolItem.get(material, 0, powerUnit.getMaxCharge());
+            ModHandler.addShapedEnergyTransferRecipe(String.format("%s_%s", toolItem.getToolId(), material), tool,
+                    Ingredient.fromStacks(powerUnitStack), true, true,
+                    "PdP", "RPR", "fUh",
+                    'P', new UnificationEntry(OrePrefix.stick, material),
+                    'U', powerUnitStack,
+                    'R', new UnificationEntry(OrePrefix.plate, material));
+        }
+    }
     public static void addHammerDrillRecipe(OrePrefix toolHead, Material material, IGTTool[] toolItems) {
         for (IGTTool toolItem : toolItems) {
             int tier = toolItem.getElectricTier();
@@ -438,7 +517,7 @@ public class ToolRecipeHandler {
     public static void registerCustomToolRecipes() {
         registerFlintToolRecipes();
         registerMortarRecipes();
-        if(!isModLoaded(GTQT_CORE))registerSoftToolRecipes();
+        if(!isModLoaded(GTQT_TEST))registerSoftToolRecipes();
         registerElectricRecipes();
     }
 
@@ -468,6 +547,11 @@ public class ToolRecipeHandler {
 
         addToolRecipe(Materials.Flint, ToolItems.AXE, true,
                 "II", "IS", " S",
+                'I', flint,
+                'S', stick);
+
+        addToolRecipe(Materials.Flint, ToolItems.DOUBLE_AXE, true,
+                "III", "ISI", " S ",
                 'I', flint,
                 'S', stick);
 
@@ -563,6 +647,15 @@ public class ToolRecipeHandler {
                     'S', MetaItems.SENSOR_MV.getStackForm(),
                     'D', MetaItems.COVER_SCREEN.getStackForm(),
                     'C', new UnificationEntry(OrePrefix.circuit, MarkerMaterials.Tier.HV),
+                    'B', batteryItem.getStackForm());
+
+            ModHandler.addShapedEnergyTransferRecipe("cover_copy_paste_" + batteryItem.unlocalizedName,
+                    MetaItems.TOOL_COVER_COPY_PASTE.getStackForm(),
+                    batteryItem::isItemEqual, true, true,
+                    "PSP", "PCP", "PBP",
+                    'P', new UnificationEntry(OrePrefix.plate, Materials.Aluminium),
+                    'S', MetaItems.TOOL_DATA_STICK.getStackForm(),
+                    'C', MetaItems.COVER_SCREEN.getStackForm(),
                     'B', batteryItem.getStackForm());
         }
 

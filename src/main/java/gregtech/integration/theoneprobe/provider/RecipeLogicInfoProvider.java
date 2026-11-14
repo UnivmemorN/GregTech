@@ -2,16 +2,17 @@ package gregtech.integration.theoneprobe.provider;
 
 import gregtech.api.GTValues;
 import gregtech.api.capability.GregtechTileCapabilities;
+import gregtech.api.capability.IBatch;
+import gregtech.api.capability.IHeatMachine;
+import gregtech.api.capability.IRecipeControl;
+import gregtech.api.capability.ISteamMachine;
 import gregtech.api.capability.impl.AbstractRecipeLogic;
 import gregtech.api.capability.impl.PrimitiveRecipeLogic;
 import gregtech.api.metatileentity.MetaTileEntity;
-import gregtech.api.metatileentity.SteamMetaTileEntity;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
-import gregtech.api.metatileentity.multiblock.RecipeMapSteamMultiblockController;
 import gregtech.api.unification.material.Materials;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.TextFormattingUtil;
-import gregtech.common.metatileentities.multi.MetaTileEntityLargeBoiler;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.tileentity.TileEntity;
@@ -22,6 +23,8 @@ import mcjty.theoneprobe.api.IProbeHitData;
 import mcjty.theoneprobe.api.IProbeInfo;
 import mcjty.theoneprobe.api.TextStyleClass;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.Objects;
 
 public class RecipeLogicInfoProvider extends CapabilityInfoProvider<AbstractRecipeLogic> {
 
@@ -48,16 +51,30 @@ public class RecipeLogicInfoProvider extends CapabilityInfoProvider<AbstractReci
             long eut = capability.getInfoProviderEUt();
             String text = null;
 
-            if (tileEntity instanceof IGregTechTileEntity) {
-                IGregTechTileEntity gtTileEntity = (IGregTechTileEntity) tileEntity;
+            if (tileEntity instanceof IGregTechTileEntity gtTileEntity) {
                 MetaTileEntity mte = gtTileEntity.getMetaTileEntity();
-                if (mte instanceof SteamMetaTileEntity || mte instanceof MetaTileEntityLargeBoiler ||
-                        mte instanceof RecipeMapSteamMultiblockController) {
+                if (mte instanceof ISteamMachine) {
                     text = TextFormatting.AQUA + TextFormattingUtil.formatNumbers(eut) +
                             TextStyleClass.INFO + " L/t {*" +
                             Materials.Steam.getUnlocalizedName() + "*}";
                 }
+                if (mte instanceof IHeatMachine) {
+                    text = TextFormatting.AQUA + TextFormattingUtil.formatNumbers(eut) +
+                            TextStyleClass.INFO + " H/t 热量";
+                }
+
+                if (mte instanceof IBatch iBatch) {
+                    if (iBatch.isBatchAllowed())
+                        probeInfo.text(TextStyleClass.INFO + (iBatch.isBatchEnable() ? "{*gregtech.top.batch_enable*}" :
+                                    "{*gregtech.top.batch_disable*}"));
+                }
+                if (mte instanceof IRecipeControl recipeLock) {
+                    if (recipeLock.enableExtendControl())
+                        probeInfo.text(TextStyleClass.INFO + (recipeLock.isRecipeLocked() ? "{*gregtech.top.lock_enable*}" :
+                                    "{*gregtech.top.lock_disable*}"));
+                }
             }
+
             if (text == null) {
                 // Default behavior, if this TE is not a steam machine (or somehow not instanceof
                 // IGregTechTileEntity...)
@@ -72,6 +89,21 @@ public class RecipeLogicInfoProvider extends CapabilityInfoProvider<AbstractReci
                 probeInfo.text(TextStyleClass.INFO + "{*gregtech.top.energy_consumption*} " + text);
             } else {
                 probeInfo.text(TextStyleClass.INFO + "{*gregtech.top.energy_production*} " + text);
+            }
+
+            if (capability.isActive()) {
+                int parallel = capability.getParallelLimit();
+                if (parallel > 1 && parallel < Integer.MAX_VALUE) {
+                    probeInfo.text(TextStyleClass.INFO + "{*gregtech.top.parallel*} " +
+                            TextFormatting.BLUE + parallel);
+                }
+            }
+        } else if (!Objects.equals(capability.getWhyFailed(), "")) {
+            if (capability.getWhyFailed().equals("NoneRecipes")) {
+                if(player.isSneaking())probeInfo.text(TextStyleClass.INFO + "当前输入不构成配方");
+            } else {
+                String text = TextFormatting.RED + capability.getWhyFailed();
+                probeInfo.text(TextStyleClass.INFO + "配方失败原因：" + text);
             }
         }
     }

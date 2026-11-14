@@ -1,14 +1,13 @@
 package gregtech.api.capability.impl;
 
-import gregtech.GregTechMod;
 import gregtech.api.GTValues;
-import gregtech.api.capability.DualHandler;
 import gregtech.api.capability.IMultiblockController;
+import gregtech.api.capability.IMultipleNotifiableHandler;
 import gregtech.api.capability.IMultipleRecipeMaps;
 import gregtech.api.capability.IMultipleTankHandler;
 import gregtech.api.metatileentity.multiblock.MultiblockAbility;
 import gregtech.api.metatileentity.multiblock.MultiblockWithDisplayBase;
-import gregtech.api.metatileentity.multiblock.RecipeMapSteamMultiblockController;
+import gregtech.api.capability.IDistinctBusController;
 import gregtech.api.metatileentity.multiblock.RecipeMapSteamMultiblockController;
 import gregtech.api.recipes.Recipe;
 import gregtech.api.recipes.RecipeMap;
@@ -30,6 +29,8 @@ import net.minecraftforge.fluids.IFluidTank;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
 
+import gregtech.api.util.GTQTUtility;
+import gregtech.api.capability.IPatternBufferIsolatedHandler;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -38,26 +39,21 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public class SteamMultiblockRecipeLogic extends AbstractRecipeLogic {
 
+    private static final long BOUND_INPUT_RETRY_INTERVAL_TICKS = 100L;
+
+    protected final Set<IItemHandlerModifiable> invalidatedInputList = new HashSet<>();
     // EU per mB
     private final double conversionRate;
-    private IMultipleTankHandler steamFluidTank;
-    private IFluidTank steamFluidTankCombined;
-    protected final Set<IItemHandlerModifiable> invalidatedInputList = new HashSet<>();
     // Used for distinct mode
     protected int lastRecipeIndex = 0;
     protected IItemHandlerModifiable currentDistinctInputBus;
+    private IMultipleTankHandler steamFluidTank;
+    private IFluidTank steamFluidTankCombined;
     private boolean hasDualInputCache;
-    @Override
-    public void invalidate() {
-        super.invalidate();
-        lastRecipeIndex = 0;
-        invalidatedInputList.clear();
-    }
+
     public SteamMultiblockRecipeLogic(RecipeMapSteamMultiblockController tileEntity, RecipeMap<?> recipeMap,
                                       IMultipleTankHandler steamFluidTank, double conversionRate) {
         super(tileEntity, recipeMap);
@@ -66,85 +62,67 @@ public class SteamMultiblockRecipeLogic extends AbstractRecipeLogic {
         setAllowOverclocking(false);
         combineSteamTanks();
     }
+
+    @Override
+    public void invalidate() {
+        super.invalidate();
+        lastRecipeIndex = 0;
+        invalidatedInputList.clear();
+    }
+
     @Override
     protected boolean canWorkWithInputs() {
-        MultiblockWithDisplayBase controller = (MultiblockWithDisplayBase) metaTileEntity;
-        if (!(controller instanceof RecipeMapSteamMultiblockController distinctController) ||
-                !distinctController.canBeDistinct() ||
-                !distinctController.isDistinct() ||
-                getInputInventory().getSlots() == 0) {
-            return super.canWorkWithInputs();
-        }
-
-        // 当无效列表为空时直接通过检查
-        if (invalidatedInputList.isEmpty()) {
-            return true;
-        }
-
-        boolean canWork;
-
-        // 处理流体输入通知
-        if (!metaTileEntity.getNotifiedFluidInputList().isEmpty()) {
-            canWork = true;
-            clearNotificationLists();
-        } else {
-            // 处理物品输入通知
-            canWork = processItemNotifications();
-        }
-
-        // 扁平化输入总线并清理无效列表中的DualHandler
-        List<IItemHandler> flattenedHandlers = flattenInputBuses();
-        removeDualHandlersFromInvalidated();
-
-        // 检查无效列表是否包含所有必要处理器
-        if (!new HashSet<>(invalidatedInputList).containsAll(flattenedHandlers)) {
-            canWork = true;
-        }
-
-        return canWork;
-    }
-    private boolean processItemNotifications() {
-        boolean updated = false;
-        Iterator<IItemHandlerModifiable> notifiedIter = metaTileEntity.getNotifiedItemInputList().iterator();
-
-        while (notifiedIter.hasNext()) {
-            IItemHandlerModifiable bus = notifiedIter.next();
-            Iterator<IItemHandlerModifiable> invalidatedIter = invalidatedInputList.iterator();
-
-            while (invalidatedIter.hasNext()) {
-                IItemHandler handler = invalidatedIter.next();
-                if (isHandlerMatch(handler, bus)) {
-                    invalidatedIter.remove();
-                    updated = true;
+        if (shouldUseDistinctInputBuses()) {
+                boolean canWork = false;
+                if (invalidatedInputList.isEmpty()) {
+                    return true;
                 }
-            }
-            notifiedIter.remove();
-        }
-        return updated;
-    }
-    // 辅助方法：处理器匹配检查
-    private boolean isHandlerMatch(IItemHandler handler, IItemHandlerModifiable bus) {
-        if (handler instanceof ItemHandlerList) {
-            return ((ItemHandlerList) handler).getBackingHandlers().contains(bus);
-        }
-        return handler == bus;
-    }
-
-    // 提取方法：扁平化输入总线
-    private List<IItemHandler> flattenInputBuses() {
-        return getInputBuses().stream()
-                .flatMap(ih -> {
-                    if (ih instanceof ItemHandlerList) {
-                        return ((ItemHandlerList) ih).getBackingHandlers().stream();
+                if (!metaTileEntity.getNotifiedFluidInputList().isEmpty()) {
+                    canWork = true;
+                    invalidatedInputList.clear();
+                    metaTileEntity.getNotifiedFluidInputList().clear();
+                    metaTileEntity.getNotifiedItemInputList().clear();
+                } else {
+                    Iterator<IItemHandlerModifiable> notifiedIter = metaTileEntity.getNotifiedItemInputList()
+                            .iterator();
+                    while (notifiedIter.hasNext()) {
+                        IItemHandlerModifiable bus = notifiedIter.next();
+                        Iterator<IItemHandlerModifiable> invalidatedIter = invalidatedInputList.iterator();
+                        while (invalidatedIter.hasNext()) {
+                            IItemHandler invalidatedHandler = invalidatedIter.next();
+                            if (invalidatedHandler instanceof IMultipleNotifiableHandler multipleNotifiableHandler) {
+                                for (var notifiableHandler : multipleNotifiableHandler.getBackingNotifiers()) {
+                                    if (notifiableHandler == bus) {
+                                        canWork = true;
+                                        invalidatedIter.remove();
+                                        break;
+                                    }
+                                }
+                            } else if (invalidatedHandler == bus) {
+                                canWork = true;
+                                invalidatedIter.remove();
+                            }
+                        }
+                        notifiedIter.remove();
                     }
-                    return Stream.of(ih);
-                })
-                .collect(Collectors.toList());
-    }
+                }
+                if (retryInvalidatedIsolatedInputs()) {
+                    canWork = true;
+                }
+                ArrayList<IItemHandler> flattenedHandlers = new ArrayList<>();
+                for (IItemHandler ih : getInputBuses()) {
+                    if (ih instanceof ItemHandlerList) {
+                        flattenedHandlers.addAll(((ItemHandlerList) ih).getBackingHandlers());
+                    }
+                    flattenedHandlers.add(ih);
+                }
 
-    // 提取方法：清理DualHandler
-    private void removeDualHandlersFromInvalidated() {
-        invalidatedInputList.removeIf(handler -> handler instanceof DualHandler);
+                if (!invalidatedInputList.containsAll(flattenedHandlers)) {
+                    canWork = true;
+                }
+                return canWork;
+        }
+        return super.canWorkWithInputs();
     }
 
     @Override
@@ -152,189 +130,113 @@ public class SteamMultiblockRecipeLogic extends AbstractRecipeLogic {
         // do not run recipes when there are more than 5 maintenance problems
         // Maintenance can apply to all multiblocks, so cast to a base multiblock class
         MultiblockWithDisplayBase controller = (MultiblockWithDisplayBase) metaTileEntity;
-
-        // Distinct buses only apply to some multiblocks, so check the controller against a lower class
-        if (controller instanceof RecipeMapSteamMultiblockController distinctController) {
-
-            if (distinctController.canBeDistinct() && distinctController.isDistinct() &&
-                    getInputInventory().getSlots() > 0) {
-                trySearchNewRecipeDistinct();
-                return;
-            }
+        if (ConfigHolder.machines.enableMaintenance && controller.hasMaintenanceMechanics() &&
+                controller.getNumMaintenanceProblems() > 5) {
+            return;
         }
+
+        if (shouldUseDistinctInputBuses()) {
+            trySearchNewRecipeDistinct();
+            return;
+        }
+
         trySearchNewRecipeCombined();
     }
 
+    /**
+     * Put into place so multiblocks can override {@link AbstractRecipeLogic#trySearchNewRecipe()} without having to
+     * deal with the maintenance and distinct logic in {@link MultiblockRecipeLogic#trySearchNewRecipe()}
+     */
     protected void trySearchNewRecipeCombined() {
         super.trySearchNewRecipe();
     }
 
     protected void trySearchNewRecipeDistinct() {
         long maxVoltage = getMaxVoltage();
+        Recipe currentRecipe;
         List<IItemHandlerModifiable> importInventory = getInputBuses();
 
-        // 优先尝试缓存命中
-        if (attemptCacheHit(importInventory)) {
-            return;
+        // Our caching implementation
+        // This guarantees that if we get a recipe cache hit, our efficiency is no different from other machines
+        if (checkPreviousRecipeDistinct(importInventory.get(lastRecipeIndex)) && checkRecipe(previousRecipe)) {
+            currentRecipe = previousRecipe;
+            currentDistinctInputBus = importInventory.get(lastRecipeIndex);
+            if (prepareRecipeDistinct(currentRecipe)) {
+                // No need to cache the previous recipe here, as it is not null and matched by the current recipe,
+                // so it will always be the same
+                return;
+            }
         }
 
-        // 更新双输入缓存状态
-        updateHasDualInputCache();
-
-        // 遍历总线寻找配方，优先检查上次成功总线
-        findRecipeInBuses(importInventory, maxVoltage);
-    }
-    private void updateHasDualInputCache() {
-        MultiblockWithDisplayBase controller = (MultiblockWithDisplayBase) metaTileEntity;
-        hasDualInputCache = !controller.getAbilities(MultiblockAbility.DUAL_IMPORT).isEmpty();
-    }
-
-    private boolean hasDualInput() {
-        return hasDualInputCache;
-    }
-
-    private void findRecipeInBuses(List<IItemHandlerModifiable> importInventory, long maxVoltage) {
-        // 优先检查上次成功的总线
-        if (lastRecipeIndex >= 0 && lastRecipeIndex < importInventory.size()) {
-            IItemHandlerModifiable bus = importInventory.get(lastRecipeIndex);
-            if (!isBusInvalid(bus)) {
-                Recipe recipe = findRecipeForBus(bus, maxVoltage);
-                if (handleFoundRecipe(recipe, bus, lastRecipeIndex)) {
+        // On a cache miss, our efficiency is much worse, as it will check
+        // each bus individually instead of the combined inventory all at once.
+        for (int i = 0; i < importInventory.size(); i++) {
+            IItemHandlerModifiable bus = importInventory.get(i);
+            // Skip this bus if no recipe was found last time
+            if (invalidatedInputList.contains(bus)) {
+                continue;
+            }
+            // Look for a new recipe after a cache miss
+            currentRecipe = findRecipe(maxVoltage, bus, getInputTank(bus));
+            // Cache the current recipe, if one is found
+            if (currentRecipe != null && checkRecipe(currentRecipe)) {
+                this.previousRecipe = currentRecipe;
+                currentDistinctInputBus = bus;
+                if (prepareRecipeDistinct(currentRecipe)) {
+                    lastRecipeIndex = i;
                     return;
                 }
             }
-        }
-
-        // 遍历剩余总线
-        for (int i = 0; i < importInventory.size(); i++) {
-            if (i == lastRecipeIndex) continue; // 跳过已检查的总线
-
-            IItemHandlerModifiable bus = importInventory.get(i);
-            if (isBusInvalid(bus)) continue;
-
-            Recipe recipe = findRecipeForBus(bus, maxVoltage);
-            if (handleFoundRecipe(recipe, bus, i)) return;
-        }
-    }
-
-    private boolean checkPreviousRecipeDistinct(IItemHandlerModifiable previousBus) {
-        boolean dualInput = hasDualInput();
-        IMultipleTankHandler tank = dualInput ? getDistinctInputTank(previousBus) : getInputTank(previousBus);
-        return previousRecipe != null && previousRecipe.matches(false, previousBus, tank);
-    }
-
-    protected boolean checkLatestRecipeDistinct(IItemHandlerModifiable previousBus) {
-        boolean dualInput = hasDualInput();
-        IMultipleTankHandler tank = dualInput ? getDistinctInputTank(previousBus) : getInputTank(previousBus);
-
-        // 逆序遍历最新配方（跳过最后一个）
-        for (int i = latestRecipes.size() - 2; i >= 0; i--) { // 从倒数第二个开始
-            Recipe recipe = latestRecipes.get(i);
-            if (recipe != null && recipe.matches(false, previousBus, tank)) {
-                return checkRecipe(recipe) && prepareRecipeDistinct(recipe);
+            if (currentRecipe == null) {
+                // no valid recipe found, invalidate this bus
+                invalidatedInputList.add(bus);
             }
         }
-        return false;
+    }
+
+    @Override
+    public void invalidateInputs() {
+        if (shouldUseDistinctInputBuses() && currentDistinctInputBus != null) {
+            invalidatedInputList.add(currentDistinctInputBus);
+        } else {
+            super.invalidateInputs();
+        }
+    }
+
+    protected boolean checkPreviousRecipeDistinct(IItemHandlerModifiable previousBus) {
+        return previousRecipe != null && previousRecipe.matches(false, previousBus, getInputTank(previousBus));
     }
 
     protected boolean prepareRecipeDistinct(Recipe recipe) {
         recipe = Recipe.trimRecipeOutputs(recipe, getRecipeMap(), metaTileEntity.getItemOutputLimit(),
                 metaTileEntity.getFluidOutputLimit());
-        boolean dualInput = hasDualInput();
-        IMultipleTankHandler inputTank =
-                dualInput ? getDistinctInputTank(currentDistinctInputBus) : getInputTank(currentDistinctInputBus);
+        if (recipe == null) {
+            whyFailed = "配方输出数量超过机器限制（物品输出槽:" + metaTileEntity.getItemOutputLimit() +
+                    ", 流体输出槽:" + metaTileEntity.getFluidOutputLimit() + "）";
+            return false;
+        }
 
         recipe = findParallelRecipe(
                 recipe,
                 currentDistinctInputBus,
-                inputTank,
+                getInputTank(currentDistinctInputBus),
                 getOutputInventory(),
                 getOutputTank(),
                 getMaxParallelVoltage(),
                 getParallelLimit());
 
         if (recipe != null) {
-            recipe = setupAndConsumeRecipeInputs(recipe, currentDistinctInputBus, inputTank);
+            recipe = setupAndConsumeRecipeInputs(recipe, currentDistinctInputBus,
+                    getInputTank(currentDistinctInputBus));
             if (recipe != null) {
                 setupRecipe(recipe);
                 return true;
             }
         }
+
         return false;
     }
 
-    // 提取方法：尝试缓存命中
-    private boolean attemptCacheHit(List<IItemHandlerModifiable> importInventory) {
-        //原先的方法
-        if (canUseCachedRecipe(importInventory) && prepareRecipeDistinct(previousRecipe))
-            return true;
-
-        //临近搜索系统
-        return canUseLatestRecipe(importInventory);
-    }
-
-    // 提取方法：检查缓存有效性
-    private boolean canUseCachedRecipe(List<IItemHandlerModifiable> importInventory) {
-        return previousRecipe != null
-                && lastRecipeIndex < importInventory.size()
-                && checkPreviousRecipeDistinct(importInventory.get(lastRecipeIndex))
-                && checkRecipe(previousRecipe);
-    }
-
-    private boolean canUseLatestRecipe(List<IItemHandlerModifiable> importInventory) {
-        return previousRecipe != null
-                && lastRecipeIndex < importInventory.size()
-                && checkLatestRecipeDistinct(importInventory.get(lastRecipeIndex));
-    }
-
-    // 提取方法：检查总线有效性
-    private boolean isBusInvalid(IItemHandlerModifiable bus) {
-        return invalidatedInputList.contains(bus);
-    }
-
-    // 提取方法：获取对应总线配方
-    private Recipe findRecipeForBus(IItemHandlerModifiable bus, long maxVoltage) {
-        return hasDualInput()
-                ? findRecipe(maxVoltage, bus, getDistinctInputTank(bus))
-                : findRecipe(maxVoltage, bus, getInputTank(bus));
-    }
-
-    // 提取方法：处理找到的配方
-    private boolean handleFoundRecipe(Recipe recipe, IItemHandlerModifiable bus, int index) {
-        if (recipe != null && checkRecipe(recipe)) {
-            updateRecipeCache(recipe, bus, index);
-            return prepareRecipeDistinct(recipe);
-        } else {
-            markBusAsInvalid(bus);
-            return false;
-        }
-    }
-
-    // 提取方法：更新配方缓存
-    private void updateRecipeCache(Recipe recipe, IItemHandlerModifiable bus, int index) {
-        previousRecipe = recipe;
-        addToPreviousRecipes(recipe);
-        currentDistinctInputBus = bus;
-        lastRecipeIndex = index;
-    }
-
-    // 提取方法：标记无效总线
-    private void markBusAsInvalid(IItemHandlerModifiable bus) {
-        invalidatedInputList.add(bus);
-    }
-
-    @Override
-    public void invalidateInputs() {
-        MultiblockWithDisplayBase controller = (MultiblockWithDisplayBase) metaTileEntity;
-        RecipeMapSteamMultiblockController distinctController = (RecipeMapSteamMultiblockController) controller;
-        if (distinctController.canBeDistinct() && distinctController.isDistinct() &&
-                !(getInputInventory() instanceof DualHandler) &&
-                getInputInventory().getSlots() > 0) {
-            invalidatedInputList.add(currentDistinctInputBus);
-        } else {
-            super.invalidateInputs();
-        }
-    }
     @Override
     public boolean checkRecipe(@NotNull Recipe recipe) {
         RecipeMapSteamMultiblockController controller = (RecipeMapSteamMultiblockController) metaTileEntity;
@@ -344,6 +246,7 @@ public class SteamMultiblockRecipeLogic extends AbstractRecipeLogic {
         }
         return false;
     }
+
     @Nullable
     @Override
     public RecipeMap<?> getRecipeMap() {
@@ -352,47 +255,129 @@ public class SteamMultiblockRecipeLogic extends AbstractRecipeLogic {
             return ((IMultipleRecipeMaps) metaTileEntity).getCurrentRecipeMap();
         return super.getRecipeMap();
     }
+
     private void clearNotificationLists() {
         invalidatedInputList.clear();
         metaTileEntity.getNotifiedFluidInputList().clear();
         metaTileEntity.getNotifiedItemInputList().clear();
     }
+
     protected List<IItemHandlerModifiable> getInputBuses() {
         RecipeMapSteamMultiblockController controller = (RecipeMapSteamMultiblockController) metaTileEntity;
-        List<IItemHandlerModifiable> inputItems = new ArrayList<>(
+        return new ArrayList<>(
                 controller.getAbilities(MultiblockAbility.IMPORT_ITEMS));
-        inputItems.addAll(controller.getAbilities(MultiblockAbility.DUAL_IMPORT));
-        return inputItems;
     }
+
+    protected boolean shouldUseIsolatedInputBuses() {
+        RecipeMapSteamMultiblockController controller = (RecipeMapSteamMultiblockController) metaTileEntity;
+        for (IItemHandlerModifiable bus : controller.getAbilities(MultiblockAbility.IMPORT_ITEMS)) {
+            if (bus instanceof IPatternBufferIsolatedHandler) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Recheck nonempty pattern buffers periodically when a missed notification leaves them invalidated. */
+    private boolean retryInvalidatedIsolatedInputs() {
+        if (metaTileEntity.getOffsetTimer() % BOUND_INPUT_RETRY_INTERVAL_TICKS != 0L) return false;
+        return invalidatedInputList.removeIf(input -> input instanceof IPatternBufferIsolatedHandler &&
+                hasBufferedInputs(input));
+    }
+
+    private static boolean hasBufferedInputs(IItemHandler input) {
+        for (int slot = 0; slot < input.getSlots(); slot++) {
+            if (!input.getStackInSlot(slot).isEmpty()) return true;
+        }
+        if (input instanceof IMultipleTankHandler tankHandler) {
+            for (int tank = 0; tank < tankHandler.getTanks(); tank++) {
+                if (tankHandler.getTankAt(tank).getFluidAmount() > 0) return true;
+            }
+        }
+        return false;
+    }
+
+    protected boolean shouldUseDistinctInputBuses() {
+        if (shouldUseIsolatedInputBuses()) return true;
+        return metaTileEntity instanceof IDistinctBusController distinctController &&
+                distinctController.canBeDistinct() && distinctController.isDistinct() &&
+                getInputInventory().getSlots() > 0;
+    }
+
     @Override
     protected boolean canProgressRecipe() {
         return super.canProgressRecipe() && !((IMultiblockController) metaTileEntity).isStructureObstructed();
     }
+
     public void onDistinctChanged() {
         this.lastRecipeIndex = 0;
     }
+
     public IFluidTank getSteamFluidTankCombined() {
         combineSteamTanks();
         return steamFluidTankCombined;
     }
+
+    /**
+     * 你确定这里不是屎山吗？
+     * @return
+     */
     @Override
     protected IMultipleTankHandler getInputTank() {
         RecipeMapSteamMultiblockController controller = (RecipeMapSteamMultiblockController) metaTileEntity;
-        return controller.getInputFluidInventory();
+        if (shouldUseDistinctInputBuses()) {
+            return controller.getInputFluidInventory();
+        }
+        //检查总成，如果有合并流体
+        List<IItemHandlerModifiable> itemHandlers = controller.getAbilities(MultiblockAbility.IMPORT_ITEMS);
+        List<IMultipleTankHandler> inputFluids = new ArrayList<>();
+        boolean allowMerge = controller.getInputFluidInventory().allowSameFluidFill();
+        inputFluids.add(controller.getInputFluidInventory());
+        // 遍历所有物品总线，检查是否是 DualHandler
+        for (IItemHandlerModifiable bus : itemHandlers) {
+            if (bus instanceof IPatternBufferIsolatedHandler) continue;
+            if (bus instanceof IMultipleTankHandler dualHandler) {
+                // 将 DualHandler 的流体槽添加到总列表中
+                inputFluids.add(dualHandler);
+            }
+        }
+        return GTQTUtility.mergeTankHandlers(inputFluids, allowMerge);
     }
 
     protected IMultipleTankHandler getInputTank(IItemHandler items) {
-        var tanks = new ArrayList<>(getInputTank().getFluidTanks());
+        if (items instanceof IPatternBufferIsolatedHandler) {
+            // Keep each pattern buffer self-contained; shared fluid hatches belong only to ordinary input buses.
+            if (items instanceof IMultipleTankHandler tankHandler) {
+                return tankHandler;
+            }
+            return new FluidTankList(false);
+        }
+        IMultipleTankHandler baseInputTank = getInputTank();
+        var tanks = new ArrayList<>(baseInputTank.getFluidTanks());
         if (items instanceof IMultipleTankHandler tankHandler) {
             tanks.addAll(tankHandler.getFluidTanks());
         }
-        return new FluidTankList(getInputTank().allowSameFluidFill(), tanks);
+        return new FluidTankList(baseInputTank.allowSameFluidFill(), tanks);
     }
+
     @Override
     protected IMultipleTankHandler getOutputTank() {
         RecipeMapSteamMultiblockController controller = (RecipeMapSteamMultiblockController) metaTileEntity;
-        return controller.getOutputFluidInventory();
+        //检查总成，如果有合并流体
+        List<IItemHandlerModifiable> itemHandlers = controller.getAbilities(MultiblockAbility.EXPORT_ITEMS);
+        List<IMultipleTankHandler> outputFluids = new ArrayList<>();
+        boolean allowMerge = controller.getOutputFluidInventory().allowSameFluidFill();
+        outputFluids.add(controller.getInputFluidInventory());
+        // 遍历所有物品总线，检查是否是 DualHandler
+        for (IItemHandlerModifiable bus : itemHandlers) {
+            if (bus instanceof IMultipleTankHandler dualHandler) {
+                // 将 DualHandler 的流体槽添加到总列表中
+                outputFluids.add(dualHandler);
+            }
+        }
+        return GTQTUtility.mergeTankHandlers(outputFluids, allowMerge);
     }
+
     @Override
     protected IItemHandlerModifiable getInputInventory() {
         RecipeMapSteamMultiblockController controller = (RecipeMapSteamMultiblockController) metaTileEntity;
@@ -425,6 +410,7 @@ public class SteamMultiblockRecipeLogic extends AbstractRecipeLogic {
             steamFluidTankCombined.fill(steamFluidTank.drain(capacity, false), true);
         }
     }
+
     protected IMultipleTankHandler getDistinctInputTank(IItemHandler items) {
         var tanks = new ArrayList<>(getInputTank().getFluidTanks());
         tanks.clear();
@@ -433,6 +419,7 @@ public class SteamMultiblockRecipeLogic extends AbstractRecipeLogic {
         }
         return new FluidTankList(getInputTank().allowSameFluidFill(), tanks);
     }
+
     @Override
     public void update() {
         // Fixes an annoying GTCE bug in AbstractRecipeLogic

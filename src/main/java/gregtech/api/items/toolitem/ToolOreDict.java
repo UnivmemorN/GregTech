@@ -20,10 +20,15 @@ public enum ToolOreDict {
     toolHammerDrill,
     toolScythe,
     toolKnife,
+    toolShears,
     toolButcheryKnife,
+    toolClub,
     toolDrill,
     toolChainsaw,
     toolBuzzsaw,
     toolFlintAndSteel,
+    toolPincers,
+    toolBendingCylinder,
+    toolBendingCylinderSmall,
     toolPlunger
 }

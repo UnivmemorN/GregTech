@@ -10,11 +10,15 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class MaterialFlags {
-
     private final Set<MaterialFlag> flags = new HashSet<>();
 
     public MaterialFlags addFlags(MaterialFlag... flags) {
         this.flags.addAll(Arrays.asList(flags));
+        return this;
+    }
+
+    public MaterialFlags removeFlags(MaterialFlag... flags) {
+        Arrays.asList(flags).forEach(this.flags::remove);
         return this;
     }
 
@@ -63,6 +67,11 @@ public class MaterialFlags {
     public static final MaterialFlag DISABLE_DECOMPOSITION = new MaterialFlag.Builder("disable_decomposition").build();
 
     /**
+     * Disables recycling for this material
+     */
+    public static final MaterialFlag NO_RECYCLING = new MaterialFlag.Builder("no_recycling").build();
+
+    /**
      * Add to material if it is some kind of explosive
      */
     public static final MaterialFlag EXPLOSIVE = new MaterialFlag.Builder("explosive").build();
@@ -81,6 +90,11 @@ public class MaterialFlags {
      * Add to material if it is some kind of glowing material
      */
     public static final MaterialFlag GLOWING = new MaterialFlag.Builder("glowing").build();
+
+    /**
+     * Add to material if it is some kind of solid material
+     */
+    public static final MaterialFlag GENERATE_PELLETS = new MaterialFlag.Builder("pellets").build();
 
     //////////////////
     // DUST //
@@ -101,9 +115,27 @@ public class MaterialFlags {
             .requireProps(PropertyKey.INGOT)
             .build();
 
+    public static final MaterialFlag GENERATE_CURVED_PLATE = new MaterialFlag.Builder("generate_curved_plate")
+            .requireFlags(GENERATE_PLATE)
+            .requireProps(PropertyKey.INGOT)
+            .build();
+
     public static final MaterialFlag GENERATE_DENSE = new MaterialFlag.Builder("generate_dense")
             .requireFlags(GENERATE_PLATE)
             .requireProps(PropertyKey.DUST)
+            .build();
+
+    public static final MaterialFlag GENERATE_SHEET = new MaterialFlag.Builder("generate_sheet")
+            .requireFlags(GENERATE_PLATE)
+            .requireProps(PropertyKey.INGOT)
+            .build();
+
+    public static final MaterialFlag DISABLE_REPLICATE = new MaterialFlag.Builder("disable_replicate")
+            .build();
+
+    // 生成三重 四重 五重
+    public static final MaterialFlag GENERATE_EXTRA = new MaterialFlag.Builder("generate_extra")
+            .requireProps(PropertyKey.INGOT)
             .build();
 
     public static final MaterialFlag GENERATE_ROD = new MaterialFlag.Builder("generate_rod")
@@ -157,9 +189,6 @@ public class MaterialFlags {
                     .requireProps(PropertyKey.DUST)
                     .build();
 
-
-
-
     public static final MaterialFlag MORTAR_GRINDABLE = new MaterialFlag.Builder("mortar_grindable")
             .requireProps(PropertyKey.DUST)
             .build();
@@ -185,21 +214,6 @@ public class MaterialFlags {
     public static final MaterialFlag NO_SMELTING = new MaterialFlag.Builder("no_smelting")
             .requireProps(PropertyKey.DUST)
             .build();
-
-    /**
-     * Add this to your Material if you want to have its Ore Calcite heated in a Blast Furnace for more output. Already
-     * listed are:
-     * Iron, Pyrite, PigIron, WroughtIron.
-     */
-    public static final MaterialFlag BLAST_FURNACE_CALCITE_DOUBLE = new MaterialFlag.Builder(
-            "blast_furnace_calcite_double")
-                    .requireProps(PropertyKey.DUST)
-                    .build();
-
-    public static final MaterialFlag BLAST_FURNACE_CALCITE_TRIPLE = new MaterialFlag.Builder(
-            "blast_furnace_calcite_triple")
-                    .requireProps(PropertyKey.DUST)
-                    .build();
 
     /////////////////
     // FLUID //
@@ -296,5 +310,20 @@ public class MaterialFlags {
      */
     public static final MaterialFlag DISABLE_ORE_BLOCK = new MaterialFlag.Builder("disable_ore_block")
             .requireProps(PropertyKey.ORE)
+            .build();
+
+    /**
+     * Use to disable alloy blast recipes from generating
+     */
+    public static final MaterialFlag NO_ALLOY_BLAST_RECIPES = new MaterialFlag.Builder("no_alloy_blast_recipes")
+            .requireProps(PropertyKey.BLAST, PropertyKey.FLUID)
+            .build();
+
+    /**
+     * Use to disable everything related to alloy blasting
+     */
+    public static final MaterialFlag DISABLE_ALLOY_PROPERTY = new MaterialFlag.Builder("disable_alloy_property")
+            .requireProps(PropertyKey.BLAST, PropertyKey.FLUID)
+            .requireFlags(NO_ALLOY_BLAST_RECIPES)
             .build();
 }

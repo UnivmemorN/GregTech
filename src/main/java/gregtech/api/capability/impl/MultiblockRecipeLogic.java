@@ -2,23 +2,45 @@ package gregtech.api.capability.impl;
 
 import gregtech.api.GTValues;
 import gregtech.api.capability.DualHandler;
+import gregtech.api.capability.IDistinctBusController;
 import gregtech.api.capability.IEnergyContainer;
 import gregtech.api.capability.IMultiblockController;
+import gregtech.api.capability.IMultipleNotifiableHandler;
 import gregtech.api.capability.IMultipleRecipeMaps;
 import gregtech.api.capability.IMultipleTankHandler;
+import gregtech.api.capability.IPatternBufferIsolatedHandler;
+import gregtech.api.capability.IRecipeMapBoundInput;
+import gregtech.api.capability.IRecipeMapHolder;
+import gregtech.api.items.metaitem.stats.UpgradeKitType;
+import gregtech.api.metatileentity.IUpgradeSlots;
+import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.metatileentity.multiblock.MultiblockAbility;
+import gregtech.api.metatileentity.multiblock.MultiblockControllerBase;
 import gregtech.api.metatileentity.multiblock.MultiblockWithDisplayBase;
+import gregtech.api.metatileentity.multiblock.ParallelLogicType;
 import gregtech.api.metatileentity.multiblock.RecipeMapMultiblockController;
 import gregtech.api.recipes.Recipe;
+import gregtech.api.recipes.RecipeIterator;
 import gregtech.api.recipes.RecipeMap;
+import gregtech.api.recipes.ingredients.GTRecipeInput;
+import gregtech.api.recipes.logic.CrossRecipeParallelScheduler;
 import gregtech.api.recipes.logic.OCParams;
 import gregtech.api.recipes.logic.OCResult;
+import gregtech.api.recipes.logic.ParallelLogic;
+import gregtech.api.recipes.logic.RecipeSlot;
 import gregtech.api.recipes.properties.RecipePropertyStorage;
+import gregtech.api.util.ColorUtil;
+import gregtech.api.util.GTLog;
+import gregtech.api.util.GTQTUtility;
 import gregtech.api.util.GTUtility;
 import gregtech.common.ConfigHolder;
 
+import net.minecraft.item.EnumDyeColor;
+import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.Tuple;
+import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.fluids.IFluidTank;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
 
@@ -29,19 +51,46 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static gregtech.api.recipes.logic.OverclockingLogic.subTickParallelOC;
 
 public class MultiblockRecipeLogic extends AbstractRecipeLogic {
 
-    protected final Set<IItemHandlerModifiable> invalidatedInputList = new HashSet<>();
+    private static final long BOUND_INPUT_FAILURE_LOG_INTERVAL_NANOS = 5_000_000_000L;
+    private static final long BOUND_INPUT_RETRY_INTERVAL_TICKS = 100L;
+    private static final long BOUND_CROSS_RECIPE_START_LOG_INTERVAL_NANOS = 30_000_000_000L;
+    private static final Map<String, Long> LAST_BOUND_INPUT_FAILURE_LOG_NANOS = new ConcurrentHashMap<>();
+    private static final Map<String, Long> LAST_BOUND_CROSS_RECIPE_START_LOG_NANOS = new ConcurrentHashMap<>();
+
     // Used for distinct mode
     protected int lastRecipeIndex = 0;
     protected IItemHandlerModifiable currentDistinctInputBus;
-    private boolean hasDualInputCache;
+    protected List<IItemHandlerModifiable> invalidatedInputList = new ArrayList<>();
+
+    /**
+     * 最近一次成功启动配方的颜色通道,用于跨通道轮转。{@link #NO_CHANNEL} 表示还没成功过。
+     * 通道集合每次重查时从控制器现状重算,染色变化无需额外失效处理。
+     */
+    protected static final int NO_CHANNEL = -1;
+    protected int lastColorChannel = NO_CHANNEL;
+
+    @Nullable
+    private RecipeMap<?> routedRecipeMap;
+    @Nullable
+    private RecipeMap<?> previousDistinctRecipeMap;
+
+    // Cross-recipe parallel scheduler (lazy initialized when ParallelLogicType.CROSS_RECIPE is active)
+    @Nullable
+    protected CrossRecipeParallelScheduler crossRecipeScheduler;
+    protected boolean crossRecipeSchedulerActive = false;
+
+    // Cached last successful recipe for "same recipe first" strategy
+    @Nullable
+    protected Recipe lastCrossRecipe;
 
     public MultiblockRecipeLogic(RecipeMapMultiblockController tileEntity) {
         super(tileEntity, tileEntity.recipeMap);
@@ -51,11 +100,826 @@ public class MultiblockRecipeLogic extends AbstractRecipeLogic {
         super(tileEntity, tileEntity.recipeMap, hasPerfectOC);
     }
 
+    /**
+     * General-purpose constructor for any MetaTileEntity that implements {@link IRecipeMapHolder}.
+     * This enables ParametricMultiblockController subclasses to use MultiblockRecipeLogic
+     * without inheriting from RecipeMapMultiblockController.
+     *
+     * @param tileEntity the MTE that also implements IRecipeMapHolder
+     * @param recipeMap  the recipe map to use
+     */
+    public <T extends MetaTileEntity & IRecipeMapHolder> MultiblockRecipeLogic(T tileEntity,
+                                                                                RecipeMap<?> recipeMap) {
+        super(tileEntity, recipeMap);
+    }
+
+    @Nullable
+    /**
+     * Returns the controller's currently selected recipe map before any per-input routing is applied.
+     * Controllers whose map is determined by runtime state may override this without changing the
+     * generic bound-input routing logic.
+     */
+    protected RecipeMap<?> getConfiguredRecipeMap() {
+        if (metaTileEntity instanceof IMultipleRecipeMaps) {
+            return ((IMultipleRecipeMaps) metaTileEntity).getCurrentRecipeMap();
+        }
+        return super.getRecipeMap();
+    }
+
+    @Nullable
+    protected RecipeMap<?> getRecipeMapForInput(IItemHandler input) {
+        if (!(input instanceof IRecipeMapBoundInput) || !(metaTileEntity instanceof IMultipleRecipeMaps)) {
+            return getConfiguredRecipeMap();
+        }
+        IMultipleRecipeMaps controller = (IMultipleRecipeMaps) metaTileEntity;
+        IRecipeMapBoundInput boundInput = (IRecipeMapBoundInput) input;
+        if (!controller.supportsRecipeMapPatternRouting()) {
+            // Standard multi-map controllers may execute bound inputs for their selected map, but cannot route
+            // them across modes unless they explicitly opt in to RecipeMap pattern routing.
+            RecipeMap<?> currentMap = getConfiguredRecipeMap();
+            String boundMapName = boundInput.getBoundRecipeMapName();
+            if (boundMapName == null ||
+                    (currentMap != null && boundMapName.equals(currentMap.getUnlocalizedName()))) {
+                return currentMap;
+            }
+            return null;
+        }
+
+        String mapName = boundInput.getBoundRecipeMapName();
+        if (mapName == null) return null;
+        for (RecipeMap<?> recipeMap : controller.getAvailableRecipeMaps()) {
+            if (recipeMap != null && mapName.equals(recipeMap.getUnlocalizedName())) return recipeMap;
+        }
+        return null;
+    }
+
+    @Nullable
+    protected Recipe findRecipe(@Nullable RecipeMap<?> recipeMap, long maxVoltage,
+                                IItemHandlerModifiable inputs, IMultipleTankHandler fluidInputs) {
+        if (recipeMap == null || !isRecipeMapValid(recipeMap)) return null;
+        return recipeMap.findRecipe(maxVoltage, inputs, fluidInputs);
+    }
+
     @Override
     public void update() {}
 
     public void updateWorkable() {
         super.update();
+    }
+
+    /**
+     * 控制并行是否将电力需求乘以并行数。
+     * {@link #overclockAndStartSlot}。
+     */
+    protected boolean shouldParallelMultiplyPower() {
+        return true;
+    }
+
+    // ==================== Cross-Recipe Parallel Scheduler Integration ====================
+
+    /**
+     * @return the cross-recipe parallel scheduler, creating it lazily if needed
+     */
+    @NotNull
+    protected CrossRecipeParallelScheduler getOrCreateScheduler() {
+        if (crossRecipeScheduler == null) {
+            crossRecipeScheduler = new CrossRecipeParallelScheduler(getParallelLimit());
+        }
+        crossRecipeScheduler.setMaxVoltage(getMaximumOverclockVoltage());
+        crossRecipeScheduler.setTotalPowerBudget(getTotalPowerBudget());
+
+        // The thread limit caps how many slots may run at once, and the parallel limit caps each slot.
+        // Cross-recipe parallel drops both caps and lets the slots share one elastic budget instead.
+        int threads = Math.max(1, getThreadLimit());
+        int parallel = Math.max(1, getParallelLimit());
+        boolean crossRecipe = isCrossRecipeParallelEnabled();
+        boolean threaded = !crossRecipe && threads > 1;
+
+        // Widening to long first: MultiblockFuelRecipeLogic reports Integer.MAX_VALUE as its parallel limit.
+        long totalParallel = (long) parallel * threads;
+        crossRecipeScheduler.setParallelLimit(threaded ?
+                (int) Math.min(Integer.MAX_VALUE, totalParallel) : parallel);
+        crossRecipeScheduler.setMaxSlots(crossRecipe ? 0 : threads);
+        crossRecipeScheduler.setPerSlotParallelCap(threaded ? parallel : 0);
+        return crossRecipeScheduler;
+    }
+
+    /**
+     * Calculates the total power budget by directly summing each energy container's
+     * voltage × amperage without any tier compression.
+     * This gives the raw maximum EU/t throughput for parallel/power limiting.
+     *
+     * @return the total power budget in EU/t
+     */
+    protected long getTotalPowerBudget() {
+        IEnergyContainer energyContainer = getEnergyContainer();
+        if (energyContainer instanceof EnergyContainerList) {
+            // Directly sum V×A from the EnergyContainerList's computed values
+            long voltage;
+            long amperage;
+            if (energyContainer.getInputVoltage() > energyContainer.getOutputVoltage()) {
+                voltage = energyContainer.getInputVoltage();
+                amperage = energyContainer.getInputAmperage();
+            } else {
+                voltage = energyContainer.getOutputVoltage();
+                amperage = energyContainer.getOutputAmperage();
+            }
+            return voltage * amperage;
+        }
+        // Single energy container: voltage × amperage
+        long voltage = Math.max(energyContainer.getInputVoltage(), energyContainer.getOutputVoltage());
+        long amperage = Math.max(energyContainer.getInputAmperage(), energyContainer.getOutputAmperage());
+        return voltage * Math.max(1, amperage);
+    }
+
+    /**
+     * Whether the parallel scheduler drives this machine's progress instead of the plain single-recipe path.
+     * True whenever there is more than one operation in flight: several parallel copies (parallel limit > 1),
+     * several recipes at once (thread limit > 1), or an unbounded mix of recipes (cross-recipe parallel).
+     *
+     * @return true if progress and energy are managed by the scheduler
+     */
+    public boolean usesParallelScheduler() {
+        return getParallelLimit() > 1 || getThreadLimit() > 1 || isCrossRecipeParallelEnabled();
+    }
+
+    @Nullable
+    public CrossRecipeParallelScheduler getCrossRecipeScheduler() {
+        return crossRecipeScheduler;
+    }
+
+    @Override
+    protected void updateRecipeProgress() {
+        if (!usesParallelScheduler()) {
+            super.updateRecipeProgress();
+            return;
+        }
+
+        // In CROSS_RECIPE mode, the scheduler manages all progress and energy
+        CrossRecipeParallelScheduler scheduler = getOrCreateScheduler();
+
+        int completedParallel = scheduler.tickSlots(
+                getOutputInventory(),
+                getOutputTank(),
+                (amount, simulate) -> drawEnergy(amount, simulate),
+                metaTileEntity.canVoidRecipeItemOutputs(),
+                metaTileEntity.canVoidRecipeFluidOutputs()
+        );
+        if (completedParallel > 0) {
+            onCrossRecipeSlotsCompleted(completedParallel);
+        }
+
+        if (scheduler.isHasNotEnoughEnergy()) {
+            this.hasNotEnoughEnergy = true;
+        } else {
+            this.hasNotEnoughEnergy = false;
+        }
+
+        // If scheduler can accept more recipes (has remaining parallel budget), try to fill
+        if (scheduler.canAcceptMoreRecipes()) {
+            refillScheduler(scheduler);
+        }
+
+        // Update the parent's recipeEUt to reflect current total consumption (for display purposes)
+        this.recipeEUt = scheduler.getTotalEnergyConsumption();
+        this.parallelRecipesPerformed = scheduler.getTotalParallelCount();
+
+        // Update active state based on whether any slots are still running
+        if (!scheduler.hasActiveSlots()) {
+            crossRecipeSchedulerActive = false;
+            this.progressTime = 0;
+            setMaxProgress(0);
+            this.recipeEUt = 0;
+            this.parallelRecipesPerformed = 0;
+            this.wasActiveAndNeedsUpdate = true;
+        } else {
+            crossRecipeSchedulerActive = true;
+            // Keep progressTime > 0 so the main loop continues calling updateRecipeProgress()
+            this.progressTime = 1;
+        }
+    }
+
+    /**
+     * Dispatches scheduler slot filling to the appropriate method based on whether Distinct mode is active.
+     *
+     * <p><b>Note:</b> This method is called every tick when slots have remaining budget, including
+     * immediately after a slot completes. If slots were created with a 1-tick offset (e.g., the primary
+     * slot in Phase 1 and a remainder slot in Phase 2 or a subsequent refill), they will complete on
+     * different ticks. When the larger slot completes first, the still-running smaller slot(s) consume
+     * part of the parallel and power budgets, causing the newly created slot to receive fewer parallels.
+     * This leads to gradual slot fragmentation over time. See {@link CrossRecipeParallelScheduler} class
+     * Javadoc for full details on this known limitation.
+     */
+    protected void refillScheduler(@NotNull CrossRecipeParallelScheduler scheduler) {
+        if (shouldUseDistinctInputBuses()) {
+            fillSchedulerSlotsDistinct(scheduler);
+        } else {
+            fillSchedulerSlots(scheduler);
+        }
+    }
+
+    /**
+     * Fills scheduler with recipes from distinct buses using two-phase allocation.
+     * Phase 1: Allocate parallel for each bus's recipe using base-EUt power budget.
+     * Phase 2: Distribute surplus power proportionally and overclock all slots.
+     */
+    protected void fillSchedulerSlotsDistinct(@NotNull CrossRecipeParallelScheduler scheduler) {
+        List<IItemHandlerModifiable> importInventory = getInputBuses();
+
+        long totalPowerBudget = scheduler.getRemainingPowerBudget();
+        long remainingBasePower = totalPowerBudget;
+        int remainingParallel = scheduler.getRemainingParallelBudget();
+        List<SlotAllocation> allocations = new ArrayList<>();
+
+        // Phase 1: Allocate parallel for all matching recipes (no overclock, no input consumption)
+        // One slot per recipe: without this the bus order alone decides which slots are opened, and two
+        // buses holding the same recipe would each claim a slot.
+        Set<Recipe> usedRecipes = new HashSet<>();
+        for (int i = 0; i < importInventory.size(); i++) {
+            if (remainingParallel <= 0 || remainingBasePower <= 0) break;
+
+            IItemHandlerModifiable bus = importInventory.get(i);
+            IMultipleTankHandler busFluidTank = getInputTank(bus);
+
+            RecipeMap<?> recipeMap = getRecipeMapForInput(bus);
+            routedRecipeMap = recipeMap;
+            Recipe recipe = findRecipe(recipeMap, remainingBasePower, bus, busFluidTank);
+            if (recipe == null || !checkRecipe(recipe) || !usedRecipes.add(recipe)) {
+                routedRecipeMap = null;
+                continue;
+            }
+
+            RecipeSlot slot = scheduler.acquireSlot();
+            if (slot == null) {
+                routedRecipeMap = null;
+                break;
+            }
+            SlotAllocation alloc = allocateSlotParallel(slot, recipe, recipeMap, bus, busFluidTank,
+                    remainingBasePower, remainingParallel, scheduler.getPerSlotParallelCap());
+            if (alloc != null) {
+                allocations.add(alloc);
+                remainingBasePower -= alloc.basePowerDemand;
+                remainingParallel -= alloc.inputParallel;
+                lastCrossRecipe = recipe;
+            } else {
+                scheduler.releaseSlot(slot);
+            }
+            routedRecipeMap = null;
+        }
+
+        // Phase 2: Distribute surplus power proportionally and overclock all slots
+        distributeAndOverclock(allocations, totalPowerBudget, scheduler);
+    }
+
+    /**
+     * Fills scheduler with recipes from the combined input inventory using two-phase allocation.
+     * <p>
+     * Phase 1 (Parallel Allocation): Find all matching recipes and allocate parallel counts
+     * using only base-EUt power budget (no overclock inflation).
+     * <ol>
+     *   <li>Phase 1a (fast path): Try cached recipe first</li>
+     *   <li>Phase 1b (iterator): Use RecipeIterator to find all distinct matchable recipes</li>
+     * </ol>
+     * <p>
+     * Phase 2 (Overclock + Start): Distribute surplus power proportionally among all allocated
+     * slots based on their base power demand, then overclock and start each slot.
+     *
+     * @param scheduler the scheduler instance
+     * @return number of slots successfully created
+     */
+    protected int fillSchedulerSlots(@NotNull CrossRecipeParallelScheduler scheduler) {
+        RecipeMap<?> recipeMap = getRecipeMap();
+        if (recipeMap == null) return 0;
+
+        IItemHandlerModifiable importInventory = getInputInventory();
+        IMultipleTankHandler importFluids = getInputTank();
+
+        long totalPowerBudget = scheduler.getRemainingPowerBudget();
+        long remainingBasePower = totalPowerBudget;
+        int remainingParallel = scheduler.getRemainingParallelBudget();
+        List<SlotAllocation> allocations = new ArrayList<>();
+
+        // Phase 1a: Try cached recipe first (fast path, avoids full recipe search)
+        if (lastCrossRecipe != null && remainingParallel > 0 && remainingBasePower > 0) {
+            if (lastCrossRecipe.matches(false, importInventory, importFluids)) {
+                RecipeSlot slot = scheduler.acquireSlot();
+                if (slot != null) {
+                    SlotAllocation alloc = allocateSlotParallel(slot, lastCrossRecipe, recipeMap,
+                            importInventory, importFluids, remainingBasePower, remainingParallel,
+                            scheduler.getPerSlotParallelCap());
+                    if (alloc != null) {
+                        allocations.add(alloc);
+                        remainingBasePower -= alloc.basePowerDemand;
+                        remainingParallel -= alloc.inputParallel;
+                    } else {
+                        scheduler.releaseSlot(slot);
+                    }
+                }
+            }
+        }
+
+        // Phase 1b: Use RecipeIterator to find all distinct recipes in one pass
+        if (remainingParallel > 0 && remainingBasePower > 0) {
+            List<ItemStack> items = GTUtility.itemHandlerToList(importInventory);
+            List<FluidStack> fluids = GTUtility.fluidHandlerToList(importFluids);
+            List<ItemStack> filteredItems = items.stream()
+                    .filter(s -> !s.isEmpty()).collect(java.util.stream.Collectors.toList());
+            List<FluidStack> filteredFluids = fluids.stream()
+                    .filter(f -> f != null && f.amount != 0).collect(java.util.stream.Collectors.toList());
+
+            final long powerBudgetSnapshot = remainingBasePower;
+            RecipeIterator iterator = recipeMap.findRecipeIterator(filteredItems, filteredFluids,
+                    recipe -> recipe.getEUt() <= powerBudgetSnapshot &&
+                            recipe.matches(false, importInventory, importFluids));
+
+            if (iterator != null) {
+                // Exclude the cached recipe since Phase 1a already handled it
+                if (lastCrossRecipe != null) {
+                    iterator.exclude(lastCrossRecipe);
+                }
+
+                while (iterator.hasNext() && remainingParallel > 0 && remainingBasePower > 0) {
+                    Recipe recipe = iterator.next();
+                    if (recipe == null || !checkRecipe(recipe)) continue;
+
+                    RecipeSlot slot = scheduler.acquireSlot();
+                    if (slot == null) break;
+
+                    SlotAllocation alloc = allocateSlotParallel(slot, recipe, recipeMap,
+                            importInventory, importFluids, remainingBasePower, remainingParallel,
+                            scheduler.getPerSlotParallelCap());
+                    if (alloc != null) {
+                        allocations.add(alloc);
+                        remainingBasePower -= alloc.basePowerDemand;
+                        remainingParallel -= alloc.inputParallel;
+                        lastCrossRecipe = recipe;
+                        iterator.exclude(recipe);
+                    } else {
+                        scheduler.releaseSlot(slot);
+                        iterator.exclude(recipe);
+                    }
+                }
+            }
+        }
+
+        // Phase 2: Distribute surplus power proportionally and overclock all slots
+        return distributeAndOverclock(allocations, totalPowerBudget, scheduler);
+    }
+
+    // ==================== Two-Phase Slot Setup (Parallel-first, then Overclock) ====================
+
+    /**
+     * Intermediate data holder for the two-phase slot setup.
+     * Phase 1 ({@link #allocateSlotParallel}) populates this with the parallel allocation result.
+     * Phase 2 ({@link #overclockAndStartSlot}) uses this to perform overclocking, consume inputs,
+     * and start the slot.
+     */
+    protected static class SlotAllocation {
+
+        final RecipeSlot slot;
+        final Recipe trimmed;
+        final RecipeMap<?> recipeMap;
+        final IItemHandlerModifiable importInventory;
+        final IMultipleTankHandler importFluids;
+
+        // Phase 1 results
+        final long baseEUt;
+        final int baseDuration;
+        int inputParallel;
+
+        /** Base power demand = baseEUt × inputParallel (before overclock). */
+        long basePowerDemand;
+
+        SlotAllocation(@NotNull RecipeSlot slot, @NotNull Recipe trimmed, @NotNull RecipeMap<?> recipeMap,
+                       @NotNull IItemHandlerModifiable importInventory, @NotNull IMultipleTankHandler importFluids,
+                       long baseEUt, int baseDuration, int inputParallel) {
+            this.slot = slot;
+            this.trimmed = trimmed;
+            this.recipeMap = recipeMap;
+            this.importInventory = importInventory;
+            this.importFluids = importFluids;
+            this.baseEUt = baseEUt;
+            this.baseDuration = baseDuration;
+            this.inputParallel = inputParallel;
+            this.basePowerDemand = baseEUt * inputParallel;
+        }
+    }
+
+    /**
+     * Phase 1: Allocates parallel count for a recipe without performing overclocking or consuming inputs.
+     * The parallel is limited by available inputs, output space, and the base-EUt power budget
+     * (remainingBasePower / baseEUt), ensuring no overclock inflation affects other slots' budgets.
+     *
+     * @param slot                the slot to allocate for
+     * @param recipe              the recipe to use
+     * @param recipeMap           the recipe map
+     * @param importInventory     the input inventory
+     * @param importFluids        the input fluid tanks
+     * @param remainingBasePower  the remaining *base* power budget (sum of un-overclocked baseEUt × parallel)
+     * @param maxParallelBudget   the remaining parallel budget from the scheduler
+     * @return a SlotAllocation if successful, or null if the recipe cannot be allocated
+     */
+    @Nullable
+    protected SlotAllocation allocateSlotParallel(@NotNull RecipeSlot slot,
+                                                  @NotNull Recipe recipe,
+                                                  @NotNull RecipeMap<?> recipeMap,
+                                                  @NotNull IItemHandlerModifiable importInventory,
+                                                  @NotNull IMultipleTankHandler importFluids,
+                                                  long remainingBasePower,
+                                                  int maxParallelBudget,
+                                                  int perSlotParallelCap) {
+        // Trim recipe outputs
+        Recipe trimmed = Recipe.trimRecipeOutputs(recipe, recipeMap, metaTileEntity.getItemOutputLimit(),
+                metaTileEntity.getFluidOutputLimit());
+
+        long baseEUt = trimmed.getEUt();
+        int baseDuration = trimmed.getDuration();
+
+        // Power check: remaining base power must be enough for at least 1 recipe
+        if (remainingBasePower < baseEUt) return null;
+
+        // Parallel is limited by: min(parallelBudget, remainingBasePower / baseEUt)
+        // When shouldParallelMultiplyPower() is false, power does not constrain parallel
+        int maxInputParallel;
+        if (shouldParallelMultiplyPower()) {
+            maxInputParallel = (int) Math.min(maxParallelBudget, remainingBasePower / Math.max(1, baseEUt));
+        } else {
+            maxInputParallel = maxParallelBudget;
+        }
+        // Applied after the branch above, because that branch hands back maxParallelBudget untouched and
+        // would otherwise let one recipe claim the whole parallel budget for its slot.
+        if (perSlotParallelCap > 0) {
+            maxInputParallel = Math.min(maxInputParallel, perSlotParallelCap);
+        }
+        maxInputParallel = Math.max(1, maxInputParallel);
+
+        int inputParallel = ParallelLogic.getMaxRecipeMultiplier(
+                trimmed, importInventory, importFluids, maxInputParallel);
+        if (inputParallel == 0) return null;
+
+        // Limit by output space
+        int outputParallel = ParallelLogic.limitByOutputMerging(trimmed, getOutputInventory(), getOutputTank(),
+                inputParallel,
+                metaTileEntity.canVoidRecipeItemOutputs(),
+                metaTileEntity.canVoidRecipeFluidOutputs());
+        if (outputParallel == 0) {
+            this.isOutputsFull = true;
+            return null;
+        }
+        inputParallel = outputParallel;
+
+        SlotAllocation alloc = new SlotAllocation(slot, trimmed, recipeMap, importInventory, importFluids,
+                baseEUt, baseDuration, inputParallel);
+        // When power doesn't multiply with parallel, reserve only single-recipe EU/t
+        if (!shouldParallelMultiplyPower()) {
+            alloc.basePowerDemand = baseEUt;
+        }
+        return alloc;
+    }
+
+    /**
+     * Phase 2: Performs overclocking, consumes inputs, and starts the slot.
+     * Called after all slots have been allocated in Phase 1, so each slot receives a fair
+     * share of the overclock power budget.
+     *
+     * @param alloc          the allocation from Phase 1
+     * @param ocPowerBudget  the power budget for this slot's overclocking (base demand + proportional share of surplus)
+     * @return true if the slot was successfully started
+     */
+    protected boolean overclockAndStartSlot(@NotNull SlotAllocation alloc, long ocPowerBudget) {
+        Recipe trimmed = alloc.trimmed;
+        long baseEUt = alloc.baseEUt;
+        int baseDuration = alloc.baseDuration;
+        int inputParallel = alloc.inputParallel;
+
+        // --- Overclock ---
+        // OC tier count is based on single-recipe baseEUt vs getMaximumOverclockVoltage()
+        // OC execution is bounded by the allocated power budget for this slot
+        // When shouldParallelMultiplyPower() is false, OC starts from single-recipe EU/t
+        // and uses the machine's real max voltage instead of the inflated power budget
+        long totalBaseEUt = shouldParallelMultiplyPower() ? baseEUt * inputParallel : baseEUt;
+        OCParams params = new OCParams();
+        OCResult result = new OCResult();
+        params.initialize(totalBaseEUt, baseDuration, getNumberOfOCs(baseEUt));
+        modifyOverclockPre(params, trimmed.propertyStorage());
+
+        if (params.ocAmount() <= 0) {
+            result.init(params.eut(), params.duration());
+        } else {
+            runOverclockingLogic(params, result, trimmed.propertyStorage(),
+                    shouldParallelMultiplyPower() ? ocPowerBudget : getMaximumOverclockVoltage());
+        }
+        modifyOverclockPost(result, trimmed.propertyStorage());
+
+        long overclockedEUt = result.eut();
+        int overclockedDuration = result.duration();
+        int subTickParallel = Math.max(1, result.parallel());
+
+        // --- Calculate parallel and total operations ---
+        // A sub-tick OC can repeat a complete input-parallel group, but it must not turn a partial
+        // pattern-buffer request into a larger consumption request. The ordinary recipe path first builds the
+        // input-parallel recipe and then repeats that whole recipe for sub-tick OC; mirror that grouping here.
+        long plannedTotalOperations = (long) inputParallel * subTickParallel;
+
+        long plannedSlotEUt = result.parallelEUt() > 0 ? result.parallelEUt() : overclockedEUt;
+
+        // Clamp totalSlotEUt to the allocated power budget (only when power multiplies with parallel)
+        if (shouldParallelMultiplyPower() && plannedSlotEUt > ocPowerBudget) {
+            long perParallelEUt = Math.max(1, plannedSlotEUt / inputParallel);
+            inputParallel = (int) (ocPowerBudget / Math.max(1, perParallelEUt));
+            if (inputParallel <= 0) return false;
+            plannedSlotEUt = perParallelEUt * inputParallel;
+            plannedTotalOperations = (long) inputParallel * subTickParallel;
+        }
+
+        int maximumPlannedOperations = saturatingOperationCount(plannedTotalOperations);
+        int availableOperations = ParallelLogic.getMaxRecipeMultiplier(trimmed, alloc.importInventory,
+                alloc.importFluids, maximumPlannedOperations);
+        int subTickGroups = Math.min(subTickParallel, availableOperations / inputParallel);
+        if (subTickGroups <= 0) {
+            return false;
+        }
+
+        int outputOperations = ParallelLogic.limitByOutputMerging(trimmed, getOutputInventory(), getOutputTank(),
+                saturatingOperationCount((long) inputParallel * subTickGroups),
+                metaTileEntity.canVoidRecipeItemOutputs(), metaTileEntity.canVoidRecipeFluidOutputs());
+        subTickGroups = Math.min(subTickGroups, outputOperations / inputParallel);
+        if (subTickGroups <= 0) {
+            this.isOutputsFull = true;
+            return false;
+        }
+
+        int totalParallelBasis = saturatingOperationCount((long) inputParallel * subTickGroups);
+        int finalParallel = inputParallel;
+        // result.eut() is the EU/t of one complete input-parallel group. Batch processing extends duration,
+        // while sub-tick groups run in the same tick and therefore add their EU/t.
+        long totalSlotEUt = saturatingMultiply(overclockedEUt, subTickGroups);
+
+        // --- Batch processing ---
+        int batchMultiplier = 1;
+        if (isBatchEnable() && overclockedDuration <= 64 && overclockedDuration > 0) {
+            int maxBatch = (int) Math.floor(128.0 / overclockedDuration);
+            int bestBatch = 1;
+            int lo = 1, hi = maxBatch;
+            while (lo <= hi) {
+                int mid = lo + (hi - lo) / 2;
+                int neededParallel = (int) Math.min(Integer.MAX_VALUE, totalParallelBasis * mid);
+                int available = ParallelLogic.getMaxRecipeMultiplier(
+                        trimmed, alloc.importInventory, alloc.importFluids, neededParallel);
+                int outputCapacity = ParallelLogic.limitByOutputMerging(trimmed, getOutputInventory(), getOutputTank(),
+                        neededParallel, metaTileEntity.canVoidRecipeItemOutputs(),
+                        metaTileEntity.canVoidRecipeFluidOutputs());
+                if (available >= neededParallel && outputCapacity >= neededParallel) {
+                    bestBatch = mid;
+                    lo = mid + 1;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+            if (bestBatch > 1) {
+                batchMultiplier = bestBatch;
+            }
+        }
+
+        int totalOperations = (int) Math.min(Integer.MAX_VALUE, totalParallelBasis * batchMultiplier);
+        int finalDuration = overclockedDuration * batchMultiplier;
+
+        // A cross-recipe slot normally draws energy on its next tick. Check the total demand now so inputs are not
+        // consumed for a slot that would immediately stall when the shared energy source is empty.
+        if (!canStartCrossRecipeSlot(totalSlotEUt)) {
+            return false;
+        }
+
+        // --- Consume inputs ---
+        if (!consumeRecipeInputs(trimmed, alloc.importInventory, alloc.importFluids, totalOperations)) {
+            return false;
+        }
+        this.metaTileEntity.addNotifiedInput(alloc.importInventory);
+        this.isOutputsFull = false;
+
+        // --- Calculate outputs ---
+        int recipeTier = GTUtility.getTierByVoltage(baseEUt);
+        int machineTier = getOverclockForTier(getMaximumOverclockVoltage());
+        List<ItemStack> itemOutputs = GTUtility.copyStackList(
+                trimmed.getResultItemOutputs(recipeTier, machineTier, alloc.recipeMap));
+        List<FluidStack> fluidOutputs = GTUtility.copyFluidList(
+                trimmed.getResultFluidOutputs(recipeTier, machineTier, alloc.recipeMap));
+
+        if (totalOperations > 1) {
+            multiplyOutputs(itemOutputs, fluidOutputs, totalOperations);
+        }
+
+        // --- Start the slot ---
+        String recipeDisplayName = getRecipeDisplayName(trimmed, alloc.recipeMap, itemOutputs, fluidOutputs);
+        alloc.slot.startRecipe(trimmed, finalDuration, totalSlotEUt, itemOutputs, fluidOutputs, finalParallel,
+                totalOperations, recipeDisplayName, alloc.basePowerDemand);
+        logBoundCrossRecipeSlotStarted(alloc, totalOperations, finalDuration, totalSlotEUt, recipeDisplayName);
+        return true;
+    }
+
+    private static int saturatingOperationCount(long operations) {
+        if (operations <= 0) return 0;
+        return operations > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) operations;
+    }
+
+    private static long saturatingMultiply(long value, int multiplier) {
+        if (value == 0 || multiplier == 0) return 0;
+        if (value > 0 && value > Long.MAX_VALUE / multiplier) return Long.MAX_VALUE;
+        if (value < 0 && value < Long.MIN_VALUE / multiplier) return Long.MIN_VALUE;
+        return value * multiplier;
+    }
+
+    /**
+     * Verifies that the shared energy source can support the existing running slots and this candidate slot together.
+     * The check intentionally mirrors the aggregate draw performed by {@link CrossRecipeParallelScheduler#tickSlots}
+     * on the next tick.
+     */
+    protected boolean canStartCrossRecipeSlot(long candidateEUt) {
+        if (candidateEUt <= 0) {
+            return true;
+        }
+
+        long runningEUt = crossRecipeScheduler == null ? 0L : crossRecipeScheduler.getTotalEnergyConsumption();
+        long totalEUt = saturatingAdd(runningEUt, candidateEUt);
+        if (drawEnergy(totalEUt, true)) {
+            this.hasNotEnoughEnergy = false;
+            return true;
+        }
+
+        this.hasNotEnoughEnergy = true;
+        return false;
+    }
+
+    private static long saturatingAdd(long left, long right) {
+        if (right > 0 && left > Long.MAX_VALUE - right) return Long.MAX_VALUE;
+        if (right < 0 && left < Long.MIN_VALUE - right) return Long.MIN_VALUE;
+        return left + right;
+    }
+
+    /**
+     * Distributes the surplus power budget proportionally among allocated slots based on
+     * each slot's base power demand, then performs overclocking and starts each slot.
+     *
+     * @param allocations     the list of slot allocations from Phase 1
+     * @param totalPowerBudget the total power budget available for all slots
+     * @param scheduler       the scheduler (for releasing failed slots)
+     * @return the number of slots successfully started
+     */
+    protected int distributeAndOverclock(@NotNull List<SlotAllocation> allocations,
+                                         long totalPowerBudget,
+                                         @NotNull CrossRecipeParallelScheduler scheduler) {
+        if (allocations.isEmpty()) return 0;
+
+        // Calculate total base power demand across all allocations
+        long totalBaseDemand = 0;
+        for (SlotAllocation alloc : allocations) {
+            totalBaseDemand += alloc.basePowerDemand;
+        }
+
+        // Surplus power available for overclocking (beyond base demands)
+        long surplusPower = Math.max(0, totalPowerBudget - totalBaseDemand);
+
+        int started = 0;
+        for (SlotAllocation alloc : allocations) {
+            // Each slot gets its base demand + proportional share of surplus
+            long ocBudget;
+            if (totalBaseDemand > 0) {
+                ocBudget = alloc.basePowerDemand +
+                        (long) ((double) surplusPower * alloc.basePowerDemand / totalBaseDemand);
+            } else {
+                ocBudget = totalPowerBudget / allocations.size();
+            }
+            // Ensure at least base demand
+            ocBudget = Math.max(ocBudget, alloc.basePowerDemand);
+
+            if (overclockAndStartSlot(alloc, ocBudget)) {
+                started++;
+            } else {
+                // Overclock/start failed, release the slot back to pool
+                scheduler.releaseSlot(alloc.slot);
+            }
+        }
+        return started;
+    }
+
+    /**
+     * Multiplies recipe outputs by the given parallel count.
+     */
+    protected void multiplyOutputs(@NotNull List<ItemStack> itemOutputs,
+                                   @NotNull List<FluidStack> fluidOutputs,
+                                   int parallelCount) {
+        for (ItemStack stack : itemOutputs) {
+            stack.setCount(stack.getCount() * parallelCount);
+        }
+        for (FluidStack fluid : fluidOutputs) {
+            fluid.amount *= parallelCount;
+        }
+    }
+
+    @NotNull
+    protected String getRecipeDisplayName(@NotNull Recipe recipe,
+                                          @NotNull RecipeMap<?> recipeMap,
+                                          @NotNull List<ItemStack> itemOutputs,
+                                          @NotNull List<FluidStack> fluidOutputs) {
+        for (ItemStack stack : itemOutputs) {
+            if (!stack.isEmpty()) {
+                return stack.getDisplayName();
+            }
+        }
+        for (FluidStack fluid : fluidOutputs) {
+            if (fluid != null && fluid.amount > 0) {
+                return fluid.getLocalizedName();
+            }
+        }
+        for (GTRecipeInput input : recipe.getInputs()) {
+            for (ItemStack stack : input.getInputStacks()) {
+                if (!stack.isEmpty()) {
+                    return stack.getDisplayName();
+                }
+            }
+        }
+        for (GTRecipeInput input : recipe.getFluidInputs()) {
+            FluidStack fluid = input.getInputFluidStack();
+            if (fluid != null && fluid.amount > 0) {
+                return fluid.getLocalizedName();
+            }
+        }
+        return recipeMap.getLocalizedName();
+    }
+
+    /**
+     * Consumes recipe inputs multiplied by parallelCount from the given inventories.
+     * Uses the recipe's ingredient matching to identify which slots to consume from,
+     * then consumes parallelCount × the recipe's required amount.
+     *
+     * @param recipe          the recipe whose inputs to consume
+     * @param importInventory the item input inventory
+     * @param importFluids    the fluid input tanks
+     * @param parallelCount   the number of times to consume the recipe's inputs
+     * @return true if all inputs were successfully consumed
+     */
+    protected boolean consumeRecipeInputs(@NotNull Recipe recipe,
+                                          @NotNull IItemHandlerModifiable importInventory,
+                                          @NotNull IMultipleTankHandler importFluids,
+                                          int parallelCount) {
+        if (parallelCount <= 0) return false;
+
+        // For single parallel, just use the standard matches(true) which handles consumption
+        if (parallelCount == 1) {
+            return recipe.matches(true, importInventory, importFluids);
+        }
+
+        // Verify the complete operation count before the first real extraction. The former single-recipe check
+        // allowed a sub-tick OC to consume a partial pattern-buffer batch and then fail after the buffer was empty.
+        if (ParallelLogic.getMaxRecipeMultiplier(recipe, importInventory, importFluids, parallelCount) < parallelCount ||
+                !recipe.matches(false, importInventory, importFluids)) {
+            return false;
+        }
+
+        // Consume item inputs: parallelCount × each input's amount
+        for (GTRecipeInput recipeInput : recipe.getInputs()) {
+            if (recipeInput.isNonConsumable()) {
+                continue;
+            }
+            int totalRequired = recipeInput.getAmount() * parallelCount;
+            int remaining = totalRequired;
+
+            for (int i = 0; i < importInventory.getSlots() && remaining > 0; i++) {
+                ItemStack stackInSlot = importInventory.getStackInSlot(i);
+                if (stackInSlot.isEmpty()) continue;
+                if (!recipeInput.acceptsStack(stackInSlot)) continue;
+
+                int toExtract = Math.min(remaining, stackInSlot.getCount());
+                importInventory.extractItem(i, toExtract, false);
+                remaining -= toExtract;
+            }
+
+            if (remaining > 0) return false; // Should not happen since getMaxRecipeMultiplier passed
+        }
+
+        // Consume fluid inputs: parallelCount × each fluid input's amount
+        for (GTRecipeInput recipeFluidInput : recipe.getFluidInputs()) {
+            if (recipeFluidInput.isNonConsumable()) {
+                continue;
+            }
+            int totalRequired = recipeFluidInput.getAmount() * parallelCount;
+            int remaining = totalRequired;
+
+            for (IMultipleTankHandler.ITankEntry tank : importFluids.getFluidTanks()) {
+                if (remaining <= 0) break;
+                FluidStack fluidInTank = tank.getFluid();
+                if (fluidInTank == null) continue;
+                if (!recipeFluidInput.acceptsFluid(fluidInTank)) continue;
+
+                int toDrain = Math.min(remaining, fluidInTank.amount);
+                tank.drain(toDrain, true);
+                remaining -= toDrain;
+            }
+
+            if (remaining > 0) return false; // Should not happen since getMaxRecipeMultiplier passed
+        }
+
+        return true;
     }
 
     @Override
@@ -71,6 +935,13 @@ public class MultiblockRecipeLogic extends AbstractRecipeLogic {
         super.invalidate();
         lastRecipeIndex = 0;
         invalidatedInputList.clear();
+        if (crossRecipeScheduler != null) {
+            crossRecipeScheduler.invalidateAll();
+            crossRecipeSchedulerActive = false;
+        }
+        lastCrossRecipe = null;
+        routedRecipeMap = null;
+        previousDistinctRecipeMap = null;
     }
 
     public void onDistinctChanged() {
@@ -78,36 +949,121 @@ public class MultiblockRecipeLogic extends AbstractRecipeLogic {
     }
 
     public IEnergyContainer getEnergyContainer() {
-        RecipeMapMultiblockController controller = (RecipeMapMultiblockController) metaTileEntity;
-        return controller.getEnergyContainer();
+        IRecipeMapHolder holder = (IRecipeMapHolder) metaTileEntity;
+        return holder.getEnergyContainer();
     }
 
     @Override
     protected IItemHandlerModifiable getInputInventory() {
-        RecipeMapMultiblockController controller = (RecipeMapMultiblockController) metaTileEntity;
-        return controller.getInputInventory();
+        IRecipeMapHolder holder = (IRecipeMapHolder) metaTileEntity;
+        return holder.getInputInventory();
     }
 
     // Used for distinct bus recipe checking
     protected List<IItemHandlerModifiable> getInputBuses() {
-        RecipeMapMultiblockController controller = (RecipeMapMultiblockController) metaTileEntity;
-        List<IItemHandlerModifiable> inputItems = new ArrayList<>(
-                controller.getAbilities(MultiblockAbility.IMPORT_ITEMS));
-        inputItems.addAll(controller.getAbilities(MultiblockAbility.DUAL_IMPORT));
-        inputItems.addAll(controller.getAbilities(MultiblockAbility.COMPLEX_DUAL));
-        return inputItems;
+        MultiblockControllerBase controller = (MultiblockControllerBase) metaTileEntity;
+        return controller.getAbilities(MultiblockAbility.IMPORT_ITEMS);
+    }
+
+    protected boolean shouldUseIsolatedInputBuses() {
+        if (!(metaTileEntity instanceof MultiblockControllerBase controller)) return false;
+        for (IItemHandlerModifiable bus : controller.getAbilities(MultiblockAbility.IMPORT_ITEMS)) {
+            if (bus instanceof IPatternBufferIsolatedHandler) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void logInvalidatedIsolatedInputs() {
+        int bufferedInputs = 0;
+        for (IItemHandlerModifiable input : invalidatedInputList) {
+            if (input instanceof IPatternBufferIsolatedHandler && hasBufferedInputs(input)) {
+                bufferedInputs++;
+            }
+        }
+        if (bufferedInputs == 0) return;
+
+        logBoundInputDiagnostic("INVALIDATED_ISOLATED_INPUTS_WAITING_FOR_NOTIFICATION", null, bufferedInputs);
+    }
+
+    /**
+     * Buffered pattern inputs can become runnable without receiving an inventory notification, for example after
+     * dynamic recipe registrations settle. Recheck only nonempty isolated buffers at a bounded cadence; ordinary
+     * distinct buses keep the existing notification-driven behavior.
+     */
+    private boolean retryInvalidatedIsolatedInputs() {
+        if (metaTileEntity.getOffsetTimer() % BOUND_INPUT_RETRY_INTERVAL_TICKS != 0L) return false;
+        return invalidatedInputList.removeIf(input -> input instanceof IPatternBufferIsolatedHandler &&
+                hasBufferedInputs(input));
+    }
+
+    private void logBoundInputNoRecipe(IItemHandlerModifiable input, @Nullable RecipeMap<?> recipeMap, String phase) {
+        if (!(input instanceof IRecipeMapBoundInput) || !hasBufferedInputs(input)) return;
+        logBoundInputDiagnostic(phase, recipeMap, 1);
+    }
+
+    private static boolean hasBufferedInputs(IItemHandler input) {
+        for (int slot = 0; slot < input.getSlots(); slot++) {
+            if (!input.getStackInSlot(slot).isEmpty()) return true;
+        }
+        if (input instanceof IMultipleTankHandler tankHandler) {
+            for (int tank = 0; tank < tankHandler.getTanks(); tank++) {
+                if (tankHandler.getTankAt(tank).getFluidAmount() > 0) return true;
+            }
+        }
+        return false;
+    }
+
+    private void logBoundInputDiagnostic(String phase, @Nullable RecipeMap<?> recipeMap, int bufferedInputs) {
+        RecipeMap<?> selectedMap = getConfiguredRecipeMap();
+        String controller = metaTileEntity.getClass().getSimpleName() + '@' + metaTileEntity.getPos();
+        String key = controller + ':' + phase;
+        long now = System.nanoTime();
+        Long previous = LAST_BOUND_INPUT_FAILURE_LOG_NANOS.put(key, now);
+        if (previous != null && now - previous < BOUND_INPUT_FAILURE_LOG_INTERVAL_NANOS) return;
+
+        GTLog.logger.warn("Map-bound isolated input diagnostic controller={} phase={} selectedRecipeMap={} " +
+                        "resolvedRecipeMap={} nonemptyInvalidatedBuffers={} totalInputBuses={}",
+                controller, phase, selectedMap == null ? "<none>" : selectedMap.getUnlocalizedName(),
+                recipeMap == null ? "<none>" : recipeMap.getUnlocalizedName(), bufferedInputs, getInputBuses().size());
+    }
+
+    protected boolean shouldUseDistinctInputBuses() {
+        if (shouldUseIsolatedInputBuses()) return true;
+        return metaTileEntity instanceof IDistinctBusController distinctCtrl &&
+                distinctCtrl.canBeDistinct() && distinctCtrl.isDistinct() &&
+                getInputInventory().getSlots() > 0;
     }
 
     @Override
     protected IItemHandlerModifiable getOutputInventory() {
-        RecipeMapMultiblockController controller = (RecipeMapMultiblockController) metaTileEntity;
-        return controller.getOutputInventory();
+        IRecipeMapHolder holder = (IRecipeMapHolder) metaTileEntity;
+        return holder.getOutputInventory();
     }
 
     @Override
     protected IMultipleTankHandler getInputTank() {
-        RecipeMapMultiblockController controller = (RecipeMapMultiblockController) metaTileEntity;
-        return controller.getInputFluidInventory();
+        IRecipeMapHolder holder = (IRecipeMapHolder) metaTileEntity;
+        if (shouldUseDistinctInputBuses()) {
+            return holder.getInputFluidInventory();
+        }
+
+        //检查总成，如果有合并流体
+        MultiblockControllerBase controller = (MultiblockControllerBase) metaTileEntity;
+        List<IItemHandlerModifiable> itemHandlers = controller.getAbilities(MultiblockAbility.IMPORT_ITEMS);
+        List<IMultipleTankHandler> inputFluids = new ArrayList<>();
+        boolean allowMerge = holder.getInputFluidInventory().allowSameFluidFill();
+        inputFluids.add(holder.getInputFluidInventory());
+        // 遍历所有物品总线，检查是否是 DualHandler
+        for (IItemHandlerModifiable bus : itemHandlers) {
+            if (bus instanceof IPatternBufferIsolatedHandler) continue;
+            if (bus instanceof IMultipleTankHandler dualHandler) {
+                // 将 DualHandler 的流体槽添加到总列表中
+                inputFluids.add(dualHandler);
+            }
+        }
+        return GTQTUtility.mergeTankHandlers(inputFluids, allowMerge);
     }
 
     /**
@@ -118,117 +1074,97 @@ public class MultiblockRecipeLogic extends AbstractRecipeLogic {
      * @return a new FluidTankList with extra fluid tanks on top of the existing fluid tanks
      */
     protected IMultipleTankHandler getInputTank(IItemHandler items) {
-        var tanks = new ArrayList<>(getInputTank().getFluidTanks());
+        if (items instanceof IPatternBufferIsolatedHandler) {
+            // A pattern buffer is a complete recipe transaction. Do not let it borrow a shared fluid hatch,
+            // otherwise a second request may make an incomplete buffer appear runnable.
+            if (items instanceof IMultipleTankHandler tankHandler) {
+                return tankHandler;
+            }
+            return new FluidTankList(false);
+        }
+        IMultipleTankHandler baseInputTank = getInputTank();
+        var tanks = new ArrayList<>(baseInputTank.getFluidTanks());
         if (items instanceof IMultipleTankHandler tankHandler) {
             tanks.addAll(tankHandler.getFluidTanks());
         }
-        return new FluidTankList(getInputTank().allowSameFluidFill(), tanks);
-    }
-
-    protected IMultipleTankHandler getDistinctInputTank(IItemHandler items) {
-        var tanks = new ArrayList<>(getInputTank().getFluidTanks());
-        tanks.clear();
-        if (items instanceof IMultipleTankHandler tankHandler) {
-            tanks.addAll(tankHandler.getFluidTanks());
-        }
-        return new FluidTankList(getInputTank().allowSameFluidFill(), tanks);
+        return new FluidTankList(baseInputTank.allowSameFluidFill(), tanks);
     }
 
     @Override
     protected IMultipleTankHandler getOutputTank() {
-        RecipeMapMultiblockController controller = (RecipeMapMultiblockController) metaTileEntity;
-        return controller.getOutputFluidInventory();
+        IRecipeMapHolder holder = (IRecipeMapHolder) metaTileEntity;
+        MultiblockControllerBase controller = (MultiblockControllerBase) metaTileEntity;
+        //检查总成，如果有合并流体
+        List<IItemHandlerModifiable> itemHandlers = controller.getAbilities(MultiblockAbility.EXPORT_ITEMS);
+        List<IMultipleTankHandler> outputFluids = new ArrayList<>();
+        boolean allowMerge = holder.getOutputFluidInventory().allowSameFluidFill();
+        outputFluids.add(holder.getOutputFluidInventory());
+        // 遍历所有物品总线，检查是否是 DualHandler
+        for (IItemHandlerModifiable bus : itemHandlers) {
+            if (bus instanceof IMultipleTankHandler dualHandler) {
+                // 将 DualHandler 的流体槽添加到总列表中
+                outputFluids.add(dualHandler);
+            }
+        }
+        return GTQTUtility.mergeTankHandlers(outputFluids, allowMerge);
     }
 
     @Override
     protected boolean canWorkWithInputs() {
-        MultiblockWithDisplayBase controller = (MultiblockWithDisplayBase) metaTileEntity;
-        if (!(controller instanceof RecipeMapMultiblockController distinctController) ||
-                !distinctController.canBeDistinct() ||
-                !distinctController.isDistinct() ||
-                getInputInventory().getSlots() == 0) {
-            return super.canWorkWithInputs();
-        }
-
-        // 当无效列表为空时直接通过检查
-        if (invalidatedInputList.isEmpty()) {
-            return true;
-        }
-
-        boolean canWork;
-
-        // 处理流体输入通知
-        if (!metaTileEntity.getNotifiedFluidInputList().isEmpty()) {
-            canWork = true;
-            clearNotificationLists();
-        } else {
-            // 处理物品输入通知
-            canWork = processItemNotifications();
-        }
-
-        // 扁平化输入总线并清理无效列表中的DualHandler
-        List<IItemHandler> flattenedHandlers = flattenInputBuses();
-        removeDualHandlersFromInvalidated();
-
-        // 检查无效列表是否包含所有必要处理器
-        if (!new HashSet<>(invalidatedInputList).containsAll(flattenedHandlers)) {
-            canWork = true;
-        }
-
-        return canWork;
-    }
-
-    // 提取方法：清空通知列表
-    private void clearNotificationLists() {
-        invalidatedInputList.clear();
-        metaTileEntity.getNotifiedFluidInputList().clear();
-        metaTileEntity.getNotifiedItemInputList().clear();
-    }
-
-    // 提取方法：处理物品输入通知
-    private boolean processItemNotifications() {
-        boolean updated = false;
-        Iterator<IItemHandlerModifiable> notifiedIter = metaTileEntity.getNotifiedItemInputList().iterator();
-
-        while (notifiedIter.hasNext()) {
-            IItemHandlerModifiable bus = notifiedIter.next();
-            Iterator<IItemHandlerModifiable> invalidatedIter = invalidatedInputList.iterator();
-
-            while (invalidatedIter.hasNext()) {
-                IItemHandler handler = invalidatedIter.next();
-                if (isHandlerMatch(handler, bus)) {
-                    invalidatedIter.remove();
-                    updated = true;
+        if (shouldUseDistinctInputBuses()) {
+                boolean canWork = false;
+                if (invalidatedInputList.isEmpty()) {
+                    return true;
                 }
-            }
-            notifiedIter.remove();
-        }
-        return updated;
-    }
-
-    // 辅助方法：处理器匹配检查
-    private boolean isHandlerMatch(IItemHandler handler, IItemHandlerModifiable bus) {
-        if (handler instanceof ItemHandlerList) {
-            return ((ItemHandlerList) handler).getBackingHandlers().contains(bus);
-        }
-        return handler == bus;
-    }
-
-    // 提取方法：扁平化输入总线
-    private List<IItemHandler> flattenInputBuses() {
-        return getInputBuses().stream()
-                .flatMap(ih -> {
-                    if (ih instanceof ItemHandlerList) {
-                        return ((ItemHandlerList) ih).getBackingHandlers().stream();
+                if (!metaTileEntity.getNotifiedFluidInputList().isEmpty()) {
+                    canWork = true;
+                    invalidatedInputList.clear();
+                    metaTileEntity.getNotifiedFluidInputList().clear();
+                    metaTileEntity.getNotifiedItemInputList().clear();
+                } else {
+                    Iterator<IItemHandlerModifiable> notifiedIter = metaTileEntity.getNotifiedItemInputList()
+                            .iterator();
+                    while (notifiedIter.hasNext()) {
+                        IItemHandlerModifiable bus = notifiedIter.next();
+                        Iterator<IItemHandlerModifiable> invalidatedIter = invalidatedInputList.iterator();
+                        while (invalidatedIter.hasNext()) {
+                            IItemHandler invalidatedHandler = invalidatedIter.next();
+                            if (invalidatedHandler instanceof IMultipleNotifiableHandler multipleNotifiableHandler) {
+                                for (var notifiableHandler : multipleNotifiableHandler.getBackingNotifiers()) {
+                                    if (notifiableHandler == bus) {
+                                        canWork = true;
+                                        invalidatedIter.remove();
+                                        break;
+                                    }
+                                }
+                            } else if (invalidatedHandler == bus) {
+                                canWork = true;
+                                invalidatedIter.remove();
+                            }
+                        }
+                        notifiedIter.remove();
                     }
-                    return Stream.of(ih);
-                })
-                .collect(Collectors.toList());
-    }
+                }
+                if (retryInvalidatedIsolatedInputs()) {
+                    canWork = true;
+                }
+                ArrayList<IItemHandler> flattenedHandlers = new ArrayList<>();
+                for (IItemHandler ih : getInputBuses()) {
+                    if (ih instanceof ItemHandlerList) {
+                        flattenedHandlers.addAll(((ItemHandlerList) ih).getBackingHandlers());
+                    }
+                    flattenedHandlers.add(ih);
+                }
 
-    // 提取方法：清理DualHandler
-    private void removeDualHandlersFromInvalidated() {
-        invalidatedInputList.removeIf(handler -> handler instanceof DualHandler);
+                if (!invalidatedInputList.containsAll(flattenedHandlers)) {
+                    canWork = true;
+                }
+                if (!canWork) {
+                    logInvalidatedIsolatedInputs();
+                }
+                return canWork;
+        }
+        return super.canWorkWithInputs();
     }
 
     @Override
@@ -241,17 +1177,235 @@ public class MultiblockRecipeLogic extends AbstractRecipeLogic {
             return;
         }
 
-        // Distinct buses only apply to some multiblocks, so check the controller against a lower class
-        if (controller instanceof RecipeMapMultiblockController distinctController) {
-
-            if (distinctController.canBeDistinct() && distinctController.isDistinct() &&
-                    getInputInventory().getSlots() > 0) {
-                trySearchNewRecipeDistinct();
+        if (shouldUseDistinctInputBuses()) {
+            short mask = getHatchColorsMask();
+            if (mask != 0) {
+                // 通道轮转状态由方法内部在启动成功时记录
+                trySearchNewRecipeDistinctByColorChannels(mask);
                 return;
             }
+            trySearchNewRecipeDistinct();
+            return;
+        }
+
+        short mask = getHatchColorsMask();
+        if (mask != 0) {
+            trySearchNewRecipeByColorChannels(mask);
+            return;
         }
 
         trySearchNewRecipeCombined();
+    }
+
+    /**
+     * 本次通道遍历顺序:从上次成功通道的下一个开始循环,避免低编号通道持续有料时饿死高编号通道。
+     * 通道集合每次重算(至多 16 项),因此染色变化无需额外的缓存失效处理。
+     *
+     * @return 长度至多 17 的通道顺位;{@code order[order.length - 1]} 恒为未染色通道
+     *         ({@link #NO_CHANNEL}),因为未染色仓是公共输入,排在末位兜底
+     */
+    private int[] getChannelOrder(short mask) {
+        TreeSet<Integer> channels = new TreeSet<>();
+        for (int color = 0; color < 16; color++) {
+            if ((mask & (1 << color)) != 0) channels.add(color);
+        }
+        if (channels.isEmpty()) return new int[] { NO_CHANNEL };
+
+        int[] order = new int[channels.size() + 1];
+        // 上次成功通道的下一个为起点;higher() 为空说明上次已是最大号,则从头开始。
+        // NO_CHANNEL 是最小值,未成功过时 higher() 直接给出最小号通道。
+        // 中间失败过的通道不影响起点——取的是 lastColorChannel,不是"上次尝试过的通道"。
+        Integer pivot = channels.higher(lastColorChannel);
+        int index = 0;
+        if (pivot != null) {
+            for (int color : channels.tailSet(pivot, true)) order[index++] = color;
+        }
+        for (int color : channels.headSet(pivot == null ? channels.first() : pivot, false)) order[index++] = color;
+
+        order[index] = NO_CHANNEL;
+        return order;
+    }
+
+    /**
+     * 所有输入仓颜色的位掩码(0-15 每色一位);未染色不占位,全部未染色时返回 0。
+     */
+    protected short getHatchColorsMask() {
+        MultiblockControllerBase controller = (MultiblockControllerBase) metaTileEntity;
+        short mask = 0;
+        for (IItemHandlerModifiable bus : controller.getAbilities(MultiblockAbility.IMPORT_ITEMS)) {
+            int idx = colorIndexOf(bus);
+            if (idx >= 0) mask |= (short) (1 << idx);
+        }
+        for (IFluidTank tank : controller.getAbilities(MultiblockAbility.IMPORT_FLUIDS)) {
+            int idx = colorIndexOf(tank);
+            if (idx >= 0) mask |= (short) (1 << idx);
+        }
+        return mask;
+    }
+
+    /**
+     * 输入仓的染料色索引(0-15);未染色或不可判色返回 -1(公共输入,不占位)。
+     * 仓注册到能力列表的是内部处理器,从 {@link NotifiableItemStackHandler} /
+     * {@link NotifiableFluidTank} 回溯所属仓;无法回溯的(创造仓/总成)判 -1。
+     */
+    protected int colorIndexOf(Object handler) {
+        MetaTileEntity mte = ownerOf(handler);
+        if (mte == null || !mte.isPainted()) return -1;
+        EnumDyeColor dye = ColorUtil.getDyeColorFromRGB(mte.getPaintingColor());
+        return dye == null ? -1 : dye.getMetadata();
+    }
+
+    private static @Nullable MetaTileEntity ownerOf(Object handler) {
+        if (handler instanceof MetaTileEntity mte) return mte;
+        if (handler instanceof NotifiableItemStackHandler h && !h.notifiableEntities.isEmpty())
+            return h.notifiableEntities.get(0);
+        if (handler instanceof NotifiableFluidTank tank && !tank.notifiableEntities.isEmpty())
+            return tank.notifiableEntities.get(0);
+        return null;
+    }
+
+    protected List<IItemHandlerModifiable> getInputBusesForColor(int color) {
+        MultiblockControllerBase controller = (MultiblockControllerBase) metaTileEntity;
+        List<IItemHandlerModifiable> result = new ArrayList<>();
+        for (IItemHandlerModifiable bus : controller.getAbilities(MultiblockAbility.IMPORT_ITEMS)) {
+            int idx = colorIndexOf(bus);
+            if (idx < 0 || idx == color) result.add(bus);
+        }
+        return result;
+    }
+
+    /**
+     * 通道流体:同色(含未染色)流体仓 + 同色总线上的 DualHandler 流体槽。
+     * 语义与 {@link #getInputTank()} 一致,仅把"全部仓"收缩为该通道的仓。
+     */
+    protected IMultipleTankHandler getInputTankForColor(int color) {
+        MultiblockControllerBase controller = (MultiblockControllerBase) metaTileEntity;
+        boolean allowMerge = ((IRecipeMapHolder) metaTileEntity).getInputFluidInventory().allowSameFluidFill();
+        List<IFluidTank> channelTanks = new ArrayList<>();
+        for (IFluidTank tank : controller.getAbilities(MultiblockAbility.IMPORT_FLUIDS)) {
+            int idx = colorIndexOf(tank);
+            if (idx < 0 || idx == color) channelTanks.add(tank);
+        }
+        List<IMultipleTankHandler> inputFluids = new ArrayList<>();
+        inputFluids.add(new FluidTankList(allowMerge, channelTanks));
+        for (IItemHandlerModifiable bus : getInputBusesForColor(color)) {
+            if (bus instanceof IPatternBufferIsolatedHandler) continue;
+            if (bus instanceof IMultipleTankHandler dualHandler) inputFluids.add(dualHandler);
+        }
+        return GTQTUtility.mergeTankHandlers(inputFluids, allowMerge);
+    }
+
+    /**
+     * 按颜色掩码逐通道查找,每通道只使用同色(含未染色)仓的输入,第一个成功启动的通道即返回。
+     */
+    protected void trySearchNewRecipeByColorChannels(short mask) {
+        long maxVoltage = getMaxVoltage();
+        int[] channelOrder = getChannelOrder(mask);
+        for (int i = 1; i < channelOrder.length; i++) {
+            int color = channelOrder[i];
+            List<IItemHandlerModifiable> channelBuses = getInputBusesForColor(color);
+            IItemHandlerModifiable channelInventory = new ItemHandlerList(channelBuses);
+            IMultipleTankHandler channelFluids = getInputTankForColor(color);
+            if (tryFindRecipeForChannel(maxVoltage, channelInventory, channelFluids, color)) return;
+        }
+        this.invalidInputsForRecipes = true;
+        whyFailed = "NoneRecipes";
+    }
+
+    /**
+     * 单个颜色通道内查找并准备配方(仿 {@link AbstractRecipeLogic#trySearchNewRecipe()} 的非并行部分)。
+     *
+     * @param color 该通道的颜色索引,启动成功时记入 {@link #lastColorChannel} 供轮转使用
+     * @return 配方成功启动返回 true
+     */
+    protected boolean tryFindRecipeForChannel(long maxVoltage, IItemHandlerModifiable channelInventory,
+                                              IMultipleTankHandler channelFluids, int color) {
+        Recipe currentRecipe = null;
+        boolean locked = isRecipeLockEnable() && previousRecipe != null;
+        if (locked) {
+            if (previousRecipe.getEUt() <= maxVoltage &&
+                    previousRecipe.matches(false, channelInventory, channelFluids)) {
+                currentRecipe = previousRecipe;
+            } else {
+                this.invalidInputsForRecipes = true;
+                whyFailed = "无法运行锁定的配方";
+                return false;
+            }
+        } else {
+            if (checkPreviousRecipeForChannel(channelInventory, channelFluids)) {
+                currentRecipe = this.previousRecipe;
+            }
+            if (currentRecipe == null) {
+                currentRecipe = findRecipe(maxVoltage, channelInventory, channelFluids);
+            }
+        }
+
+        if (currentRecipe != null) {
+            this.previousRecipe = currentRecipe;
+            if (checkRecipe(currentRecipe) && prepareRecipe(currentRecipe, channelInventory, channelFluids)) {
+                lastColorChannel = color;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    protected boolean checkPreviousRecipeForChannel(IItemHandlerModifiable channelInventory,
+                                                    IMultipleTankHandler channelFluids) {
+        if (this.previousRecipe == null) return false;
+        if (this.previousRecipe.getEUt() > this.getMaxVoltage()) return false;
+        return this.previousRecipe.matches(false, channelInventory, channelFluids);
+    }
+
+    /**
+     * 颜色通道版 distinct:外层按颜色通道,内层同色组内逐仓独立查找;
+     * 流体侧每通道共享通道流体(与 distinct 的"流体共享"语义一致,只是收缩到通道内)。
+     */
+    protected void trySearchNewRecipeDistinctByColorChannels(short mask) {
+        long maxVoltage = getMaxVoltage();
+        int[] channelOrder = getChannelOrder(mask);
+        for (int i = 1; i < channelOrder.length; i++) {
+            int color = channelOrder[i];
+            List<IItemHandlerModifiable> channelBuses = getInputBusesForColor(color);
+            if (channelBuses.isEmpty()) continue;
+            IMultipleTankHandler channelFluids = getInputTankForColor(color);
+            for (IItemHandlerModifiable bus : channelBuses) {
+                if (invalidatedInputList.contains(bus)) continue;
+                RecipeMap<?> recipeMap = getRecipeMapForInput(bus);
+                if (recipeMap == null) {
+                    logBoundInputNoRecipe(bus, null, "BOUND_RECIPE_MAP_NOT_SELECTED");
+                    invalidatedInputList.add(bus);
+                    continue;
+                }
+                IMultipleTankHandler busFluids = getBusFluidsInChannel(bus, channelFluids);
+                Recipe currentRecipe = findRecipe(recipeMap, maxVoltage, bus, busFluids);
+                if (currentRecipe != null) {
+                    routedRecipeMap = recipeMap;
+                    currentDistinctInputBus = bus;
+                    this.previousRecipe = currentRecipe;
+                    this.previousDistinctRecipeMap = recipeMap;
+                    if (checkRecipe(currentRecipe) && prepareRecipeDistinct(currentRecipe, bus, busFluids)) {
+                        lastColorChannel = color;
+                        return;
+                    }
+                    routedRecipeMap = null;
+                }
+                if (currentRecipe == null) {
+                    logBoundInputNoRecipe(bus, recipeMap, "NO_RECIPE_MATCHED_BUFFER");
+                    invalidatedInputList.add(bus);
+                }
+            }
+            routedRecipeMap = null;
+        }
+    }
+
+    protected IMultipleTankHandler getBusFluidsInChannel(IItemHandlerModifiable bus,
+                                                         IMultipleTankHandler channelFluids) {
+        if (bus instanceof IPatternBufferIsolatedHandler) {
+            if (bus instanceof IMultipleTankHandler tankHandler) return tankHandler;
+            return new FluidTankList(false);
+        }
+        return channelFluids;
     }
 
     /**
@@ -259,184 +1413,265 @@ public class MultiblockRecipeLogic extends AbstractRecipeLogic {
      * deal with the maintenance and distinct logic in {@link MultiblockRecipeLogic#trySearchNewRecipe()}
      */
     protected void trySearchNewRecipeCombined() {
+        if (usesParallelScheduler()) {
+            CrossRecipeParallelScheduler scheduler = getOrCreateScheduler();
+            int filled = fillSchedulerSlots(scheduler);
+
+            if (filled > 0) {
+                this.progressTime = 1;
+                setMaxProgress(Integer.MAX_VALUE);
+                this.recipeEUt = scheduler.getTotalEnergyConsumption();
+                this.parallelRecipesPerformed = scheduler.getTotalParallelCount();
+                crossRecipeSchedulerActive = true;
+                if (this.wasActiveAndNeedsUpdate) {
+                    this.wasActiveAndNeedsUpdate = false;
+                } else {
+                    this.setActive(true);
+                }
+            }
+            return;
+        }
+
         super.trySearchNewRecipe();
     }
 
     protected void trySearchNewRecipeDistinct() {
-        long maxVoltage = getMaxVoltage();
-        List<IItemHandlerModifiable> importInventory = getInputBuses();
-
-        // 优先尝试缓存命中
-        if (attemptCacheHit(importInventory)) {
+        if (usesParallelScheduler()) {
+            trySearchNewRecipeDistinctCrossRecipe();
             return;
         }
 
-        // 更新双输入缓存状态
-        updateHasDualInputCache();
+        long maxVoltage = getMaxVoltage();
+        Recipe currentRecipe;
+        List<IItemHandlerModifiable> importInventory = getInputBuses();
+        routedRecipeMap = null;
 
-        // 遍历总线寻找配方，优先检查上次成功总线
-        findRecipeInBuses(importInventory, maxVoltage);
-    }
-
-    // 其他方法保持不变，以下为修改后的方法
-
-    private void updateHasDualInputCache() {
-        MultiblockWithDisplayBase controller = (MultiblockWithDisplayBase) metaTileEntity;
-        hasDualInputCache = !controller.getAbilities(MultiblockAbility.DUAL_IMPORT).isEmpty();
-    }
-
-    private boolean hasDualInput() {
-        return hasDualInputCache;
-    }
-
-    private void findRecipeInBuses(List<IItemHandlerModifiable> importInventory, long maxVoltage) {
-        // 优先检查上次成功的总线
-        if (lastRecipeIndex >= 0 && lastRecipeIndex < importInventory.size()) {
-            IItemHandlerModifiable bus = importInventory.get(lastRecipeIndex);
-            if (!isBusInvalid(bus)) {
-                Recipe recipe = findRecipeForBus(bus, maxVoltage);
-                if (handleFoundRecipe(recipe, bus, lastRecipeIndex)) {
-                    return;
-                }
+        // Our caching implementation
+        // This guarantees that if we get a recipe cache hit, our efficiency is no different from other machines
+        IItemHandlerModifiable previousBus = importInventory.get(lastRecipeIndex);
+        RecipeMap<?> previousMap = getRecipeMapForInput(previousBus);
+        if (previousMap != null && previousMap == previousDistinctRecipeMap &&
+                checkPreviousRecipeDistinct(previousBus)) {
+            routedRecipeMap = previousMap;
+            currentRecipe = previousRecipe;
+            currentDistinctInputBus = previousBus;
+            if (checkRecipe(currentRecipe) && prepareRecipeDistinct(currentRecipe)) {
+                // No need to cache the previous recipe here, as it is not null and matched by the current recipe,
+                // so it will always be the same
+                return;
             }
+            logBoundInputStartFailure(previousBus, previousMap, currentRecipe, "CACHED_RECIPE_START_FAILED");
+            routedRecipeMap = null;
         }
 
-        // 遍历剩余总线
+        // On a cache miss, our efficiency is much worse, as it will check
+        // each bus individually instead of the combined inventory all at once.
         for (int i = 0; i < importInventory.size(); i++) {
-            if (i == lastRecipeIndex) continue; // 跳过已检查的总线
+            IItemHandlerModifiable bus = importInventory.get(i);
+            // Skip this bus if no recipe was found last time
+            if (invalidatedInputList.contains(bus)) {
+                continue;
+            }
+            RecipeMap<?> recipeMap = getRecipeMapForInput(bus);
+            if (recipeMap == null) {
+                logBoundInputNoRecipe(bus, null, "BOUND_RECIPE_MAP_NOT_SELECTED");
+                invalidatedInputList.add(bus);
+                continue;
+            }
+            // Look for a new recipe after a cache miss
+            currentRecipe = findRecipe(recipeMap, maxVoltage, bus, getInputTank(bus));
+            // Cache the current recipe, if one is found
+            if (currentRecipe != null) {
+                routedRecipeMap = recipeMap;
+                if (checkRecipe(currentRecipe)) {
+                    this.previousRecipe = currentRecipe;
+                    this.previousDistinctRecipeMap = recipeMap;
+                    currentDistinctInputBus = bus;
+                    if (prepareRecipeDistinct(currentRecipe)) {
+                        lastRecipeIndex = i;
+                        return;
+                    }
+                    logBoundInputStartFailure(bus, recipeMap, currentRecipe, "RECIPE_START_FAILED");
+                } else {
+                    logBoundInputStartFailure(bus, recipeMap, currentRecipe, "CONTROLLER_REJECTED_RECIPE");
+                }
+                routedRecipeMap = null;
+            }
+            if (currentRecipe == null) {
+                logBoundInputNoRecipe(bus, recipeMap, "NO_RECIPE_MATCHED_BUFFER");
+                // no valid recipe found, invalidate this bus
+                invalidatedInputList.add(bus);
+            }
+        }
+    }
+
+    /**
+     * Cross-recipe parallel version of distinct bus recipe search.
+     * Iterates all distinct input buses and fills idle scheduler slots from each bus.
+     * Each bus can contribute different recipes to different slots.
+     * Uses two-phase allocation: parallel first, then proportional overclock.
+     */
+    protected void trySearchNewRecipeDistinctCrossRecipe() {
+        CrossRecipeParallelScheduler scheduler = getOrCreateScheduler();
+        List<IItemHandlerModifiable> importInventory = getInputBuses();
+
+        long totalPowerBudget = scheduler.getRemainingPowerBudget();
+        long remainingBasePower = totalPowerBudget;
+        int remainingParallel = scheduler.getRemainingParallelBudget();
+        List<SlotAllocation> allocations = new ArrayList<>();
+
+        // Phase 1: Allocate parallel for each bus (no overclock, no input consumption)
+        for (int i = 0; i < importInventory.size(); i++) {
+            if (remainingParallel <= 0 || remainingBasePower <= 0) break;
 
             IItemHandlerModifiable bus = importInventory.get(i);
-            if (isBusInvalid(bus)) continue;
+            if (invalidatedInputList.contains(bus)) continue;
 
-            Recipe recipe = findRecipeForBus(bus, maxVoltage);
-            if (handleFoundRecipe(recipe, bus, i)) return;
-        }
-    }
+            IMultipleTankHandler busFluidTank = getInputTank(bus);
+            boolean foundFromBus = false;
 
-    private boolean checkPreviousRecipeDistinct(IItemHandlerModifiable previousBus) {
-        boolean dualInput = hasDualInput();
-        IMultipleTankHandler tank = dualInput ? getDistinctInputTank(previousBus) : getInputTank(previousBus);
-        return previousRecipe != null && previousRecipe.matches(false, previousBus, tank);
-    }
+            RecipeMap<?> recipeMap = getRecipeMapForInput(bus);
+            if (recipeMap == null) {
+                invalidatedInputList.add(bus);
+                continue;
+            }
+            routedRecipeMap = recipeMap;
+            Recipe recipe = findRecipe(recipeMap, remainingBasePower, bus, busFluidTank);
+            if (recipe != null && checkRecipe(recipe)) {
+                RecipeSlot slot = scheduler.acquireSlot();
+                if (slot == null) {
+                    routedRecipeMap = null;
+                    break;
+                }
+                SlotAllocation alloc = allocateSlotParallel(slot, recipe, recipeMap, bus, busFluidTank,
+                        remainingBasePower, remainingParallel, scheduler.getPerSlotParallelCap());
+                if (alloc != null) {
+                    allocations.add(alloc);
+                    remainingBasePower -= alloc.basePowerDemand;
+                    remainingParallel -= alloc.inputParallel;
+                    foundFromBus = true;
+                    lastCrossRecipe = recipe;
+                } else {
+                    scheduler.releaseSlot(slot);
+                }
+            }
+            routedRecipeMap = null;
 
-    protected boolean checkLatestRecipeDistinct(IItemHandlerModifiable previousBus) {
-        boolean dualInput = hasDualInput();
-        IMultipleTankHandler tank = dualInput ? getDistinctInputTank(previousBus) : getInputTank(previousBus);
-
-        // 逆序遍历最新配方（跳过最后一个）
-        for (int i = latestRecipes.size() - 2; i >= 0; i--) { // 从倒数第二个开始
-            Recipe recipe = latestRecipes.get(i);
-            if (recipe != null && recipe.matches(false, previousBus, tank)) {
-                return checkRecipe(recipe) && prepareRecipeDistinct(recipe);
+            if (!foundFromBus) {
+                invalidatedInputList.add(bus);
             }
         }
-        return false;
+
+        // Phase 2: Distribute surplus power proportionally and overclock all slots
+        int totalFilled = distributeAndOverclock(allocations, totalPowerBudget, scheduler);
+
+        if (totalFilled > 0) {
+            this.progressTime = 1;
+            setMaxProgress(Integer.MAX_VALUE);
+            this.recipeEUt = scheduler.getTotalEnergyConsumption();
+            this.parallelRecipesPerformed = scheduler.getTotalParallelCount();
+            crossRecipeSchedulerActive = true;
+            if (this.wasActiveAndNeedsUpdate) {
+                this.wasActiveAndNeedsUpdate = false;
+            } else {
+                this.setActive(true);
+            }
+        }
     }
 
     @Override
-    public boolean prepareRecipe(Recipe recipe) {
-        ((RecipeMapMultiblockController) metaTileEntity).refreshAllBeforeConsumption();
-        return super.prepareRecipe(recipe);
+    public void invalidateInputs() {
+        if (shouldUseDistinctInputBuses() && currentDistinctInputBus != null) {
+            invalidatedInputList.add(currentDistinctInputBus);
+        } else {
+            super.invalidateInputs();
+        }
+    }
+
+    protected boolean checkPreviousRecipeDistinct(IItemHandlerModifiable previousBus) {
+        return previousRecipe != null && previousRecipe.matches(false, previousBus, getInputTank(previousBus));
     }
 
     protected boolean prepareRecipeDistinct(Recipe recipe) {
-        ((RecipeMapMultiblockController) metaTileEntity).refreshAllBeforeConsumption();
+        return prepareRecipeDistinct(recipe, currentDistinctInputBus, getInputTank(currentDistinctInputBus));
+    }
+
+    /**
+     * 指定输入总线与流体的 distinct 配方准备,消耗从给定的输入(而非全量仓)提取。
+     * 颜色通道版 distinct 传入通道流体,保证不消耗其他颜色通道的输入。
+     */
+    protected boolean prepareRecipeDistinct(Recipe recipe, IItemHandlerModifiable inputBus,
+                                            IMultipleTankHandler inputFluid) {
         recipe = Recipe.trimRecipeOutputs(recipe, getRecipeMap(), metaTileEntity.getItemOutputLimit(),
                 metaTileEntity.getFluidOutputLimit());
-        boolean dualInput = hasDualInput();
-        IMultipleTankHandler inputTank =
-                dualInput ? getDistinctInputTank(currentDistinctInputBus) : getInputTank(currentDistinctInputBus);
+        if (recipe == null) {
+            whyFailed = "配方输出数量超过机器限制（物品输出槽:" + metaTileEntity.getItemOutputLimit() +
+                    ", 流体输出槽:" + metaTileEntity.getFluidOutputLimit() + "）";
+            return false;
+        }
 
         recipe = findParallelRecipe(
                 recipe,
-                currentDistinctInputBus,
-                inputTank,
+                inputBus,
+                inputFluid,
                 getOutputInventory(),
                 getOutputTank(),
                 getMaxParallelVoltage(),
                 getParallelLimit());
 
         if (recipe != null) {
-            recipe = setupAndConsumeRecipeInputs(recipe, currentDistinctInputBus, inputTank);
+            recipe = setupAndConsumeRecipeInputs(recipe, inputBus, inputFluid);
             if (recipe != null) {
                 setupRecipe(recipe);
                 return true;
             }
         }
+
         return false;
     }
 
-    // 提取方法：尝试缓存命中
-    private boolean attemptCacheHit(List<IItemHandlerModifiable> importInventory) {
-        //原先的方法
-        if (canUseCachedRecipe(importInventory) && prepareRecipeDistinct(previousRecipe))
-            return true;
+    /**
+     * A map-bound buffer has supplied a complete recipe request. If it matches but cannot start, retain a
+     * rate-limited diagnostic so output, energy, and controller constraints are distinguishable from an input mismatch.
+     */
+    private void logBoundInputStartFailure(IItemHandlerModifiable input, @Nullable RecipeMap<?> recipeMap,
+                                           @Nullable Recipe recipe, String phase) {
+        if (!(input instanceof IRecipeMapBoundInput boundInput)) return;
 
-        //临近搜索系统
-        return canUseLatestRecipe(importInventory);
+        String reason = getWhyFailed();
+        if (reason == null || reason.isEmpty()) reason = "recipe preparation returned false without a reason";
+        String controller = metaTileEntity.getClass().getSimpleName() + '@' + metaTileEntity.getPos();
+        String key = controller + ':' + phase + ':' + reason;
+        long now = System.nanoTime();
+        Long previous = LAST_BOUND_INPUT_FAILURE_LOG_NANOS.put(key, now);
+        if (previous != null && now - previous < BOUND_INPUT_FAILURE_LOG_INTERVAL_NANOS) return;
+
+        GTLog.logger.warn("Map-bound isolated input could not start controller={} selectedRecipeMap={} " +
+                        "boundRecipeMap={} phase={} reason={} recipeEUt={} itemOutputSlots={} fluidOutputTanks={}",
+                controller, recipeMap == null ? "<none>" : recipeMap.getUnlocalizedName(),
+                boundInput.getBoundRecipeMapName(), phase, reason, recipe == null ? "<none>" : recipe.getEUt(),
+                getOutputInventory().getSlots(), getOutputTank().getTanks());
     }
 
-    // 提取方法：检查缓存有效性
-    private boolean canUseCachedRecipe(List<IItemHandlerModifiable> importInventory) {
-        return previousRecipe != null
-                && lastRecipeIndex < importInventory.size()
-                && checkPreviousRecipeDistinct(importInventory.get(lastRecipeIndex))
-                && checkRecipe(previousRecipe);
-    }
+    /**
+     * A bounded start record distinguishes a real execution (where consumable inputs have already moved into a slot)
+     * from a pattern-buffer insertion failure without producing per-tick scheduler noise.
+     */
+    private void logBoundCrossRecipeSlotStarted(SlotAllocation allocation, int totalOperations, int duration,
+                                                long eut, String recipeDisplayName) {
+        if (!(allocation.importInventory instanceof IRecipeMapBoundInput boundInput)) return;
 
-    private boolean canUseLatestRecipe(List<IItemHandlerModifiable> importInventory) {
-        return previousRecipe != null
-                && lastRecipeIndex < importInventory.size()
-                && checkLatestRecipeDistinct(importInventory.get(lastRecipeIndex));
-    }
+        String controller = metaTileEntity.getClass().getSimpleName() + '@' + metaTileEntity.getPos();
+        String key = controller + ':' + boundInput.getBoundRecipeMapName() + ':' + recipeDisplayName;
+        long now = System.nanoTime();
+        Long previous = LAST_BOUND_CROSS_RECIPE_START_LOG_NANOS.put(key, now);
+        if (previous != null && now - previous < BOUND_CROSS_RECIPE_START_LOG_INTERVAL_NANOS) return;
 
-    // 提取方法：检查总线有效性
-    private boolean isBusInvalid(IItemHandlerModifiable bus) {
-        return invalidatedInputList.contains(bus);
-    }
-
-    // 提取方法：获取对应总线配方
-    private Recipe findRecipeForBus(IItemHandlerModifiable bus, long maxVoltage) {
-        return hasDualInput()
-                ? findRecipe(maxVoltage, bus, getDistinctInputTank(bus))
-                : findRecipe(maxVoltage, bus, getInputTank(bus));
-    }
-
-    // 提取方法：处理找到的配方
-    private boolean handleFoundRecipe(Recipe recipe, IItemHandlerModifiable bus, int index) {
-        if (recipe != null && checkRecipe(recipe)) {
-            updateRecipeCache(recipe, bus, index);
-            return prepareRecipeDistinct(recipe);
-        } else {
-            markBusAsInvalid(bus);
-            return false;
-        }
-    }
-
-    // 提取方法：更新配方缓存
-    private void updateRecipeCache(Recipe recipe, IItemHandlerModifiable bus, int index) {
-        previousRecipe = recipe;
-        addToPreviousRecipes(recipe);
-        currentDistinctInputBus = bus;
-        lastRecipeIndex = index;
-    }
-
-    // 提取方法：标记无效总线
-    private void markBusAsInvalid(IItemHandlerModifiable bus) {
-        invalidatedInputList.add(bus);
-    }
-
-    @Override
-    public void invalidateInputs() {
-        MultiblockWithDisplayBase controller = (MultiblockWithDisplayBase) metaTileEntity;
-        RecipeMapMultiblockController distinctController = (RecipeMapMultiblockController) controller;
-        if (distinctController.canBeDistinct() && distinctController.isDistinct() &&
-                !(getInputInventory() instanceof DualHandler) &&
-                getInputInventory().getSlots() > 0) {
-            invalidatedInputList.add(currentDistinctInputBus);
-        } else {
-            super.invalidateInputs();
-        }
+        GTLog.logger.info("Map-bound cross-recipe slot started controller={} boundRecipeMap={} slot={} recipe={} " +
+                        "operations={} duration={}t eut={} itemOutputs={} fluidOutputs={}",
+                controller, boundInput.getBoundRecipeMapName(), allocation.slot.getSlotIndex(), recipeDisplayName,
+                totalOperations, duration, eut, allocation.slot.getItemOutputs().size(),
+                allocation.slot.getFluidOutputs().size());
     }
 
     @Override
@@ -462,6 +1697,7 @@ public class MultiblockRecipeLogic extends AbstractRecipeLogic {
     @Override
     protected void modifyOverclockPost(@NotNull OCResult ocResult, @NotNull RecipePropertyStorage storage) {
         super.modifyOverclockPost(ocResult, storage);
+
         // apply maintenance penalties
         Tuple<Integer, Double> maintenanceValues = getMaintenanceValues();
 
@@ -515,9 +1751,9 @@ public class MultiblockRecipeLogic extends AbstractRecipeLogic {
 
     @Override
     public boolean checkRecipe(@NotNull Recipe recipe) {
-        RecipeMapMultiblockController controller = (RecipeMapMultiblockController) metaTileEntity;
-        if (controller.checkRecipe(recipe, false)) {
-            controller.checkRecipe(recipe, true);
+        IRecipeMapHolder holder = (IRecipeMapHolder) metaTileEntity;
+        if (holder.checkRecipe(recipe, false)) {
+            holder.checkRecipe(recipe, true);
             return super.checkRecipe(recipe);
         }
         return false;
@@ -527,19 +1763,83 @@ public class MultiblockRecipeLogic extends AbstractRecipeLogic {
     protected void completeRecipe() {
         performMufflerOperations();
         super.completeRecipe();
+        routedRecipeMap = null;
+    }
+
+    // ==================== Serialization for Cross-Recipe Scheduler ====================
+
+    @NotNull
+    @Override
+    public NBTTagCompound serializeNBT() {
+        NBTTagCompound compound = super.serializeNBT();
+        compound.setBoolean("crossRecipeActive", crossRecipeSchedulerActive);
+        if (crossRecipeSchedulerActive && crossRecipeScheduler != null) {
+            compound.setTag("crossRecipeScheduler", crossRecipeScheduler.serializeNBT());
+        }
+        return compound;
+    }
+
+    @Override
+    public void deserializeNBT(@NotNull NBTTagCompound compound) {
+        super.deserializeNBT(compound);
+        this.crossRecipeSchedulerActive = compound.getBoolean("crossRecipeActive");
+        if (crossRecipeSchedulerActive && compound.hasKey("crossRecipeScheduler")) {
+            crossRecipeScheduler = new CrossRecipeParallelScheduler(getParallelLimit());
+            crossRecipeScheduler.deserializeNBT(compound.getCompoundTag("crossRecipeScheduler"));
+        }
     }
 
     protected void performMufflerOperations() {
         if (metaTileEntity instanceof MultiblockWithDisplayBase controller) {
             // output muffler items
             if (controller.hasMufflerMechanics()) {
-                if (parallelRecipesPerformed > 1) {
-                    controller.outputRecoveryItems(parallelRecipesPerformed);
-                } else {
-                    controller.outputRecoveryItems();
-                }
+                controller.outputRecoveryItems(Math.max(parallelRecipesPerformed, 1));
             }
         }
+    }
+
+    protected void onCrossRecipeSlotsCompleted(int completedParallel) {
+        int previousParallel = parallelRecipesPerformed;
+        parallelRecipesPerformed = completedParallel;
+        performMufflerOperations();
+        parallelRecipesPerformed = previousParallel;
+    }
+
+    /**
+     * Only routes {@code IParallelableRecipeLogic#findParallelRecipe} between the legacy builder strategies, which
+     * all resolve to the same branch here. Whether the parallel scheduler runs at all is decided by
+     * {@link #usesParallelScheduler()} and {@link AbstractRecipeLogic#isCrossRecipeParallelEnabled()}.
+     */
+    @Override
+    @NotNull
+    public ParallelLogicType getParallelLogicType() {
+        return ParallelLogicType.CROSS_RECIPE;
+    }
+
+    // ==================== Cross-Recipe Progress Display Overrides ====================
+
+    /**
+     * In cross-recipe mode, returns the display slot's progress time for external consumers
+     * (TOP, GUI progress bar, etc.) instead of the internal sentinel value (1).
+     */
+    @Override
+    public int getProgress() {
+        if (usesParallelScheduler() && crossRecipeScheduler != null && crossRecipeScheduler.hasActiveSlots()) {
+            return crossRecipeScheduler.getDisplayProgressTime();
+        }
+        return super.getProgress();
+    }
+
+    /**
+     * In cross-recipe mode, returns the display slot's max progress time for external consumers
+     * instead of the internal sentinel value (Integer.MAX_VALUE).
+     */
+    @Override
+    public int getMaxProgress() {
+        if (usesParallelScheduler() && crossRecipeScheduler != null && crossRecipeScheduler.hasActiveSlots()) {
+            return crossRecipeScheduler.getDisplayMaxProgressTime();
+        }
+        return super.getMaxProgress();
     }
 
     @Override
@@ -579,12 +1879,42 @@ public class MultiblockRecipeLogic extends AbstractRecipeLogic {
         return getMaximumOverclockVoltage();
     }
 
+    @Override
+    protected void decreaseProgress(boolean energyShortage) {
+        // 备用电容：跳电时消耗一枚，保住配方（只把进度归零）
+        if (energyShortage && ConfigHolder.machines.resetRecipeOnPowerLoss && protectRecipeOnPowerLoss()) {
+            return;
+        }
+        super.decreaseProgress(energyShortage);
+    }
+
+    /** 任意一个输入能源仓装了备用电容就从它消耗一枚，并把进度归零；同一次跳电只消耗一枚。 */
+    private boolean protectRecipeOnPowerLoss() {
+        if (this.progressTime == 0) {
+            return true; // 本次跳电已经保过（运行中的配方进度至少为 1）
+        }
+        if (!(metaTileEntity instanceof MultiblockControllerBase controller)) {
+            return false;
+        }
+        List<IEnergyContainer> hatches = new ArrayList<>(controller.getAbilities(MultiblockAbility.INPUT_ENERGY));
+        hatches.addAll(controller.getAbilities(MultiblockAbility.SUBSTATION_INPUT_ENERGY));
+        for (IEnergyContainer container : hatches) {
+            if (container instanceof IUpgradeSlots hatch &&
+                    hatch.consumeUpgradeKit(UpgradeKitType.BACKUP_CAPACITOR)) {
+                this.progressTime = 0;
+                metaTileEntity.noticePlayer("[跳电保护]位于" + metaTileEntity.getPos() + "的" +
+                        metaTileEntity.getStackForm().getDisplayName() + "消耗了备用电容");
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Nullable
     @Override
     public RecipeMap<?> getRecipeMap() {
+        if (routedRecipeMap != null) return routedRecipeMap;
         // if the multiblock has more than one RecipeMap, return the currently selected one
-        if (metaTileEntity instanceof IMultipleRecipeMaps)
-            return ((IMultipleRecipeMaps) metaTileEntity).getCurrentRecipeMap();
-        return super.getRecipeMap();
+        return getConfiguredRecipeMap();
     }
 }

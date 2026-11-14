@@ -44,11 +44,12 @@ import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.api.widget.IWidget;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.SyncHandlers;
-import com.cleanroommc.modularui.widgets.ItemSlot;
 import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import com.cleanroommc.modularui.widgets.layout.Grid;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -61,9 +62,6 @@ import static gregtech.api.capability.GregtechDataCodes.UPDATE_OUTPUT_FACING;
 
 public class MetaTileEntityBlockBreaker extends TieredMetaTileEntity {
 
-    private EnumFacing outputFacing;
-    private int breakProgressTicksLeft;
-    private float currentBlockHardness;
     private static final List<@NotNull TriPredicate<@NotNull World, @NotNull BlockPos, @NotNull FakePlayer>> PREDICATE_LIST = new ObjectArrayList<>(
             3);
 
@@ -77,23 +75,27 @@ public class MetaTileEntityBlockBreaker extends TieredMetaTileEntity {
         }
     }
 
-    /**
-     * Add a predicate check to the block breaker. Intended to be used to prevent a certain block from being broken.
-     * <br/>
-     * <b>Warning!</b> the {@link FakePlayer} passed to the predicate is not a real player, but a fake one with
-     * the same UUID as the real player who placed the block breaker. <br/>
-     * Return {@code false} to cancel a break attempt on this block. <br/>
-     * Return {@code true} to move onto the next predicate, and eventually break the block only if all other predicates
-     * returned {@code false}.
-     */
-    @SuppressWarnings("unused")
-    public static void registerBlockBreakerPredicate(@NotNull TriPredicate<@NotNull World, @NotNull BlockPos, @NotNull FakePlayer> predicate) {
-        PREDICATE_LIST.add(predicate);
-    }
+    private EnumFacing outputFacing;
+    private int breakProgressTicksLeft;
+    private float currentBlockHardness;
 
     public MetaTileEntityBlockBreaker(ResourceLocation metaTileEntityId, int tier) {
         super(metaTileEntityId, tier);
         initializeInventory();
+    }
+
+    /**
+     * Add a predicate check to the block breaker. Intended to be used to prevent a certain block from being broken.
+     * <br/>
+     * <b>Warning!</b> the {@link FakePlayer} passed to the predicate is not a real player, but a fake one with
+     * the same UUID as the real player who placed the block breaker. <br/> Return {@code false} to cancel a break
+     * attempt on this block. <br/> Return {@code true} to move onto the next predicate, and eventually break the block
+     * only if all other predicates returned {@code false}.
+     */
+    @SuppressWarnings("unused")
+    public static void registerBlockBreakerPredicate(
+            @NotNull TriPredicate<@NotNull World, @NotNull BlockPos, @NotNull FakePlayer> predicate) {
+        PREDICATE_LIST.add(predicate);
     }
 
     @Override
@@ -321,7 +323,7 @@ public class MetaTileEntityBlockBreaker extends TieredMetaTileEntity {
     }
 
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager, UISettings settings) {
         int rowSize = (int) Math.sqrt(getInventorySize());
         guiSyncManager.registerSlotGroup("item_inv", rowSize);
 
@@ -330,14 +332,14 @@ public class MetaTileEntityBlockBreaker extends TieredMetaTileEntity {
             widgets.add(new ArrayList<>());
             for (int j = 0; j < rowSize; j++) {
                 int index = i * rowSize + j;
-                widgets.get(i).add(new ItemSlot().slot(SyncHandlers.itemSlot(exportItems, index)
+                widgets.get(i).add(new ItemSlot().slot(new ModularSlot(exportItems, index)
                         .slotGroup("item_inv").accessibility(false, true)));
             }
         }
 
         return GTGuis.createPanel(this, 176, 18 + 18 * rowSize + 94)
                 .child(IKey.lang(getMetaFullName()).asWidget().pos(5, 5))
-                .child(SlotGroupWidget.playerInventory().left(7).bottom(7))
+                .child(SlotGroupWidget.playerInventory(false).left(7).bottom(7))
                 .child(new Grid()
                         .top(18).height(rowSize * 18)
                         .minElementMargin(0, 0)

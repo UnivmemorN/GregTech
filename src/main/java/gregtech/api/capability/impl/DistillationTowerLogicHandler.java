@@ -5,7 +5,6 @@ import gregtech.api.capability.IMultipleTankHandler;
 import gregtech.api.metatileentity.multiblock.AbilityInstances;
 import gregtech.api.metatileentity.multiblock.IMultiblockAbilityPart;
 import gregtech.api.metatileentity.multiblock.MultiblockAbility;
-import gregtech.api.pattern.BlockPattern;
 import gregtech.api.util.GTLog;
 import gregtech.common.metatileentities.multi.multiblockpart.MetaTileEntityMultiblockPart;
 
@@ -17,7 +16,6 @@ import net.minecraftforge.fluids.capability.IFluidHandler;
 import net.minecraftforge.fluids.capability.IFluidTankProperties;
 
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -57,14 +55,13 @@ public class DistillationTowerLogicHandler {
     }
 
     /**
-     * Called on structure formation to determine the number of layers in the distillation tower. <br>
-     * <br>
-     * Needs to be overriden for multiblocks that have different assemblies than the standard distillation tower.
+     * Called on structure formation to determine the number of layers from
+     * the body piece repeat count (new StructureDefinition system).
      *
-     * @param structurePattern the structure pattern
+     * @param bodyRepeatCount the number of times the body piece repeats
      */
-    public void determineLayerCount(@NotNull BlockPattern structurePattern) {
-        this.setLayerCount(structurePattern.formedRepetitionCount[1] + 1);
+    public void determineLayerCountFromReps(int bodyRepeatCount) {
+        this.setLayerCount(bodyRepeatCount + 1);
     }
 
     /**

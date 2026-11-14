@@ -4,13 +4,18 @@ import gregtech.api.GTValues;
 import gregtech.api.capability.IEnergyContainer;
 import gregtech.api.capability.impl.AbstractRecipeLogic;
 import gregtech.api.capability.impl.ComputationRecipeLogic;
+import gregtech.api.capability.impl.MultiblockRecipeLogic;
 import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.mui.GTByteBufAdapters;
 import gregtech.api.mui.drawable.GTObjectDrawable;
+import gregtech.api.pattern.CountLimitError;
+import gregtech.api.pattern.PatternError;
+import gregtech.api.pattern.PatternStringError;
 import gregtech.api.recipes.Recipe;
 import gregtech.api.recipes.RecipeMap;
 import gregtech.api.recipes.chance.output.impl.ChancedFluidOutput;
 import gregtech.api.recipes.chance.output.impl.ChancedItemOutput;
+import gregtech.api.recipes.logic.CrossRecipeParallelScheduler;
 import gregtech.api.unification.material.Materials;
 import gregtech.api.util.GTHashMaps;
 import gregtech.api.util.GTUtility;
@@ -45,8 +50,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.StringJoiner;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -59,13 +67,16 @@ import java.util.function.Supplier;
 @SuppressWarnings({ "UnusedReturnValue", "unused" })
 public class MultiblockUIBuilder {
 
-    private final List<Operation> operations = new ArrayList<>();
-
-    private Consumer<MultiblockUIBuilder> action;
-    private final InternalSyncHandler syncHandler = new InternalSyncHandler();
-
     private static final int DEFAULT_MAX_RECIPE_LINES = 25;
-
+    private final List<Operation> operations = new ArrayList<>();
+    private final InternalSyncHandler syncHandler = new InternalSyncHandler();
+    /**
+     * -- SETTER --
+     *  Set the action for this builder. Called on server and client.
+     *
+     * @param action the action to apply to this builder
+     */
+    private Consumer<MultiblockUIBuilder> action;
     @Nullable
     private InternalSyncer syncer;
 
@@ -77,11 +88,49 @@ public class MultiblockUIBuilder {
     private IKey idlingKey = IKey.lang("gregtech.multiblock.idling").style(TextFormatting.GRAY);
     private IKey pausedKey = IKey.lang("gregtech.multiblock.work_paused").style(TextFormatting.GOLD);
     private IKey runningKey = IKey.lang("gregtech.multiblock.running").style(TextFormatting.GREEN);
-    private boolean dirty;
     private Runnable onRebuild;
 
+    public void setAction(Consumer<MultiblockUIBuilder> action) {
+        this.action = action;
+    }
+
+    private static float calculatePerSecond(int recipeLength, long amount) {
+        return ((float) amount / recipeLength) * 20f;
+    }
+
+    private static String formatPerSecond(int recipeLength, long amount) {
+        float perSecond = calculatePerSecond(recipeLength, amount);
+        return formatRateValue(perSecond) + "/s";
+    }
+
+    private static String formatPerMinute(int recipeLength, long amount) {
+        float perSecond = calculatePerSecond(recipeLength, amount);
+        float perMinute = perSecond * 60f;
+        return formatRateValue(perMinute) + "/m";
+    }
+
+    private static String formatPerHour(int recipeLength, long amount) {
+        float perSecond = calculatePerSecond(recipeLength, amount);
+        float perHour = perSecond * 60f * 60f;
+        return formatRateValue(perHour) + "/h";
+    }
+
+    private static String formatPerDay(int recipeLength, long amount) {
+        float perSecond = calculatePerSecond(recipeLength, amount);
+        float perDay = perSecond * 60f * 60f * 24f;
+        return formatRateValue(perDay) + "/d";
+    }
+
+    private static String formatRateValue(float value) {
+        return String.format("%,.2f", value).replaceAll("\\.?0+$", "");
+    }
+
+    private static IKey formatRecipeData(IKey name, IKey amount) {
+        return IKey.comp(name, KeyUtil.string(TextFormatting.WHITE, " x "), amount);
+    }
+
     @NotNull
-    InternalSyncer getSyncer() {
+    public InternalSyncer getSyncer() {
         if (this.syncer == null) {
             this.syncer = new InternalSyncer(isServer());
         }
@@ -99,20 +148,91 @@ public class MultiblockUIBuilder {
     public MultiblockUIBuilder structureFormed(boolean structureFormed) {
         updateFormed(structureFormed);
         if (!this.isStructureFormed) {
-            var base = KeyUtil.lang(TextFormatting.RED, "gregtech.multiblock.invalid_structure");
-            var hover = KeyUtil.lang(TextFormatting.GRAY,
-                    "gregtech.multiblock.invalid_structure.tooltip");
-            addHoverableKey(base, hover);
+            addKey(KeyUtil.lang(TextFormatting.RED,
+                    "gregtech.multiblock.invalid_structure"));
+            addKey(KeyUtil.lang(TextFormatting.GRAY,
+                    "gregtech.multiblock.invalid_structure.tooltip"));
+        }
+        return this;
+    }
+
+    public MultiblockUIBuilder addMissingStructureAbilities(Map<String, Integer> missingAbilities) {
+        List<Map.Entry<String, Integer>> entries = new ArrayList<>(missingAbilities.entrySet());
+        int size = getSyncer().syncInt(entries.size());
+        if (size <= 0) return this;
+
+        addKey(KeyUtil.lang(TextFormatting.RED,
+                "gregtech.multiblock.missing_ability_header"));
+        for (int i = 0; i < size; i++) {
+            String abilityName = getSyncer().syncString(
+                    i < entries.size() ? entries.get(i).getKey() : "");
+            int count = getSyncer().syncInt(
+                    i < entries.size() ? entries.get(i).getValue() : 0);
+            addKey(KeyUtil.lang(TextFormatting.RED,
+                    "gregtech.multiblock.missing_ability",
+                    count,
+                    IKey.lang("gregtech.multiblock.ability." + abilityName)));
+        }
+        return this;
+    }
+
+    public MultiblockUIBuilder addStructureError(@Nullable PatternError error) {
+        boolean hasError = getSyncer().syncBoolean(error != null);
+        if (!hasError) return this;
+
+        List<ItemStack> candidates = new ArrayList<>();
+        String position = "";
+        String detailKey = "";
+        int detailNumber = 0;
+        if (isServer() && error != null) {
+            try {
+                for (List<ItemStack> group : error.getCandidates()) {
+                    if (group != null && !group.isEmpty() && !group.get(0).isEmpty()) {
+                        candidates.add(group.get(0));
+                    }
+                }
+                position = error.getPosString(error.getPos());
+            } catch (RuntimeException ignored) {}
+
+            if (error instanceof PatternStringError stringError) {
+                detailKey = stringError.translateKey;
+            } else if (error instanceof CountLimitError countError) {
+                detailKey = "gregtech.multiblock.pattern.error.limited." + countError.getKind().getIndex();
+                detailNumber = countError.getLimit();
+            }
+        }
+
+        candidates = getSyncer().syncCollection(candidates, ByteBufAdapters.ITEM_STACK);
+        position = getSyncer().syncString(position);
+        detailKey = getSyncer().syncString(detailKey);
+        detailNumber = getSyncer().syncInt(detailNumber);
+
+        addKey(KeyUtil.lang(TextFormatting.RED,
+                "gregtech.multiblock.pattern.error_message_header"));
+        if (!candidates.isEmpty()) {
+            StringJoiner candidateNames = new StringJoiner(", ");
+            for (ItemStack candidate : candidates) {
+                candidateNames.add(candidate.getDisplayName());
+            }
+            addKey(KeyUtil.lang(TextFormatting.RED,
+                    "gregtech.multiblock.pattern.error",
+                    candidateNames.toString(),
+                    position));
+        }
+        if (!detailKey.isEmpty()) {
+            addKey(detailKey.startsWith("gregtech.multiblock.pattern.error.limited.")
+                    ? KeyUtil.lang(TextFormatting.RED, detailKey, detailNumber)
+                    : KeyUtil.lang(TextFormatting.RED, detailKey));
         }
         return this;
     }
 
     public MultiblockUIBuilder title(String lang) {
-        addKey(KeyUtil.lang(TextFormatting.WHITE, lang));
+        addOperation(Operation.addLine(KeyUtil.lang(TextFormatting.WHITE, lang)).spaceLine(2));
         return this;
     }
 
-    public int syncsInteger(int  value){
+    public int syncsInteger(int value) {
         return this.getSyncer().syncInt(value);
     }
 
@@ -159,15 +279,12 @@ public class MultiblockUIBuilder {
         long maxVoltage = Math.max(inV, outV);
         int tier = GTUtility.getFloorTierByVoltage(maxVoltage);
 
-        IKey bodyText = KeyUtil.lang(TextFormatting.GRAY,
+        addKey(KeyUtil.lang(TextFormatting.GRAY,
                 "gregtech.multiblock.max_energy_per_tick",
                 KeyUtil.number(maxVoltage),
-                KeyUtil.string(GTValues.VOCNF[tier]));
-
-        var hoverText = KeyUtil.lang(TextFormatting.GRAY,
-                "gregtech.multiblock.max_energy_per_tick_hover");
-
-        addHoverableKey(bodyText, hoverText);
+                KeyUtil.string(GTValues.VOCNF[tier])));
+        addKey(KeyUtil.lang(TextFormatting.GRAY,
+                "gregtech.multiblock.max_energy_per_tick_hover"));
         return this;
     }
 
@@ -181,11 +298,10 @@ public class MultiblockUIBuilder {
         tier = getSyncer().syncInt(tier);
         if (tier < GTValues.ULV || tier > GTValues.MAX_TRUE) return this;
 
-        var bodyText = KeyUtil.lang(TextFormatting.GRAY,
-                "gregtech.multiblock.max_recipe_tier", GTValues.VOCNF[tier]);
-        var hoverText = KeyUtil.lang(TextFormatting.GRAY,
-                "gregtech.multiblock.max_recipe_tier_hover");
-        addHoverableKey(bodyText, hoverText);
+        addKey(KeyUtil.lang(TextFormatting.GRAY,
+                "gregtech.multiblock.max_recipe_tier", GTValues.VOCNF[tier]));
+        addKey(KeyUtil.lang(TextFormatting.GRAY,
+                "gregtech.multiblock.max_recipe_tier_hover"));
         return this;
     }
 
@@ -360,16 +476,14 @@ public class MultiblockUIBuilder {
 
         if (maxProgress <= 20) {
             addKey(KeyUtil.lang(TextFormatting.GRAY, "gregtech.multiblock.recipe_progress.ticks",
-                    progress,
-                    maxProgress,
-
+                    // %02d is not supported by lang
+                    String.format("%02d", progress), String.format("%02d", maxProgress),
                     (float) progress / maxProgress * 100f));
         } else {
             addKey(KeyUtil.lang(TextFormatting.GRAY, "gregtech.multiblock.recipe_progress.seconds",
-                    progress / 20f,
-                    maxProgress / 20f,
-                    (float) progress / maxProgress * 100f));
+                    progress / 20f, maxProgress / 20f, (float) progress / maxProgress * 100f));
         }
+
         return this;
     }
 
@@ -411,6 +525,187 @@ public class MultiblockUIBuilder {
                     KeyUtil.number(TextFormatting.DARK_PURPLE, numParallels)));
         }
         return this;
+    }
+
+    /**
+     * Adds a cross-recipe parallel status line showing used/available parallel and total EU/t consumption.
+     * <br>
+     * Added if structure is formed.
+     *
+     * @param runningParallel the number of currently running parallels
+     * @param totalParallel   the total parallel budget
+     * @param totalEUt        the total EU/t being consumed by all active slots
+     * @deprecated Use {@link #addCrossRecipeOrProgressDisplay(MultiblockRecipeLogic)} instead, which properly
+     *             syncs the branch condition and slot iteration to prevent client/server buffer desynchronization.
+     */
+    @Deprecated
+    public MultiblockUIBuilder addCrossRecipeParallelLine(int runningParallel, int totalParallel, long totalEUt) {
+        if (!isStructureFormed) return this;
+        runningParallel = getSyncer().syncInt(runningParallel);
+        totalParallel = getSyncer().syncInt(totalParallel);
+        totalEUt = getSyncer().syncLong(totalEUt);
+
+        addKey(KeyUtil.lang(TextFormatting.AQUA,
+                "gregtech.multiblock.cross_recipe_parallel.status",
+                runningParallel, totalParallel,
+                KeyUtil.number(TextFormatting.RED, totalEUt)));
+        return this;
+    }
+
+    /**
+     * Adds a cross-recipe parallel slot progress line.
+     * <br>
+     * Added if structure is formed.
+     *
+     * @param slotIndex   the slot index
+     * @param progress    the slot's current progress (ticks)
+     * @param maxProgress the slot's max progress (ticks)
+     * @param eut         the slot's EU/t consumption
+     * @deprecated Use {@link #addCrossRecipeOrProgressDisplay(MultiblockRecipeLogic)} instead, which properly
+     *             syncs the branch condition and slot iteration to prevent client/server buffer desynchronization.
+     */
+    @Deprecated
+    public MultiblockUIBuilder addCrossRecipeSlotLine(int slotIndex, int progress, int maxProgress, long eut) {
+        return addCrossRecipeSlotLine(slotIndex, "", 1, progress, maxProgress, eut);
+    }
+
+    /**
+     * @deprecated Use {@link #addCrossRecipeOrProgressDisplay(MultiblockRecipeLogic)} instead, which properly
+     *             syncs the branch condition and slot iteration to prevent client/server buffer desynchronization.
+     */
+    @Deprecated
+    public MultiblockUIBuilder addCrossRecipeSlotLine(int slotIndex, @NotNull String recipeName, int parallelCount,
+                                                      int progress, int maxProgress, long eut) {
+        if (!isStructureFormed) return this;
+        slotIndex = getSyncer().syncInt(slotIndex);
+        recipeName = getSyncer().syncString(recipeName);
+        parallelCount = Math.max(1, getSyncer().syncInt(parallelCount));
+        progress = getSyncer().syncInt(progress);
+        maxProgress = getSyncer().syncInt(maxProgress);
+        eut = getSyncer().syncLong(eut);
+
+        if (maxProgress > 0) {
+            float percent = Math.min(100f, Math.max(0f, (float) progress / maxProgress * 100f));
+            if (recipeName.isEmpty()) {
+                addKey(KeyUtil.lang(TextFormatting.GRAY,
+                        "gregtech.multiblock.cross_recipe_parallel.slot",
+                        slotIndex + 1, progress / 20f, maxProgress / 20f, percent,
+                        KeyUtil.number(TextFormatting.RED, eut)));
+            } else {
+                addKey(KeyUtil.lang(TextFormatting.GRAY,
+                        "gregtech.multiblock.cross_recipe_parallel.slot_named",
+                        slotIndex + 1,
+                        KeyUtil.string(TextFormatting.YELLOW, recipeName),
+                        parallelCount,
+                        progress / 20f, maxProgress / 20f, percent,
+                        KeyUtil.number(TextFormatting.RED, eut)));
+            }
+        }
+        return this;
+    }
+
+    /**
+     * Maximum number of cross-recipe parallel slots displayed in the GUI.
+     */
+    private static final int MAX_CROSS_RECIPE_DISPLAY_SLOTS = 8;
+
+    /**
+     * Adds either cross-recipe parallel display or standard progress + recipe output display,
+     * depending on the logic's current mode. The branch condition is synced via the internal
+     * syncer so that server and client always take the same path, preventing buffer read/write
+     * desynchronization.
+     * <br>
+     * Added if the structure is formed.
+     *
+     * @param logic the multiblock recipe logic to display
+     */
+    public MultiblockUIBuilder addCrossRecipeOrProgressDisplay(@NotNull MultiblockRecipeLogic logic) {
+        if (!isStructureFormed) return this;
+
+        // Sync the branch condition so both sides take the same path
+        boolean isCrossRecipe = getSyncer().syncBoolean(
+                logic.usesParallelScheduler() && logic.getCrossRecipeScheduler() != null);
+
+        if (isCrossRecipe) {
+            addSyncedCrossRecipeDisplay(logic);
+        } else {
+            addProgressLine(logic.getProgress(), logic.getMaxProgress())
+                    .addRecipeOutputLine(logic);
+        }
+        return this;
+    }
+
+    /**
+     * Internal helper that renders all cross-recipe parallel scheduler data with proper syncer
+     * calls for each dynamic field, ensuring server/client buffer alignment.
+     *
+     * <p>Slots with the same recipe name and duration are merged into a single display line
+     * to avoid visual fragmentation from temporal drift (see {@link CrossRecipeParallelScheduler}
+     * class Javadoc).
+     */
+    private void addSyncedCrossRecipeDisplay(@NotNull MultiblockRecipeLogic logic) {
+        CrossRecipeParallelScheduler scheduler = logic.getCrossRecipeScheduler();
+
+        int totalParallel = getSyncer().syncInt(scheduler == null ? 0 : scheduler.getTotalParallelCount());
+        int parallelLimit = getSyncer().syncInt(scheduler == null ? 0 : scheduler.getParallelLimit());
+        long totalEUt = getSyncer().syncLong(scheduler == null ? 0 : scheduler.getTotalEnergyConsumption());
+
+        addKey(KeyUtil.lang(TextFormatting.AQUA,
+                "gregtech.multiblock.cross_recipe_parallel.status",
+                totalParallel, parallelLimit,
+                KeyUtil.number(TextFormatting.RED, totalEUt)));
+
+        // Use merged display slots to combine fragmented slots with the same recipe and duration
+        List<CrossRecipeParallelScheduler.MergedSlotDisplay> mergedSlots =
+                (scheduler != null) ? scheduler.getMergedDisplaySlots() : Collections.emptyList();
+        // Sync merged slot count to ensure both sides iterate the same number of times
+        int slotCount = getSyncer().syncInt(
+                () -> Math.min(mergedSlots.size(), MAX_CROSS_RECIPE_DISPLAY_SLOTS));
+
+        for (int i = 0; i < slotCount; i++) {
+            CrossRecipeParallelScheduler.MergedSlotDisplay merged =
+                    (i < mergedSlots.size()) ? mergedSlots.get(i) : null;
+
+            // Always sync slot data to keep buffer alignment
+            int slotIndex = getSyncer().syncInt(merged != null ? merged.slotIndex : 0);
+            String recipeName = getSyncer().syncString(merged != null ? merged.recipeName : "");
+            int parallelCount = Math.max(1, getSyncer().syncInt(
+                    merged != null ? merged.totalParallelCount : 1));
+            int totalOperations = getSyncer().syncInt(
+                    merged != null ? merged.totalOperations : 1);
+            int progress = getSyncer().syncInt(merged != null ? merged.progress : 0);
+            int maxProgress = getSyncer().syncInt(merged != null ? merged.maxProgress : 0);
+            long eut = getSyncer().syncLong(merged != null ? merged.totalEUt : 0);
+
+            if (maxProgress > 0) {
+                float percent = Math.min(100f, Math.max(0f, (float) progress / maxProgress * 100f));
+                int displayCount = Math.max(parallelCount, totalOperations);
+                boolean isBatched = totalOperations > parallelCount;
+                if (recipeName.isEmpty()) {
+                    addKey(KeyUtil.lang(TextFormatting.GRAY,
+                            "gregtech.multiblock.cross_recipe_parallel.slot",
+                            slotIndex + 1, progress / 20f, maxProgress / 20f, percent,
+                            KeyUtil.number(TextFormatting.RED, eut)));
+                } else if (isBatched) {
+                    int batchMultiplier = totalOperations / Math.max(1, parallelCount);
+                    addKey(KeyUtil.lang(TextFormatting.GRAY,
+                            "gregtech.multiblock.cross_recipe_parallel.slot_named_batch",
+                            slotIndex + 1,
+                            KeyUtil.string(TextFormatting.YELLOW, recipeName),
+                            displayCount, batchMultiplier,
+                            progress / 20f, maxProgress / 20f, percent,
+                            KeyUtil.number(TextFormatting.RED, eut)));
+                } else {
+                    addKey(KeyUtil.lang(TextFormatting.GRAY,
+                            "gregtech.multiblock.cross_recipe_parallel.slot_named",
+                            slotIndex + 1,
+                            KeyUtil.string(TextFormatting.YELLOW, recipeName),
+                            displayCount,
+                            progress / 20f, maxProgress / 20f, percent,
+                            KeyUtil.number(TextFormatting.RED, eut)));
+                }
+            }
+        }
     }
 
     /**
@@ -466,8 +761,7 @@ public class MultiblockUIBuilder {
     /**
      * Adds warning line(s) when the machine has maintenance problems.
      * <br>
-     * Added if there are any maintenance problems, one line per problem as well as a header. <br>
-     * Will check the config
+     * Added if there are any maintenance problems, one line per problem as well as a header. <br> Will check the config
      * setting for if maintenance is enabled automatically.
      */
     public MultiblockUIBuilder addMaintenanceProblemLines(byte maintenanceProblems, boolean warning) {
@@ -558,19 +852,41 @@ public class MultiblockUIBuilder {
         return this;
     }
 
+    public MultiblockUIBuilder addMufflerFullLine(boolean isMufflerFull) {
+        if (!isStructureFormed) return this;
+        if (getSyncer().syncBoolean(isMufflerFull)) {
+            addKey(KeyUtil.lang(TextFormatting.RED,
+                    "gregtech.multiblock.universal.muffler_full"));
+            addKey(KeyUtil.lang(TextFormatting.GRAY,
+                    "gregtech.multiblock.universal.muffler_full_desc"));
+        }
+        return this;
+    }
+
     /**
      * Adds a fuel consumption line showing the fuel name and the number of ticks per recipe run.
      * <br>
      * Added if structure is formed, the machine is active, and the passed fuelName parameter is not null.
      */
     public MultiblockUIBuilder addFuelNeededLine(String fuelAmount, int previousRecipeDuration) {
+        if (fuelAmount == null) return this;
+        return addFuelNeededLine(() -> fuelAmount, () -> previousRecipeDuration);
+    }
+
+    public MultiblockUIBuilder addFuelNeededLine(@NotNull Supplier<@Nullable String> fuelAmount,
+                                                 @NotNull IntSupplier previousRecipeDuration) {
         if (!isStructureFormed || !isActive) return this;
-        fuelAmount = getSyncer().syncString(fuelAmount);
-        previousRecipeDuration = getSyncer().syncInt(previousRecipeDuration);
+        Supplier<String> syncedFuelAmountSupplier = () -> {
+            String value = fuelAmount.get();
+            return value == null ? "" : value;
+        };
+        String syncedFuelAmount = getSyncer().syncObject(syncedFuelAmountSupplier, ByteBufAdapters.STRING);
+        if (syncedFuelAmount.isEmpty()) return this;
+        int syncedPreviousRecipeDuration = getSyncer().syncInt(previousRecipeDuration);
         addKey(KeyUtil.lang(TextFormatting.GRAY,
                 "gregtech.multiblock.turbine.fuel_needed",
-                KeyUtil.string(TextFormatting.RED, fuelAmount),
-                KeyUtil.number(TextFormatting.AQUA, previousRecipeDuration)));
+                KeyUtil.string(TextFormatting.RED, syncedFuelAmount),
+                KeyUtil.number(TextFormatting.AQUA, syncedPreviousRecipeDuration)));
         return this;
     }
 
@@ -605,7 +921,9 @@ public class MultiblockUIBuilder {
      */
     public MultiblockUIBuilder addRecipeOutputLine(AbstractRecipeLogic arl, int maxLines) {
         // todo recipe is null on first load, fix in the future
-        Recipe recipe = arl.getShowRecipes();
+        Recipe recipe;
+        if (arl.isBatchEnable()) recipe = arl.getShowRecipes();
+        else recipe = arl.getPreviousRecipe();
 
         if (getSyncer().syncBoolean(recipe == null)) return this;
         RecipeMap<?> map = arl.getRecipeMap();
@@ -616,6 +934,10 @@ public class MultiblockUIBuilder {
             MetaTileEntity mte = arl.getMetaTileEntity();
             trimmed = Recipe.trimRecipeOutputs(recipe, map, mte.getItemOutputLimit(), mte.getFluidOutputLimit());
         }
+        int p;
+        if (arl.isBatchEnable()) p = 1;
+        else p = getSyncer().syncInt(arl.getParallelRecipesPerformed());
+        if (p == 0) p = 1;
 
         long eut = getSyncer().syncLong(trimmed == null ? 0 : trimmed.getEUt());
         long maxVoltage = getSyncer().syncLong(arl.getMaximumOverclockVoltage());
@@ -651,14 +973,14 @@ public class MultiblockUIBuilder {
         Object2IntMap<ItemStack> itemMap = GTHashMaps.fromItemStackCollection(itemOutputs);
 
         for (var stack : itemMap.keySet()) {
-            addItemOutputLine(stack, (long) itemMap.getInt(stack), maxProgress);
+            addItemOutputLine(stack, (long) itemMap.getInt(stack) * p, maxProgress);
         }
 
         for (var chancedItemOutput : chancedItemOutputs) {
             // noinspection DataFlowIssue
             int chance = getSyncer()
                     .syncInt(() -> map.chanceFunction.getBoostedChance(chancedItemOutput, recipeTier, machineTier));
-            int count = chancedItemOutput.getIngredient().getCount();
+            int count = chancedItemOutput.getIngredient().getCount() * p;
             addChancedItemOutputLine(chancedItemOutput, count, chance, maxProgress);
         }
 
@@ -667,14 +989,14 @@ public class MultiblockUIBuilder {
         Object2IntMap<FluidStack> fluidMap = GTHashMaps.fromFluidCollection(fluidOutputs);
 
         for (var stack : fluidMap.keySet()) {
-            addFluidOutputLine(stack, fluidMap.getInt(stack), maxProgress);
+            addFluidOutputLine(stack, (long) fluidMap.getInt(stack) * p, maxProgress);
         }
 
         for (var chancedFluidOutput : chancedFluidOutputs) {
             // noinspection DataFlowIssue
             int chance = getSyncer()
                     .syncInt(() -> map.chanceFunction.getBoostedChance(chancedFluidOutput, recipeTier, machineTier));
-            int count = chancedFluidOutput.getIngredient().amount;
+            int count = chancedFluidOutput.getIngredient().amount * p;
             addChancedFluidOutputLine(chancedFluidOutput, count, chance, maxProgress);
         }
         return this;
@@ -689,13 +1011,25 @@ public class MultiblockUIBuilder {
     private void addItemOutputLine(@NotNull ItemStack stack, long count, int recipeLength) {
         IKey name = KeyUtil.string(TextFormatting.AQUA, stack.getDisplayName());
         IKey amount = KeyUtil.number(TextFormatting.GOLD, count);
-        IKey rate = KeyUtil.string(TextFormatting.WHITE,
-                formatRecipeRate(getSyncer().syncInt(recipeLength), count));
+        IKey rateSecond = KeyUtil.string(TextFormatting.WHITE,
+                formatPerSecond(getSyncer().syncInt(recipeLength), count));
+        IKey rateMinute = KeyUtil.string(TextFormatting.WHITE,
+                formatPerMinute(getSyncer().syncInt(recipeLength), count));
+        IKey rateHour = KeyUtil.string(TextFormatting.WHITE,
+                formatPerHour(getSyncer().syncInt(recipeLength), count));
+        IKey rateDay = KeyUtil.string(TextFormatting.WHITE,
+                formatPerDay(getSyncer().syncInt(recipeLength), count));
+
 
         addKey(new GTObjectDrawable(stack, count)
                 .asIcon()
                 .asHoverable()
-                .addTooltipLine(formatRecipeData(name, amount, rate)), Operation::add);
+                .addTooltipLine(formatRecipeData(name, amount))
+                .addTooltipLine(rateSecond)
+                .addTooltipLine(rateMinute)
+                .addTooltipLine(rateHour)
+                .addTooltipLine(rateDay)
+                , Operation::add);
     }
 
     /**
@@ -707,13 +1041,24 @@ public class MultiblockUIBuilder {
     private void addFluidOutputLine(@NotNull FluidStack stack, long count, int recipeLength) {
         IKey name = KeyUtil.fluid(TextFormatting.AQUA, stack);
         IKey amount = KeyUtil.number(TextFormatting.GOLD, count);
-        IKey rate = KeyUtil.string(TextFormatting.WHITE,
-                formatRecipeRate(getSyncer().syncInt(recipeLength), count));
+        IKey rateSecond = KeyUtil.string(TextFormatting.WHITE,
+                formatPerSecond(getSyncer().syncInt(recipeLength), count));
+        IKey rateMinute = KeyUtil.string(TextFormatting.WHITE,
+                formatPerMinute(getSyncer().syncInt(recipeLength), count));
+        IKey rateHour = KeyUtil.string(TextFormatting.WHITE,
+                formatPerHour(getSyncer().syncInt(recipeLength), count));
+        IKey rateDay = KeyUtil.string(TextFormatting.WHITE,
+                formatPerDay(getSyncer().syncInt(recipeLength), count));
 
         addKey(new GTObjectDrawable(stack, count)
                 .asIcon()
                 .asHoverable()
-                .addTooltipLine(formatRecipeData(name, amount, rate)), Operation::add);
+                        .addTooltipLine(formatRecipeData(name, amount))
+                        .addTooltipLine(rateSecond)
+                        .addTooltipLine(rateMinute)
+                        .addTooltipLine(rateHour)
+                        .addTooltipLine(rateDay)
+                , Operation::add);
     }
 
     /**
@@ -725,13 +1070,25 @@ public class MultiblockUIBuilder {
                                           int count, int chance, int recipeLength) {
         IKey name = KeyUtil.string(TextFormatting.AQUA, output.getIngredient().getDisplayName());
         IKey amount = KeyUtil.number(TextFormatting.GOLD, count);
-        IKey rate = KeyUtil.string(TextFormatting.WHITE, formatRecipeRate(getSyncer().syncInt(recipeLength), count));
+        IKey rateSecond = KeyUtil.string(TextFormatting.WHITE,
+                formatPerSecond(getSyncer().syncInt(recipeLength), count));
+        IKey rateMinute = KeyUtil.string(TextFormatting.WHITE,
+                formatPerMinute(getSyncer().syncInt(recipeLength), count));
+        IKey rateHour = KeyUtil.string(TextFormatting.WHITE,
+                formatPerHour(getSyncer().syncInt(recipeLength), count));
+        IKey rateDay = KeyUtil.string(TextFormatting.WHITE,
+                formatPerDay(getSyncer().syncInt(recipeLength), count));
 
         addKey(new GTObjectDrawable(output, count)
                 .setBoostFunction(entry -> chance)
                 .asIcon()
                 .asHoverable()
-                .addTooltipLine(formatRecipeData(name, amount, rate)), Operation::add);
+                        .addTooltipLine(formatRecipeData(name, amount))
+                        .addTooltipLine(rateSecond)
+                        .addTooltipLine(rateMinute)
+                        .addTooltipLine(rateHour)
+                        .addTooltipLine(rateDay)
+                , Operation::add);
     }
 
     /**
@@ -743,31 +1100,25 @@ public class MultiblockUIBuilder {
                                            int count, int chance, int recipeLength) {
         IKey name = KeyUtil.fluid(TextFormatting.AQUA, output.getIngredient());
         IKey amount = KeyUtil.number(TextFormatting.GOLD, count);
-        IKey rate = KeyUtil.string(TextFormatting.WHITE,
-                formatRecipeRate(getSyncer().syncInt(recipeLength), count));
+        IKey rateSecond = KeyUtil.string(TextFormatting.WHITE,
+                formatPerSecond(getSyncer().syncInt(recipeLength), count));
+        IKey rateMinute = KeyUtil.string(TextFormatting.WHITE,
+                formatPerMinute(getSyncer().syncInt(recipeLength), count));
+        IKey rateHour = KeyUtil.string(TextFormatting.WHITE,
+                formatPerHour(getSyncer().syncInt(recipeLength), count));
+        IKey rateDay = KeyUtil.string(TextFormatting.WHITE,
+                formatPerDay(getSyncer().syncInt(recipeLength), count));
 
         addKey(new GTObjectDrawable(output, count)
                 .setBoostFunction(entry -> chance)
                 .asIcon()
-                .asHoverable()
-                .addTooltipLine(formatRecipeData(name, amount, rate)), Operation::add);
-    }
-
-    private static String formatRecipeRate(int recipeLength, long amount) {
-        float perSecond = ((float) amount / recipeLength) * 20f;
-
-        String rate;
-        if (perSecond > 1) {
-            rate = "(" + String.format("%,.2f", perSecond).replaceAll("\\.?0+$", "") + "/s)";
-        } else {
-            rate = "(" + String.format("%,.2f", 1 / (perSecond)).replaceAll("\\.?0+$", "") + "s/ea)";
-        }
-
-        return rate;
-    }
-
-    private static IKey formatRecipeData(IKey name, IKey amount, IKey rate) {
-        return IKey.comp(name, KeyUtil.string(TextFormatting.WHITE, " x "), amount, IKey.SPACE, rate);
+                        .asHoverable()
+                        .addTooltipLine(formatRecipeData(name, amount))
+                        .addTooltipLine(rateSecond)
+                        .addTooltipLine(rateMinute)
+                        .addTooltipLine(rateHour)
+                        .addTooltipLine(rateDay)
+                , Operation::add);
     }
 
     /** Insert an empty line into the text list. */
@@ -800,18 +1151,11 @@ public class MultiblockUIBuilder {
     }
 
     /**
-     * Builds the passed in rich text with operations and drawables. <br />
-     * Will clear and rebuild if this builder is marked dirty
+     * Builds the passed in rich text with operations and drawables.
      *
      * @param richText the rich text to add drawables to
      */
     public void build(IRichTextBuilder<?> richText) {
-        if (dirty) {
-            clear();
-            onRebuild();
-            runAction();
-            dirty = false;
-        }
         for (Operation op : operations) {
             op.accept(richText);
         }
@@ -821,13 +1165,6 @@ public class MultiblockUIBuilder {
         if (this.onRebuild != null) {
             this.onRebuild.run();
         }
-    }
-
-    /**
-     * Mark this builder as dirty. Will be rebuilt during {@link #build(IRichTextBuilder) build()}
-     */
-    public void markDirty() {
-        dirty = true;
     }
 
     /*
@@ -841,15 +1178,6 @@ public class MultiblockUIBuilder {
     }
 
     /**
-     * Set the action for this builder. Called on server and client.
-     *
-     * @param action the action to apply to this builder
-     */
-    public void setAction(Consumer<MultiblockUIBuilder> action) {
-        this.action = action;
-    }
-
-    /**
      * The runnable is called prior to rebuilding, usually used for updating {@link #structureFormed(boolean)}
      *
      * @param onRebuild the runnable to run prior to rebuilding
@@ -859,7 +1187,6 @@ public class MultiblockUIBuilder {
     }
 
     private void addHoverableKey(IKey key, IDrawable... hover) {
-        if (isServer()) return;
         addKey(KeyUtil.setHover(key, hover));
     }
 

@@ -19,6 +19,7 @@ public class MaterialIconType {
 
     public static final Map<String, MaterialIconType> ICON_TYPES = new HashMap<>();
 
+
     static int idCounter = 0;
 
     public static final MaterialIconType dustTiny = new MaterialIconType("dustTiny");
@@ -36,6 +37,7 @@ public class MaterialIconType {
     public static final MaterialIconType gemFlawed = new MaterialIconType("gemFlawed");
     public static final MaterialIconType gemFlawless = new MaterialIconType("gemFlawless");
     public static final MaterialIconType gemExquisite = new MaterialIconType("gemExquisite");
+    public static final MaterialIconType gemLegendary = new MaterialIconType("gemLegendary");
 
     public static final MaterialIconType nugget = new MaterialIconType("nugget");
 
@@ -52,6 +54,7 @@ public class MaterialIconType {
     public static final MaterialIconType plateQuadruple = new MaterialIconType("plateQuadruple");
     public static final MaterialIconType plateQuintuple = new MaterialIconType("plateQuintuple");
     public static final MaterialIconType plateDense = new MaterialIconType("plateDense");
+    public static final MaterialIconType plateCurved = new MaterialIconType("plateCurved");
 
     public static final MaterialIconType stick = new MaterialIconType("stick");
     public static final MaterialIconType lens = new MaterialIconType("lens");
@@ -85,17 +88,35 @@ public class MaterialIconType {
 
     public static final MaterialIconType turbineBlade = new MaterialIconType("turbineBlade");
 
+    // Nuclear MaterialIcontypes
+    public static final MaterialIconType fuelRod = new MaterialIconType("fuelRod");
+    public static final MaterialIconType fuelRodDepleted = new MaterialIconType("fuelRodDepleted");
+    public static final MaterialIconType fuelRodHotDepleted = new MaterialIconType("fuelRodHotDepleted");
+    public static final MaterialIconType fuelPelletRaw = new MaterialIconType("fuelPelletRaw");
+    public static final MaterialIconType fuelPellet = new MaterialIconType("fuelPellet");
+    public static final MaterialIconType fuelPelletDepleted = new MaterialIconType("fuelPelletDepleted");
+
+    public static final MaterialIconType dustSpentFuel = new MaterialIconType("dustSpentFuel");
+    public static final MaterialIconType dustBredFuel = new MaterialIconType("dustBredFuel");
+    public static final MaterialIconType dustFissionByproduct = new MaterialIconType("dustFissionByproduct");
+
+    //Additions Nuclear stuff, introduced by MeowmelMuku
+    public static final MaterialIconType fuelPebble = new MaterialIconType("fuelPebble");
+    public static final MaterialIconType fuelPebbleDepleted = new MaterialIconType("fuelPebbleDepleted");
+
     // BLOCK TEXTURES
     public static final MaterialIconType liquid = new MaterialIconType("liquid");
     public static final MaterialIconType gas = new MaterialIconType("gas");
     public static final MaterialIconType plasma = new MaterialIconType("plasma");
     public static final MaterialIconType ore = new MaterialIconType("ore");
     public static final MaterialIconType raw = new MaterialIconType("raw");
-    public static final MaterialIconType oreSmall = new MaterialIconType("oreSmall");
+    public static final MaterialIconType oreLean = new MaterialIconType("oreLean");
 
     // BLOCK MODELS
     public static final MaterialIconType block = new MaterialIconType("block");
     public static final MaterialIconType frameGt = new MaterialIconType("frameGt");
+    public static final MaterialIconType sheet = new MaterialIconType("sheet");
+    public static final MaterialIconType molten = new MaterialIconType("molten");
 
     // USED FOR GREGIFICATION ADDON
     public static final MaterialIconType seed = new MaterialIconType("seed");

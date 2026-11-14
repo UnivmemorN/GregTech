@@ -22,22 +22,27 @@ import net.minecraftforge.fml.common.Optional;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
-import crafttweaker.annotations.ZenRegister;
-import stanhebben.zenscript.annotations.ZenClass;
-import stanhebben.zenscript.annotations.ZenMethod;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
-@ZenClass("mods.gregtech.util.CapesRegistry")
-@ZenRegister
 public class CapesRegistry {
 
     private static final Map<UUID, List<ResourceLocation>> UNLOCKED_CAPES = new HashMap<>();
     private static final Map<UUID, ResourceLocation> WORN_CAPES = new HashMap<>();
     private static final Map<Advancement, ResourceLocation> CAPE_ADVANCEMENTS = new HashMap<>();
-    private static final Set<ResourceLocation> FREE_CAPES = new HashSet<>();
+    private static final Set<ResourceLocation> ADVANCEMENT_CAPES = new LinkedHashSet<>();
+    private static final Set<ResourceLocation> FREE_CAPES = new LinkedHashSet<>();
 
     public static void registerDevCapes() {
         unlockCape(UUID.fromString("a24a9108-23d2-43fc-8db7-43f809d017db"), Textures.GREGTECH_CAPE_TEXTURE); // ALongStringOfNumbers
@@ -157,24 +162,13 @@ public class CapesRegistry {
         for (Tuple<ResourceLocation, ResourceLocation> tuple : ctRegisterCapes) {
             registerCape(tuple.getFirst(), tuple.getSecond(), world);
         }
+
         FREE_CAPES.addAll(ctFreeCapes);
-        FREE_CAPES.add(Textures.ACE_CAPE_TEXTURE);
-        FREE_CAPES.add(Textures.AGENDER_CAPE_TEXTURE);
-        FREE_CAPES.add(Textures.AROMANTIC_CAPE_TEXTURE);
-        FREE_CAPES.add(Textures.BI_CAPE_TEXTURE);
-        FREE_CAPES.add(Textures.GENDERFLUID_CAPE_TEXTURE);
-        FREE_CAPES.add(Textures.GENDERQUEER_CAPE_TEXTURE);
-        FREE_CAPES.add(Textures.INTERSEX_CAPE_TEXTURE);
-        FREE_CAPES.add(Textures.LESBIAN_CAPE_TEXTURE);
-        FREE_CAPES.add(Textures.NONBINARY_CAPE_TEXTURE);
-        FREE_CAPES.add(Textures.PAN_CAPE_TEXTURE);
-        FREE_CAPES.add(Textures.RAINBOW_CAPE_TEXTURE);
-        FREE_CAPES.add(Textures.TRANS_CAPE_TEXTURE);
     }
 
     /**
      * Allows one to check what capes a specific player has unlocked through CapesRegistry.
-     * 
+     *
      * @param uuid The player data used to get what capes the player has through internal maps.
      * @return A list of ResourceLocations containing the cape textures that the player has unlocked.
      */
@@ -185,7 +179,7 @@ public class CapesRegistry {
     /**
      * Links an advancement with a cape, which allows a player to unlock it when they receive the advancement.
      * This should only be called on world load, since advancements are only accessible then.
-     * 
+     *
      * @param advancement A ResourceLocation pointing to the advancement that is to be used for getting a cape.
      * @param cape        The ResourceLocation that points to the cape that can be unlocked through the advancement.
      * @param world       The world that may contain the advancement used for getting a cape.
@@ -199,28 +193,36 @@ public class CapesRegistry {
                 CAPE_ADVANCEMENTS.put(advObject, cape);
             }
         }
+        ADVANCEMENT_CAPES.add(cape);
     }
 
     /**
      * Adds a cape that will always be unlocked for all players.
-     * 
+     *
      * @param cape A ResourceLocation pointing to the cape texture.
      */
-    public static void addFreeCape(ResourceLocation cape) {
+    public static void registerFreeCape(ResourceLocation cape) {
         FREE_CAPES.add(cape);
+    }
+
+    /**
+     * Deprecated for naming consistency, use {@link #registerFreeCape(ResourceLocation)} instead
+     */
+    @ApiStatus.ScheduledForRemoval(inVersion = "2.10")
+    @Deprecated
+    public static void addFreeCape(ResourceLocation cape) {
+        registerFreeCape(cape);
     }
 
     private static final List<Tuple<ResourceLocation, ResourceLocation>> ctRegisterCapes = new ArrayList<>();
     private static final List<ResourceLocation> ctFreeCapes = new ArrayList<>();
 
     @Optional.Method(modid = Mods.Names.CRAFT_TWEAKER)
-    @ZenMethod
     public static void registerCape(String advancement, String cape) {
         ctRegisterCapes.add(new Tuple<>(new ResourceLocation(advancement), new ResourceLocation(cape)));
     }
 
     @Optional.Method(modid = Mods.Names.CRAFT_TWEAKER)
-    @ZenMethod
     public static void registerFreeCape(String cape) {
         ctFreeCapes.add(new ResourceLocation(cape));
     }
@@ -228,7 +230,7 @@ public class CapesRegistry {
     /**
      * Automatically gives a cape to a player, which may be used for a reward for something other than an advancement
      * DOES NOT SAVE AUTOMATICALLY; PLEASE CALL SAVE AFTER THIS FUNCTION IS USED IF THIS DATA IS MEANT TO PERSIST.
-     * 
+     *
      * @param uuid The UUID of the player to be given the cape.
      * @param cape The ResourceLocation that holds the cape used here.
      */
@@ -248,6 +250,17 @@ public class CapesRegistry {
             player.sendMessage(new TextComponentTranslation("gregtech.chat.cape"));
             save();
         }
+    }
+
+    /**
+     * @return A list of all registered capes, with advancement capes sorted before free capes.
+     *         This currently does not count capes that are manually unlocked by other mods.
+     */
+    public static List<ResourceLocation> allCapes() {
+        List<ResourceLocation> result = new ArrayList<>();
+        result.addAll(ADVANCEMENT_CAPES);
+        result.addAll(FREE_CAPES);
+        return result;
     }
 
     public static void clearMaps() {
@@ -271,7 +284,7 @@ public class CapesRegistry {
         if (player instanceof EntityPlayerMP) {
             UUID uuid = player.getPersistentID();
             GregTechAPI.networkHandler.sendToAll(new PacketNotifyCapeChange(uuid, WORN_CAPES.get(uuid))); // sync to
-                                                                                                          // others
+            // others
             for (EntityPlayerMP otherPlayer : FMLCommonHandler.instance().getMinecraftServerInstance().getPlayerList()
                     .getPlayers()) { // sync to login
                 uuid = otherPlayer.getPersistentID();

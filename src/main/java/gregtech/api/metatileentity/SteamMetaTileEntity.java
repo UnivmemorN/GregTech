@@ -1,4 +1,5 @@
 package gregtech.api.metatileentity;
+
 import gregtech.api.GTValues;
 import gregtech.api.capability.impl.CommonFluidFilters;
 import gregtech.api.capability.impl.FilteredFluidHandler;
@@ -7,8 +8,8 @@ import gregtech.api.capability.impl.RecipeLogicSteam;
 import gregtech.api.gui.GuiTextures;
 import gregtech.api.gui.ModularUI;
 import gregtech.api.gui.widgets.ImageWidget;
+import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuiTheme;
-import gregtech.api.mui.GTGuis;
 import gregtech.api.recipes.RecipeMap;
 import gregtech.api.util.GTUtility;
 import gregtech.client.particle.VanillaParticleEffects;
@@ -17,13 +18,19 @@ import gregtech.client.renderer.texture.Textures;
 import gregtech.client.renderer.texture.cube.SimpleSidedCubeRenderer;
 import gregtech.client.utils.RenderUtil;
 import gregtech.common.ConfigHolder;
+import gregtech.common.gui.widgets.SteamGaugeWidget;
 
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.SoundEvents;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.*;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.EnumHand;
+import net.minecraft.util.EnumParticleTypes;
+import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.SoundCategory;
+import net.minecraft.util.SoundEvent;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.fluids.FluidTank;
@@ -35,11 +42,16 @@ import codechicken.lib.render.CCRenderState;
 import codechicken.lib.render.pipeline.ColourMultiplier;
 import codechicken.lib.render.pipeline.IVertexOperation;
 import codechicken.lib.vec.Matrix4;
+import com.cleanroommc.modularui.api.drawable.IDrawable;
 import com.cleanroommc.modularui.api.drawable.IKey;
+import com.cleanroommc.modularui.drawable.DynamicDrawable;
 import com.cleanroommc.modularui.factory.PosGuiData;
 import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
+import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
+import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.widget.Widget;
+import com.cleanroommc.modularui.widgets.SlotGroupWidget;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.Nullable;
@@ -142,21 +154,41 @@ public abstract class SteamMetaTileEntity extends MetaTileEntity {
     }
 
     @Override
-    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager guiSyncManager) {
+    public ModularPanel buildUI(PosGuiData guiData, PanelSyncManager panelSyncManager, UISettings settings) {
         RecipeMap<?> map = Objects.requireNonNull(getRecipeMap());
 
-        ModularPanel modularPanel = GTGuis.defaultPanel(this);
+        BooleanSyncValue hasNoSteam = new BooleanSyncValue(workableHandler::isHasNotEnoughEnergy);
+        panelSyncManager.syncValue("has_energy", hasNoSteam);
 
-        // todo this method needs options to ignore certain handlers
-        // actually, steam machines manually construct their ui instead of using the recipe map ui
-        Widget<?> widget = map.getRecipeMapUI().buildWidget(workableHandler::getProgressPercent, importItems,
-                exportItems, EMPTY, exportFluids, 0, guiSyncManager);
+        IntSyncValue steamStored = new IntSyncValue(() -> steamFluidTank.getFluidAmount());
+        panelSyncManager.syncValue("steam_stored", steamStored);
+        IntSyncValue steamMax = new IntSyncValue(steamFluidTank::getCapacity);
+        panelSyncManager.syncValue("steam_max", steamMax);
 
-        modularPanel.child(widget)
-                .child(IKey.lang(getMetaFullName()).asWidget().pos(5, 5))
-                .bindPlayerInventory();
+        ModularPanel panel = map.getRecipeMapUI()
+                .constructPanel(this, builder -> builder
+                        .setMaxSize(176, 170)
+                        .setInputs(importItems, EMPTY)
+                        .setOutputs(exportItems, exportFluids)
+                        .inventorySlotGroups()
+                        .progressWidget(workableHandler::getProgressPercent, widget -> {
+                            // todo add tooltip for no steam?
+                            widget.overlay(new DynamicDrawable(() -> hasNoSteam.getBoolValue() ?
+                                    getIndicator() : IDrawable.NONE)
+                                    .asIcon().size(18).marginTop(50));
+                        }));
+        return panel.child(IKey.lang(getMetaFullName()).asWidget().pos(5, 5))
+                .child(createPlayerInventoryLogo(16))
+                .child(new SteamGaugeWidget(steamStored, steamMax, isHighPressure)
+                        .left(-48)
+                        .top(0))
+                .child(SlotGroupWidget.playerInventory((index, widgetSlot) -> widgetSlot
+                                .background(GTGuiTextures.SLOT))
+                        .horizontalCenter().bottom(7));
+    }
 
-        return modularPanel;
+    public IDrawable getIndicator() {
+        return isHighPressure ? GTGuiTextures.INDICATOR_NO_STEAM_STEEL : GTGuiTextures.INDICATOR_NO_STEAM_BRONZE;
     }
 
     @Override

@@ -25,6 +25,7 @@ import net.minecraft.util.EnumHand;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.text.TextComponentTranslation;
 import net.minecraft.world.World;
+import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ICapabilityProvider;
 import net.minecraftforge.common.util.Constants;
 import net.minecraftforge.fluids.FluidStack;
@@ -50,7 +51,7 @@ import java.io.IOException;
 import java.util.List;
 
 import static gregtech.api.capability.GregtechDataCodes.UPDATE_AUTO_OUTPUT;
-import static net.minecraft.util.text.TextFormatting.AQUA;
+import static gregtech.api.capability.GregtechDataCodes.UPDATE_FLUID;
 
 public class MetaTileEntityDrum extends MetaTileEntity {
 
@@ -122,7 +123,7 @@ public class MetaTileEntityDrum extends MetaTileEntity {
         }
 
         super.initializeInventory();
-        this.fluidTank = new FilteredFluidHandler(tankSize).setFilter(this.fluidFilter);
+        this.fluidTank = new DrumFluidHandler(tankSize).setFilter(this.fluidFilter);
         this.fluidInventory = this.fluidTank;
     }
 
@@ -153,29 +154,28 @@ public class MetaTileEntityDrum extends MetaTileEntity {
     }
 
     @Override
+    public <T> T getCapability(Capability<T> capability, EnumFacing side) {
+        if (capability == CapabilityFluidHandler.FLUID_HANDLER_CAPABILITY && fluidTank != null) {
+            return CapabilityFluidHandler.FLUID_HANDLER_CAPABILITY.cast(fluidTank);
+        }
+        return super.getCapability(capability, side);
+    }
+
+    // endregion
+
+    // region Network sync
+
+    @Override
     public void writeInitialSyncData(@NotNull PacketBuffer buf) {
         super.writeInitialSyncData(buf);
-        FluidStack fluidStack = fluidTank.getFluid();
-        buf.writeBoolean(fluidStack != null);
-        if (fluidStack != null) {
-            NBTTagCompound tagCompound = new NBTTagCompound();
-            fluidStack.writeToNBT(tagCompound);
-            buf.writeCompoundTag(tagCompound);
-        }
+        writeFluidTankSync(buf);
         buf.writeBoolean(isAutoOutput);
     }
 
     @Override
     public void receiveInitialSyncData(@NotNull PacketBuffer buf) {
         super.receiveInitialSyncData(buf);
-        FluidStack fluidStack = null;
-        if (buf.readBoolean()) {
-            try {
-                NBTTagCompound tagCompound = buf.readCompoundTag();
-                fluidStack = FluidStack.loadFluidStackFromNBT(tagCompound);
-            } catch (IOException ignored) {}
-        }
-        fluidTank.setFluid(fluidStack);
+        fluidTank.setFluid(readFluidTankSync(buf));
         isAutoOutput = buf.readBoolean();
     }
 
@@ -185,8 +185,46 @@ public class MetaTileEntityDrum extends MetaTileEntity {
         if (dataId == UPDATE_AUTO_OUTPUT) {
             this.isAutoOutput = buf.readBoolean();
             scheduleRenderUpdate();
+        } else if (dataId == UPDATE_FLUID) {
+            fluidTank.setFluid(readFluidTankSync(buf));
+            scheduleRenderUpdate();
         }
     }
+
+    private void writeFluidTankSync(@NotNull PacketBuffer buf) {
+        FluidStack fluidStack = fluidTank == null ? null : fluidTank.getFluid();
+        buf.writeBoolean(fluidStack != null);
+        if (fluidStack != null) {
+            NBTTagCompound tagCompound = new NBTTagCompound();
+            fluidStack.writeToNBT(tagCompound);
+            buf.writeCompoundTag(tagCompound);
+        }
+    }
+
+    @Nullable
+    private FluidStack readFluidTankSync(@NotNull PacketBuffer buf) {
+        if (!buf.readBoolean()) {
+            return null;
+        }
+        try {
+            NBTTagCompound tagCompound = buf.readCompoundTag();
+            return FluidStack.loadFluidStackFromNBT(tagCompound);
+        } catch (IOException ignored) {
+            return null;
+        }
+    }
+
+    private void onFluidContentsChanged() {
+        if (getWorld() == null || getWorld().isRemote) {
+            return;
+        }
+        markDirty();
+        writeCustomData(UPDATE_FLUID, this::writeFluidTankSync);
+    }
+
+    // endregion
+
+    // region Update and interaction
 
     @Override
     public void update() {
@@ -201,9 +239,8 @@ public class MetaTileEntityDrum extends MetaTileEntity {
     @Override
     public boolean onRightClick(EntityPlayer playerIn, EnumHand hand, EnumFacing facing,
                                 CuboidRayTraceResult hitResult) {
-        if (playerIn.getHeldItem(hand).hasCapability(CapabilityFluidHandler.FLUID_HANDLER_ITEM_CAPABILITY, null)) {
-            return getWorld().isRemote ||
-                    (!playerIn.isSneaking() && FluidUtil.interactWithFluidHandler(playerIn, hand, fluidTank));
+        if (!playerIn.isSneaking() && FluidUtil.getFluidHandler(playerIn.getHeldItem(hand)) != null) {
+            return getWorld().isRemote || FluidUtil.interactWithFluidHandler(playerIn, hand, fluidTank);
         }
         return super.onRightClick(playerIn, hand, facing, hitResult);
     }
@@ -225,7 +262,16 @@ public class MetaTileEntityDrum extends MetaTileEntity {
     }
 
     private void toggleOutput() {
-        isAutoOutput = !isAutoOutput;
+        setAutoOutput(!isAutoOutput);
+    }
+
+    public boolean isAutoOutput() {
+        return isAutoOutput;
+    }
+
+    public void setAutoOutput(boolean autoOutput) {
+        if (this.isAutoOutput == autoOutput) return;
+        this.isAutoOutput = autoOutput;
         if (!getWorld().isRemote) {
             notifyBlockUpdate();
             writeCustomData(UPDATE_AUTO_OUTPUT, buf -> buf.writeBoolean(isAutoOutput));
@@ -321,6 +367,14 @@ public class MetaTileEntityDrum extends MetaTileEntity {
         return false;
     }
 
+    protected IPropertyFluidFilter getFluidFilter() {
+        return fluidFilter;
+    }
+
+    protected int getColor() {
+        return color;
+    }
+
     public int getTankSize() {
         return tankSize;
     }
@@ -329,5 +383,17 @@ public class MetaTileEntityDrum extends MetaTileEntity {
     @Override
     public SoundType getSoundType() {
         return this.isWood ? SoundType.WOOD : SoundType.METAL;
+    }
+
+    private class DrumFluidHandler extends FilteredFluidHandler {
+
+        private DrumFluidHandler(int capacity) {
+            super(capacity);
+        }
+
+        @Override
+        protected void onContentsChanged() {
+            onFluidContentsChanged();
+        }
     }
 }

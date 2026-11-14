@@ -80,6 +80,7 @@ public final class CoverBehaviors {
                 (def, tile, side) -> new CoverFluidFilter(def, tile, side, "cover.fluid_filter.title",
                         Textures.FLUID_FILTER_OVERLAY));
         registerBehavior(gregtechId("shutter"), MetaItems.COVER_SHUTTER, CoverShutter::new);
+        registerBehavior(gregtechId("crafting_table"), MetaItems.COVER_CRAFTING, CoverCraftingTable::new);
 
         registerBehavior(gregtechId("solar_panel.basic"), MetaItems.COVER_SOLAR_PANEL,
                 (def, tile, side) -> new CoverSolarPanel(def, tile, side, 1));
@@ -137,15 +138,20 @@ public final class CoverBehaviors {
                 CoverDetectorActivityAdvanced::new);
         registerBehavior(gregtechId("maintenance_detector"), MetaItems.COVER_MAINTENANCE_DETECTOR,
                 CoverDetectorMaintenance::new);
-        registerBehavior(gregtechId("infinite_water"), MetaItems.COVER_INFINITE_WATER, CoverInfiniteWater::new);
+
+        registerBehavior(gregtechId("infinite_water.lv"), MetaItems.COVER_INFINITE_WATER_LV,(def, tile, side) -> new CoverInfiniteWater(def, tile, side, 250));
+        registerBehavior(gregtechId("infinite_water.mv"), MetaItems.COVER_INFINITE_WATER_MV,(def, tile, side) -> new CoverInfiniteWater(def, tile, side, 1000));
+        registerBehavior(gregtechId("infinite_water.hv"), MetaItems.COVER_INFINITE_WATER_HV,(def, tile, side) -> new CoverInfiniteWater(def, tile, side, 4000));
+        registerBehavior(gregtechId("infinite_water.ev"), MetaItems.COVER_INFINITE_WATER_EV,(def, tile, side) -> new CoverInfiniteWater(def, tile, side, 16000));
 
         registerBehavior(gregtechId("air_vent"), MetaItems.COVER_AIR_VENT, (def, tile, side) -> new CoverAirVent(def, tile, side, 100));
-
-
+        registerBehavior(gregtechId("drain"), MetaItems.COVER_DRAIN, (def, tile, side) -> new CoverDrain(def, tile, side, 100));
 
         registerBehavior(gregtechId("ender_fluid_link"), MetaItems.COVER_ENDER_FLUID_LINK, CoverEnderFluidLink::new);
         registerBehavior(gregtechId("ender_item_link"), MetaItems.COVER_ENDER_ITEM_LINK, CoverEnderItemLink::new);
         registerBehavior(gregtechId("cover.digital"), MetaItems.COVER_DIGITAL_INTERFACE, CoverDigitalInterface::new);
+
+        registerWirelessEnergyCovers();
 
         // Custom cover behaviour
         MetaItems.COVER_DIGITAL_INTERFACE_WIRELESS.addComponents(
@@ -239,6 +245,34 @@ public final class CoverBehaviors {
         registerBehavior(gregtechId("storage_huge"), MetaItems.COVER_STORAGE_HUGE,   (def, tile, side) -> new CoverStorage(def, tile, side,36));
 
 
+    }
+
+    private static void registerWirelessEnergyCovers() {
+        MetaValueItem[] inputCovers = {
+                MetaItems.WIRELESS_ENERGY_COVER_INPUT_ULV, MetaItems.WIRELESS_ENERGY_COVER_INPUT_LV,
+                MetaItems.WIRELESS_ENERGY_COVER_INPUT_MV, MetaItems.WIRELESS_ENERGY_COVER_INPUT_HV,
+                MetaItems.WIRELESS_ENERGY_COVER_INPUT_EV, MetaItems.WIRELESS_ENERGY_COVER_INPUT_IV,
+                MetaItems.WIRELESS_ENERGY_COVER_INPUT_LUV, MetaItems.WIRELESS_ENERGY_COVER_INPUT_ZPM,
+                MetaItems.WIRELESS_ENERGY_COVER_INPUT_UV, MetaItems.WIRELESS_ENERGY_COVER_INPUT_UHV,
+                MetaItems.WIRELESS_ENERGY_COVER_INPUT_UEV, MetaItems.WIRELESS_ENERGY_COVER_INPUT_UIV,
+                MetaItems.WIRELESS_ENERGY_COVER_INPUT_UXV, MetaItems.WIRELESS_ENERGY_COVER_INPUT_OPV,
+                MetaItems.WIRELESS_ENERGY_COVER_INPUT_MAX };
+        MetaValueItem[] outputCovers = {
+                MetaItems.WIRELESS_ENERGY_COVER_OUTPUT_ULV, MetaItems.WIRELESS_ENERGY_COVER_OUTPUT_LV,
+                MetaItems.WIRELESS_ENERGY_COVER_OUTPUT_MV, MetaItems.WIRELESS_ENERGY_COVER_OUTPUT_HV,
+                MetaItems.WIRELESS_ENERGY_COVER_OUTPUT_EV, MetaItems.WIRELESS_ENERGY_COVER_OUTPUT_IV,
+                MetaItems.WIRELESS_ENERGY_COVER_OUTPUT_LUV, MetaItems.WIRELESS_ENERGY_COVER_OUTPUT_ZPM,
+                MetaItems.WIRELESS_ENERGY_COVER_OUTPUT_UV, MetaItems.WIRELESS_ENERGY_COVER_OUTPUT_UHV,
+                MetaItems.WIRELESS_ENERGY_COVER_OUTPUT_UEV, MetaItems.WIRELESS_ENERGY_COVER_OUTPUT_UIV,
+                MetaItems.WIRELESS_ENERGY_COVER_OUTPUT_UXV, MetaItems.WIRELESS_ENERGY_COVER_OUTPUT_OPV,
+                MetaItems.WIRELESS_ENERGY_COVER_OUTPUT_MAX };
+        for (int tier = 0; tier < inputCovers.length; tier++) {
+            int currentTier = tier;
+            registerBehavior(gregtechId("wireless_energy_cover_input." + VN[tier].toLowerCase()), inputCovers[tier],
+                    (def, tile, side) -> new CoverWirelessEnergy(def, tile, side, currentTier, true));
+            registerBehavior(gregtechId("wireless_energy_cover_output." + VN[tier].toLowerCase()), outputCovers[tier],
+                    (def, tile, side) -> new CoverWirelessEnergy(def, tile, side, currentTier, false));
+        }
     }
 
     /**

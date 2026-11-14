@@ -10,14 +10,11 @@ import gregtech.api.metatileentity.multiblock.MultiblockWithDisplayBase;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIFactory;
 import gregtech.api.mui.GTGuiTextures;
 import gregtech.api.mui.GTGuiTheme;
-import gregtech.api.pattern.BlockPattern;
-import gregtech.api.pattern.FactoryBlockPattern;
+import gregtech.api.pattern.casing.DeclarativePatternBuilder;
+import gregtech.api.pattern.element.Elements;
+import gregtech.api.pattern.element.StructureDefinition;
 import gregtech.client.renderer.ICubeRenderer;
 import gregtech.client.renderer.texture.Textures;
-import gregtech.common.blocks.BlockMetalCasing;
-import gregtech.common.blocks.BlockSteamCasing;
-import gregtech.common.blocks.MetaBlocks;
-import gregtech.common.metatileentities.MetaTileEntities;
 import gregtech.common.mui.widget.GTFluidSlot;
 
 import net.minecraft.block.SoundType;
@@ -40,7 +37,6 @@ import codechicken.lib.render.pipeline.IVertexOperation;
 import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.utils.Alignment;
-import com.cleanroommc.modularui.widgets.TextWidget;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -48,22 +44,15 @@ import java.util.List;
 
 public class MetaTileEntityMultiblockTank extends MultiblockWithDisplayBase {
 
-    private final boolean isMetal;
-    private final int capacity;
+    private static final String STRUCTURE_POOL_KEY = "gregtech:tank";
 
-    public MetaTileEntityMultiblockTank(ResourceLocation metaTileEntityId, boolean isMetal, int capacity) {
+    public final TankType tankType;
+
+    public MetaTileEntityMultiblockTank(ResourceLocation metaTileEntityId, TankType tankType) {
         super(metaTileEntityId);
-        this.isMetal = isMetal;
-        this.capacity = capacity;
-        initializeInventory();
-    }
-
-    @Override
-    protected void initializeInventory() {
-        super.initializeInventory();
-
-        FilteredFluidHandler tank = new FilteredFluidHandler(capacity);
-        if (!isMetal) {
+        this.tankType = tankType;
+        FilteredFluidHandler tank = new FilteredFluidHandler(tankType.getCapacity());
+        if (tankType.isWood()) {
             tank.setFilter(new PropertyFluidFilter(340, false, false, false, false));
         }
 
@@ -71,9 +60,33 @@ public class MetaTileEntityMultiblockTank extends MultiblockWithDisplayBase {
         this.fluidInventory = tank;
     }
 
+    private static StructureDefinition<?> buildStructureDefinition(TankType tankType, ResourceLocation controllerId) {
+        return DeclarativePatternBuilder.start()
+                .aisle("XXX", "XXX", "XXX")
+                .aisle("XXX", "X&X", "XXX")
+                .aisle("XXX", "XSX", "XXX")
+                .where('S', Elements.self(MetaTileEntityMultiblockTank.class, controllerId))
+                .air(' ')
+                .air('&')
+                .casing('X', tankType.getCasingState())
+                .custom(Elements.metaTileEntities(0, 2, 2, tankType.getValve()), 2)
+                .buildStructureDefinition();
+    }
+
+    @Override
+    public IBlockState getCasingBlock() {
+        return tankType.getCasingState();
+    }
+
     @Override
     public MetaTileEntity createMetaTileEntity(IGregTechTileEntity tileEntity) {
-        return new MetaTileEntityMultiblockTank(metaTileEntityId, isMetal, capacity);
+        return new MetaTileEntityMultiblockTank(metaTileEntityId, tankType);
+    }
+
+    @Override
+    @NotNull
+    public EnumFacing getPreviewFrontFacing() {
+        return EnumFacing.NORTH;
     }
 
     @Override
@@ -81,42 +94,21 @@ public class MetaTileEntityMultiblockTank extends MultiblockWithDisplayBase {
 
     @Override
     @NotNull
-    protected BlockPattern createStructurePattern() {
-        return FactoryBlockPattern.start()
-                .aisle("XXX", "XXX", "XXX")
-                .aisle("XXX", "X X", "XXX")
-                .aisle("XXX", "XSX", "XXX")
-                .where('S', selfPredicate())
-                .where('X', states(getCasingState()).setMinGlobalLimited(23)
-                        .or(metaTileEntities(getValve()).setMaxGlobalLimited(2)))
-                .where(' ', air())
-                .build();
-    }
-
-    private IBlockState getCasingState() {
-        if (isMetal)
-            return MetaBlocks.METAL_CASING.getState(BlockMetalCasing.MetalCasingType.STEEL_SOLID);
-        return MetaBlocks.STEAM_CASING.getState(BlockSteamCasing.SteamCasingType.WOOD_WALL);
-    }
-
-    private MetaTileEntity getValve() {
-        if (isMetal)
-            return MetaTileEntities.STEEL_TANK_VALVE;
-        return MetaTileEntities.WOODEN_TANK_VALVE;
+    protected StructureDefinition<?> createStructureDefinition() {
+        return StructureDefinition.getOrBuild(STRUCTURE_POOL_KEY, tankType.getName(),
+                () -> buildStructureDefinition(tankType, metaTileEntityId));
     }
 
     @SideOnly(Side.CLIENT)
     @Override
     @NotNull
     public ICubeRenderer getBaseTexture(IMultiblockPart sourcePart) {
-        if (isMetal)
-            return Textures.SOLID_STEEL_CASING;
-        return Textures.WOOD_WALL;
+        return tankType.getBaseTexture();
     }
 
     @Override
     public GTGuiTheme getUITheme() {
-        if (isMetal) return GTGuiTheme.STEEL;
+        if (!tankType.isWood()) return GTGuiTheme.STEEL;
         else return GTGuiTheme.PRIMITIVE;
     }
 
@@ -145,7 +137,8 @@ public class MetaTileEntityMultiblockTank extends MultiblockWithDisplayBase {
                 .disableDisplay()
                 .disableButtons()
                 .addScreenChildren((parent, syncManager) -> {
-                    parent.child(new TextWidget(IKey.lang(getMetaFullName()))
+                    parent.child(IKey.lang(getMetaFullName())
+                            .asWidget()
                             .pos(5, 5));
                     parent.child(new GTFluidSlot()
                             .pos(52, 18)
@@ -178,7 +171,7 @@ public class MetaTileEntityMultiblockTank extends MultiblockWithDisplayBase {
                                boolean advanced) {
         super.addInformation(stack, player, tooltip, advanced);
         tooltip.add(I18n.format("gregtech.multiblock.tank.tooltip"));
-        tooltip.add(I18n.format("gregtech.universal.tooltip.fluid_storage_capacity", capacity));
+        tooltip.add(I18n.format("gregtech.universal.tooltip.fluid_storage_capacity", tankType.getCapacity()));
     }
 
     @Override
@@ -193,10 +186,9 @@ public class MetaTileEntityMultiblockTank extends MultiblockWithDisplayBase {
         return super.getCapability(capability, side);
     }
 
-
     @NotNull
     @Override
     public SoundType getSoundType() {
-        return this.isMetal ? SoundType.METAL : SoundType.WOOD;
+        return tankType.getSoundType();
     }
 }

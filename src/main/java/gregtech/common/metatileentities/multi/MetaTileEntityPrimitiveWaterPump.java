@@ -6,9 +6,10 @@ import gregtech.api.metatileentity.multiblock.IMultiblockPart;
 import gregtech.api.metatileentity.multiblock.IPrimitivePump;
 import gregtech.api.metatileentity.multiblock.MultiblockAbility;
 import gregtech.api.metatileentity.multiblock.MultiblockControllerBase;
-import gregtech.api.pattern.BlockPattern;
-import gregtech.api.pattern.FactoryBlockPattern;
-import gregtech.api.pattern.PatternMatchContext;
+import gregtech.api.pattern.FormedStructureView;
+import gregtech.api.pattern.casing.DeclarativePatternBuilder;
+import gregtech.api.pattern.element.Elements;
+import gregtech.api.pattern.element.StructureDefinition;
 import gregtech.api.unification.material.Materials;
 import gregtech.api.util.LocalizationUtils;
 import gregtech.client.renderer.ICubeRenderer;
@@ -18,6 +19,7 @@ import gregtech.common.blocks.MetaBlocks;
 import gregtech.common.metatileentities.MetaTileEntities;
 
 import net.minecraft.block.SoundType;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.World;
@@ -41,6 +43,23 @@ import java.util.Set;
 
 public class MetaTileEntityPrimitiveWaterPump extends MultiblockControllerBase implements IPrimitivePump {
 
+    private static final StructureDefinition<?> STRUCTURE_DEFINITION = StructureDefinition.getOrBuild(
+            "gregtech:primitive_water_pump", () -> DeclarativePatternBuilder.start()
+                    .aisle("XXXX", "**F*", "**F*")
+                    .aisle("XXHX", "F**F", "FFFF")
+                    .aisle("SXXX", "**F*", "**F*")
+                    .self('S', MetaTileEntityPrimitiveWaterPump.class)
+                    .frames('F', Materials.TreatedWood)
+                    .where('H',
+                            Elements.chain(
+                                    Elements.abilities(MultiblockAbility.PUMP_FLUID_HATCH),
+                                    Elements.metaTileEntities(
+                                            MetaTileEntities.FLUID_EXPORT_HATCH[0],
+                                            MetaTileEntities.FLUID_EXPORT_HATCH[1])))
+                    .any('*')
+                    .casing('X', getCasingState())
+                    .buildStructureDefinition());
+
     private IFluidTank waterTank;
     private int biomeModifier = 0;
     private int hatchModifier = 0;
@@ -48,6 +67,10 @@ public class MetaTileEntityPrimitiveWaterPump extends MultiblockControllerBase i
     public MetaTileEntityPrimitiveWaterPump(ResourceLocation metaTileEntityId) {
         super(metaTileEntityId);
         resetTileAbilities();
+    }
+
+    public static IBlockState getCasingState() {
+        return MetaBlocks.STEAM_CASING.getState(BlockSteamCasing.SteamCasingType.PUMP_DECK);
     }
 
     @Override
@@ -59,9 +82,7 @@ public class MetaTileEntityPrimitiveWaterPump extends MultiblockControllerBase i
     public void update() {
         super.update();
         if (!getWorld().isRemote && getOffsetTimer() % 20 == 0 && isStructureFormed()) {
-            if (biomeModifier == 0) {
-                biomeModifier = getAmount();
-            } else if (biomeModifier > 0) {
+            if (biomeModifier > 0) {
                 waterTank.fill(Materials.Water.getFluid(getFluidProduction()), true);
             }
         }
@@ -85,14 +106,14 @@ public class MetaTileEntityPrimitiveWaterPump extends MultiblockControllerBase i
             return 350;
         } else if (biomeTypes.contains(BiomeDictionary.Type.SNOWY)) {
             return 300;
-        } else
-            if (biomeTypes.contains(BiomeDictionary.Type.PLAINS) || biomeTypes.contains(BiomeDictionary.Type.FOREST)) {
-                return 250;
-            } else if (biomeTypes.contains(BiomeDictionary.Type.COLD)) {
-                return 175;
-            } else if (biomeTypes.contains(BiomeDictionary.Type.BEACH)) {
-                return 170;
-            }
+        } else if (biomeTypes.contains(BiomeDictionary.Type.PLAINS) ||
+                biomeTypes.contains(BiomeDictionary.Type.FOREST)) {
+            return 250;
+        } else if (biomeTypes.contains(BiomeDictionary.Type.COLD)) {
+            return 175;
+        } else if (biomeTypes.contains(BiomeDictionary.Type.BEACH)) {
+            return 170;
+        }
         return 100;
     }
 
@@ -105,9 +126,9 @@ public class MetaTileEntityPrimitiveWaterPump extends MultiblockControllerBase i
     protected void updateFormedValid() {}
 
     @Override
-    protected void formStructure(PatternMatchContext context) {
-        super.formStructure(context);
+    protected void formStructure(@NotNull FormedStructureView formed) {
         initializeAbilities();
+        biomeModifier = getAmount();
     }
 
     @Override
@@ -118,7 +139,7 @@ public class MetaTileEntityPrimitiveWaterPump extends MultiblockControllerBase i
 
     private void initializeAbilities() {
         List<IFluidTank> tanks = getAbilities(MultiblockAbility.PUMP_FLUID_HATCH);
-        if (tanks == null || tanks.size() == 0) {
+        if (tanks == null || tanks.isEmpty()) {
             tanks = getAbilities(MultiblockAbility.EXPORT_FLUIDS);
             this.hatchModifier = tanks.get(0).getCapacity() == 8000 ? 2 : 4;
         } else {
@@ -129,22 +150,12 @@ public class MetaTileEntityPrimitiveWaterPump extends MultiblockControllerBase i
 
     private void resetTileAbilities() {
         this.waterTank = new FluidTank(0);
+        biomeModifier = 0;
     }
 
     @Override
-    protected BlockPattern createStructurePattern() {
-        return FactoryBlockPattern.start()
-                .aisle("XXXX", "**F*", "**F*")
-                .aisle("XXHX", "F**F", "FFFF")
-                .aisle("SXXX", "**F*", "**F*")
-                .where('S', selfPredicate())
-                .where('X', states(MetaBlocks.STEAM_CASING.getState(BlockSteamCasing.SteamCasingType.PUMP_DECK)))
-                .where('F', frames(Materials.TreatedWood))
-                .where('H',
-                        abilities(MultiblockAbility.PUMP_FLUID_HATCH).or(metaTileEntities(
-                                MetaTileEntities.FLUID_EXPORT_HATCH[0], MetaTileEntities.FLUID_EXPORT_HATCH[1])))
-                .where('*', any())
-                .build();
+    protected @NotNull StructureDefinition<?> createStructureDefinition() {
+        return STRUCTURE_DEFINITION;
     }
 
     @SideOnly(Side.CLIENT)

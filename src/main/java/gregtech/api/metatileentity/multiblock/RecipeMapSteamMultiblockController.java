@@ -3,6 +3,7 @@ package gregtech.api.metatileentity.multiblock;
 import gregtech.api.capability.IControllable;
 import gregtech.api.capability.IDistinctBusController;
 import gregtech.api.capability.IMultipleTankHandler;
+import gregtech.api.capability.ISteamMachine;
 import gregtech.api.capability.impl.FluidTankList;
 import gregtech.api.capability.impl.ItemHandlerList;
 import gregtech.api.capability.impl.SteamMultiWorkable;
@@ -10,15 +11,17 @@ import gregtech.api.capability.impl.SteamMultiblockRecipeLogic;
 import gregtech.api.items.itemhandlers.GTItemStackHandler;
 import gregtech.api.metatileentity.MTETrait;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIBuilder;
+import gregtech.api.metatileentity.multiblock.ui.MultiblockUIFactory;
 import gregtech.api.mui.GTGuiTheme;
-import gregtech.api.pattern.PatternMatchContext;
-import gregtech.api.pattern.TraceabilityPredicate;
+import gregtech.api.pattern.FormedStructureView;
 import gregtech.api.recipes.Recipe;
 import gregtech.api.recipes.RecipeMap;
+import gregtech.api.util.GTQTUtility;
 import gregtech.api.util.KeyUtil;
+import gregtech.api.util.tooltips.TooltipBuilder;
 import gregtech.common.ConfigHolder;
+import gregtech.common.gui.widgets.SteamGaugeWidget;
 
-import net.minecraft.client.resources.I18n;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.SoundEvent;
@@ -32,15 +35,18 @@ import codechicken.lib.render.CCRenderState;
 import codechicken.lib.render.pipeline.IVertexOperation;
 import codechicken.lib.vec.Matrix4;
 import com.cleanroommc.modularui.api.drawable.IKey;
-import gtqt.api.util.GTQTUtility;
+import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public abstract class RecipeMapSteamMultiblockController extends MultiblockWithDisplayBase implements IControllable,
-                                                                                                      IDistinctBusController {
+                                                                                                      IDistinctBusController,
+                                                                                                      ISteamMachine {
 
     protected static final double CONVERSION_RATE = ConfigHolder.machines.multiblockSteamToEU;
 
@@ -58,6 +64,7 @@ public abstract class RecipeMapSteamMultiblockController extends MultiblockWithD
                                               double conversionRate, ParallelLogicType type) {
         super(metaTileEntityId);
         this.recipeMap = recipeMap;
+        this.type = type;
         this.recipeMapWorkable = new SteamMultiWorkable(this, conversionRate, type);
         resetTileAbilities();
     }
@@ -74,30 +81,37 @@ public abstract class RecipeMapSteamMultiblockController extends MultiblockWithD
 
     @Override
     public void setDistinct(boolean isDistinct) {
+        boolean changed = this.isDistinct != isDistinct;
         this.isDistinct = isDistinct;
         recipeMapWorkable.onDistinctChanged();
         getMultiblockParts().forEach(part -> part.onDistinctChange(isDistinct));
         // mark buses as changed on distinct toggle
         if (this.isDistinct) {
-            this.notifiedItemInputList
-                    .addAll(this.getAbilities(MultiblockAbility.IMPORT_ITEMS));
-            this.notifiedItemInputList
-                    .addAll(this.getAbilities(MultiblockAbility.DUAL_IMPORT));
-            this.notifiedItemInputList
-                    .addAll(this.getAbilities(MultiblockAbility.COMPLEX_DUAL));
+            this.notifiedItemInputList.addAll(this.getAbilities(MultiblockAbility.IMPORT_ITEMS));
         } else {
             this.notifiedItemInputList.add(this.inputInventory);
         }
+        if (changed) {
+            notifyStructureConfigChanged();
+        }
+    }
+
+    @NotNull
+    @Override
+    @SuppressWarnings("unchecked")
+    protected Object getStructureConfigDependencyValue() {
+        Map<String, Object> values = new LinkedHashMap<>(
+                (Map<String, Object>) super.getStructureConfigDependencyValue());
+        values.put("distinct", isDistinct);
+        values.put("parallelLogicType", type == null ? null : type.name());
+        return values;
     }
 
     @Override
     public void addInformation(ItemStack stack, @Nullable World player, @NotNull List<String> tooltip,
                                boolean advanced) {
         super.addInformation(stack, player, tooltip, advanced);
-        if (type == ParallelLogicType.APPEND_ITEMS)
-            tooltip.add(I18n.format("多方块并行模式：配方并发（允许同时运行多个配方，但是输入物品仅限一个）"));
-        if (type == ParallelLogicType.MULTIPLY)
-            tooltip.add(I18n.format("多方块并行模式：单配方并行（只允许同时运行一个配方）"));
+        TooltipBuilder.create().addParallelLogicType(type).build(this, tooltip);
     }
 
     public IItemHandlerModifiable getInputInventory() {
@@ -124,8 +138,12 @@ public abstract class RecipeMapSteamMultiblockController extends MultiblockWithD
     }
 
     @Override
-    protected void formStructure(PatternMatchContext context) {
-        super.formStructure(context);
+    protected void formStructure(@NotNull FormedStructureView formed) {
+        formSteamRecipeMapStructure(formed);
+    }
+
+    protected final void formSteamRecipeMapStructure(@NotNull FormedStructureView formed) {
+        formStructureWithDisplay(formed);
         initializeAbilities();
     }
 
@@ -206,41 +224,19 @@ public abstract class RecipeMapSteamMultiblockController extends MultiblockWithD
     }
 
     @Override
-    public TraceabilityPredicate autoAbilities() {
-        return autoAbilities(true, true, true, true, true, true, true);
-    }
-
-    public TraceabilityPredicate autoAbilities(boolean checkSteam,
-                                               boolean checkMaintainer,
-                                               boolean checkItemIn,
-                                               boolean checkItemOut,
-                                               boolean checkFluidIn,
-                                               boolean checkFluidOut,
-                                               boolean checkMuffler) {
-        TraceabilityPredicate predicate = super.autoAbilities(checkMaintainer, checkMuffler)
-                .or(checkSteam ? abilities(MultiblockAbility.STEAM).setMinGlobalLimited(1).setPreviewCount(1) :
-                        new TraceabilityPredicate());
-        if (checkItemIn) {
-            if (recipeMap.getMaxInputs() > 0) {
-                predicate = predicate.or(abilities(MultiblockAbility.STEAM_IMPORT_ITEMS).setPreviewCount(1));
-            }
-        }
-        if (checkItemOut) {
-            if (recipeMap.getMaxOutputs() > 0) {
-                predicate = predicate.or(abilities(MultiblockAbility.STEAM_EXPORT_ITEMS).setPreviewCount(1));
-            }
-        }
-        if (checkFluidIn) {
-            if (recipeMap.getMaxFluidInputs() > 0) {
-                predicate = predicate.or(abilities(MultiblockAbility.STEAM_IMPORT_FLUID).setPreviewCount(1));
-            }
-        }
-        if (checkFluidOut) {
-            if (recipeMap.getMaxFluidOutputs() > 0) {
-                predicate = predicate.or(abilities(MultiblockAbility.STEAM_EXPORT_FLUID).setPreviewCount(1));
-            }
-        }
-        return predicate;
+    protected MultiblockUIFactory createUIFactory() {
+        return super.createUIFactory()
+                .addScreenChildren((parent, syncManager) -> {
+                    IntSyncValue steamStored = new IntSyncValue(
+                                    () -> recipeMapWorkable.getSteamFluidTankCombined().getFluidAmount());
+                    syncManager.syncValue("steam_stored_multi", steamStored);
+                    IntSyncValue steamMax = new IntSyncValue(
+                                    () -> recipeMapWorkable.getSteamFluidTankCombined().getCapacity());
+                    syncManager.syncValue("steam_max_multi", steamMax);
+                    parent.child(new SteamGaugeWidget(steamStored, steamMax, false)
+                            .left(-52)
+                            .top(0));
+                });
     }
 
     @Override
@@ -272,6 +268,10 @@ public abstract class RecipeMapSteamMultiblockController extends MultiblockWithD
 
     @Override
     public void setWorkingEnabled(boolean isWorkingAllowed) {
+        boolean changed = recipeMapWorkable.isWorkingEnabled() != isWorkingAllowed;
         recipeMapWorkable.setWorkingEnabled(isWorkingAllowed);
+        if (changed) {
+            notifyStructureControllerModeChanged();
+        }
     }
 }

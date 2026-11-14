@@ -2,6 +2,7 @@ package gregtech.common.metatileentities.multi.electric;
 
 import gregtech.api.GTValues;
 import gregtech.api.capability.IMultipleTankHandler;
+import gregtech.api.capability.GregtechDataCodes;
 import gregtech.api.capability.impl.AbstractRecipeLogic;
 import gregtech.api.capability.impl.MultiblockRecipeLogic;
 import gregtech.api.metatileentity.IMachineHatchMultiblock;
@@ -16,15 +17,17 @@ import gregtech.api.metatileentity.multiblock.IMultiblockPart;
 import gregtech.api.metatileentity.multiblock.MultiblockAbility;
 import gregtech.api.metatileentity.multiblock.RecipeMapMultiblockController;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIBuilder;
-import gregtech.api.pattern.BlockPattern;
-import gregtech.api.pattern.FactoryBlockPattern;
-import gregtech.api.pattern.PatternMatchContext;
-import gregtech.api.pattern.TraceabilityPredicate;
+import gregtech.api.pattern.FormedStructureView;
+import gregtech.api.pattern.casing.DeclarativePatternBuilder;
+import gregtech.api.pattern.casing.HatchPresets;
+import gregtech.api.pattern.element.Elements;
+import gregtech.api.pattern.element.StructureDefinition;
 import gregtech.api.recipes.Recipe;
 import gregtech.api.recipes.RecipeMap;
 import gregtech.api.recipes.logic.OCParams;
 import gregtech.api.recipes.logic.OCResult;
 import gregtech.api.recipes.properties.RecipePropertyStorage;
+import gregtech.api.util.GTLog;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.KeyUtil;
 import gregtech.api.util.TextFormattingUtil;
@@ -39,6 +42,7 @@ import gregtech.core.sound.GTSoundEvents;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.item.ItemStack;
+import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.SoundEvent;
 import net.minecraft.util.text.TextFormatting;
@@ -57,15 +61,43 @@ import java.util.List;
 import static gregtech.api.GTValues.ULV;
 import static gregtech.api.recipes.logic.OverclockingLogic.subTickNonParallelOC;
 
-public class MetaTileEntityProcessingArray extends RecipeMapMultiblockController implements IMachineHatchMultiblock {
+public class MetaTileEntityProcessingArray extends RecipeMapMultiblockController
+        implements IMachineHatchMultiblock {
+
+    private static final String[] STRUCTURE_KEYS = {
+            "gregtech:processing_array/normal",
+            "gregtech:processing_array/advanced"
+    };
 
     private final int tier;
-    private boolean machineChanged;
+    // A restored formed array has no runtime machine cache until its first query. Refresh it once after load.
+    private boolean machineChanged = true;
 
     public MetaTileEntityProcessingArray(ResourceLocation metaTileEntityId, int tier) {
         super(metaTileEntityId, null);
         this.tier = tier;
         this.recipeMapWorkable = new ProcessingArrayWorkable(this);
+    }
+
+    private static StructureDefinition<?> buildStructureDefinition(IBlockState casingState,
+                                                                    ResourceLocation controllerId) {
+        return DeclarativePatternBuilder.start()
+                .aisle("XXX", "XXX", "XXX")
+                .aisle("XXX", "X#X", "XXX")
+                .aisle("XXX", "XSX", "XXX")
+                .where('S', Elements.self(MetaTileEntityProcessingArray.class, controllerId))
+                .air('#')
+                .casing('X', casingState)
+                .energyInput(1, 4)
+                .maintenance()
+                .muffler()
+                .preset(HatchPresets.STANDARD_IO)
+                .hatch(MultiblockAbility.MACHINE_HATCH, 1, 1)
+                // The casing alternative alone does not enforce a hatch minimum for a static structure.
+                // Keep the Processing Array unformed until its required machine interface is present.
+                .done()
+                .globalAbilityLimit(MultiblockAbility.MACHINE_HATCH, 1, 1)
+                .buildStructureDefinition();
     }
 
     @Override
@@ -74,9 +106,32 @@ public class MetaTileEntityProcessingArray extends RecipeMapMultiblockController
     }
 
     @Override
-    protected void formStructure(PatternMatchContext context) {
-        super.formStructure(context);
-        ((ProcessingArrayWorkable) this.recipeMapWorkable).findMachineStack();
+    protected void formStructure(@NotNull FormedStructureView formed) {
+        formRecipeMapStructure(formed);
+        ((ProcessingArrayWorkable) this.recipeMapWorkable).refreshMachineStateIfChanged();
+    }
+
+    @Override
+    public void writeInitialSyncData(@NotNull PacketBuffer buf) {
+        super.writeInitialSyncData(buf);
+        ProcessingArrayWorkable logic = (ProcessingArrayWorkable) this.recipeMapWorkable;
+        logic.refreshMachineStateIfChanged();
+        buf.writeString(logic.getActiveRecipeMapName());
+    }
+
+    @Override
+    public void receiveInitialSyncData(@NotNull PacketBuffer buf) {
+        super.receiveInitialSyncData(buf);
+        ((ProcessingArrayWorkable) this.recipeMapWorkable).setActiveRecipeMapFromSync(buf.readString(Short.MAX_VALUE));
+    }
+
+    @Override
+    public void receiveCustomData(int dataId, @NotNull PacketBuffer buf) {
+        super.receiveCustomData(dataId, buf);
+        if (dataId == GregtechDataCodes.PROCESSING_ARRAY_RECIPE_MAP) {
+            ((ProcessingArrayWorkable) this.recipeMapWorkable)
+                    .setActiveRecipeMapFromSync(buf.readString(Short.MAX_VALUE));
+        }
     }
 
     @Override
@@ -86,23 +141,13 @@ public class MetaTileEntityProcessingArray extends RecipeMapMultiblockController
 
     @NotNull
     @Override
-    protected BlockPattern createStructurePattern() {
-        return FactoryBlockPattern.start()
-                .aisle("XXX", "XXX", "XXX")
-                .aisle("XXX", "X#X", "XXX")
-                .aisle("XXX", "XSX", "XXX")
-                .where('L', states(getCasingState()))
-                .where('S', selfPredicate())
-                .where('X', states(getCasingState())
-                        .setMinGlobalLimited(tier == 0 ? 11 : 4)
-                        .or(autoAbilities(false, true, true, true, true, true, true))
-                        .or(abilities(MultiblockAbility.INPUT_ENERGY).setMinGlobalLimited(1).setMaxGlobalLimited(4))
-                        .or(abilities(MultiblockAbility.MACHINE_HATCH).setExactLimit(1)))
-                .where('#', air())
-                .build();
+    protected StructureDefinition<?> createStructureDefinition() {
+        return StructureDefinition.getOrBuild(STRUCTURE_KEYS[tier],
+                () -> buildStructureDefinition(getCasingBlock(), metaTileEntityId));
     }
 
-    public IBlockState getCasingState() {
+    @Override
+    public IBlockState getCasingBlock() {
         return tier == 0 ? MetaBlocks.METAL_CASING.getState(BlockMetalCasing.MetalCasingType.TUNGSTENSTEEL_ROBUST) :
                 MetaBlocks.METAL_CASING.getState(BlockMetalCasing.MetalCasingType.HSSE_STURDY);
     }
@@ -169,9 +214,10 @@ public class MetaTileEntityProcessingArray extends RecipeMapMultiblockController
                     }
                 })
                 .addParallelsLine(recipeMapWorkable.getParallelLimit())
-                .addWorkingStatusLine()
-                .addProgressLine(recipeMapWorkable.getProgress(), recipeMapWorkable.getMaxProgress())
-                .addRecipeOutputLine(recipeMapWorkable);
+                .addWorkingStatusLine();
+
+        // Cross-recipe parallel display (synced via builder to prevent client/server buffer desync)
+        builder.addCrossRecipeOrProgressDisplay(recipeMapWorkable);
     }
 
     @SideOnly(Side.CLIENT)
@@ -207,34 +253,8 @@ public class MetaTileEntityProcessingArray extends RecipeMapMultiblockController
     }
 
     @Override
-    public TraceabilityPredicate autoAbilities(boolean checkEnergyIn, boolean checkMaintenance, boolean checkItemIn,
-                                               boolean checkItemOut, boolean checkFluidIn, boolean checkFluidOut,
-                                               boolean checkMuffler) {
-        TraceabilityPredicate predicate = super.autoAbilities(checkMaintenance, checkMuffler);
-
-        predicate = predicate.or(checkEnergyIn ? abilities(MultiblockAbility.INPUT_ENERGY).setMaxGlobalLimited(4).setPreviewCount(1) : new TraceabilityPredicate());
-
-        predicate = predicate.or(checkEnergyIn ? abilities(MultiblockAbility.INPUT_LASER).setMaxGlobalLimited(1) : new TraceabilityPredicate());
-
-        predicate = predicate.or(abilities(MultiblockAbility.IMPORT_ITEMS).setPreviewCount(1));
-
-        predicate = predicate.or(abilities(MultiblockAbility.EXPORT_ITEMS).setPreviewCount(1));
-
-        predicate = predicate.or(abilities(MultiblockAbility.IMPORT_FLUIDS).setPreviewCount(1));
-
-        predicate = predicate.or(abilities(MultiblockAbility.EXPORT_FLUIDS).setPreviewCount(1));
-
-        predicate = predicate.or(abilities(MultiblockAbility.DUAL_IMPORT).setPreviewCount(1));
-
-        predicate = predicate.or(abilities(MultiblockAbility.DUAL_EXPORT).setPreviewCount(1));
-
-        predicate = predicate.or(abilities(MultiblockAbility.COMPLEX_DUAL).setPreviewCount(1));
-
-        return predicate;
-    }
-
-    @Override
-    public void addInformation(ItemStack stack, @Nullable World player, List<String> tooltip, boolean advanced) {
+    public void addInformation(ItemStack stack, @Nullable World player, @NotNull List<String> tooltip,
+                               boolean advanced) {
         super.addInformation(stack, player, tooltip, advanced);
         tooltip.add(I18n.format("gregtech.universal.tooltip.parallel", getMachineLimit()));
     }
@@ -274,6 +294,8 @@ public class MetaTileEntityProcessingArray extends RecipeMapMultiblockController
         private long machineVoltage;
         // The Recipe Map of the machines the PA is operating upon
         private RecipeMap<?> activeRecipeMap;
+        // Server-side copy of the last map name sent to clients. This is updated only on a machine-hatch refresh.
+        private String lastSyncedRecipeMapName = "";
 
         public ProcessingArrayWorkable(RecipeMapMultiblockController tileEntity) {
             super(tileEntity);
@@ -295,11 +317,12 @@ public class MetaTileEntityProcessingArray extends RecipeMapMultiblockController
             machineTier = 0;
             machineVoltage = 0L;
             activeRecipeMap = null;
+            syncRecipeMapToClientIfChanged();
         }
 
         /**
-         * Checks if a provided Recipe Map is valid to be used in the processing array
-         * Will filter out anything in the config blacklist, and also any non-single block machines
+         * Checks if a provided Recipe Map is valid to be used in the processing array Will filter out anything in the
+         * config blacklist, and also any non-single block machines
          *
          * @param recipeMap The recipeMap to check
          * @return {@code true} if the provided recipeMap is valid for use
@@ -321,30 +344,66 @@ public class MetaTileEntityProcessingArray extends RecipeMapMultiblockController
         }
 
         public boolean canWorkWithMachines() {
-            if (machineChanged) {
-                findMachineStack();
-                machineChanged = false;
-                previousRecipe = null;
-                if (isDistinct()) {
-                    invalidatedInputList.clear();
-                } else {
-                    invalidInputsForRecipes = false;
-                }
-            }
+            refreshMachineStateIfChanged();
             return (!currentMachineStack.isEmpty() && this.activeRecipeMap != null);
         }
 
         @Nullable
         @Override
-        public RecipeMap<?> getRecipeMap() {
+        protected RecipeMap<?> getConfiguredRecipeMap() {
+            // The Processing Array has no static controller map; its map comes from the machine hatch.
+            // Refreshing remains event-driven through machineChanged rather than polling every tick.
+            refreshMachineStateIfChanged();
             return activeRecipeMap;
+        }
+
+        @Nullable
+        @Override
+        public RecipeMap<?> getRecipeMap() {
+            // RecipeMap consumers such as pattern providers can query before the next recipe-search tick.
+            // Keep the cached map coherent with an event-driven machine-hatch change in that case.
+            refreshMachineStateIfChanged();
+            return activeRecipeMap;
+        }
+
+        private void refreshMachineStateIfChanged() {
+            if (!machineChanged || !MetaTileEntityProcessingArray.this.isStructureFormed()) return;
+
+            World world = MetaTileEntityProcessingArray.this.getWorld();
+            // Client-side controller replicas do not own formed ability lists. Their map is supplied by sync data.
+            if (world == null || world.isRemote) return;
+
+            findMachineStack();
+            machineChanged = false;
+            previousRecipe = null;
+            if (isDistinct()) {
+                invalidatedInputList.clear();
+            } else {
+                invalidInputsForRecipes = false;
+            }
+            syncRecipeMapToClientIfChanged();
         }
 
         public void findMachineStack() {
             RecipeMapMultiblockController controller = (RecipeMapMultiblockController) this.metaTileEntity;
 
+            World world = MetaTileEntityProcessingArray.this.getWorld();
+            if (world == null || world.isRemote) return;
+
+            List<IItemHandlerModifiable> machineHatches = controller.getAbilities(MultiblockAbility.MACHINE_HATCH);
+            if (machineHatches.isEmpty()) {
+                currentMachineStack = ItemStack.EMPTY;
+                mte = null;
+                machineTier = 0;
+                machineVoltage = 0L;
+                activeRecipeMap = null;
+                GTLog.logger.warn("Processing Array at {} has no machine hatch during a machine-hatch refresh",
+                        this.metaTileEntity.getPos());
+                return;
+            }
+
             // The Processing Array is limited to 1 Machine Interface per multiblock, and only has 1 slot
-            ItemStack machine = controller.getAbilities(MultiblockAbility.MACHINE_HATCH).get(0).getStackInSlot(0);
+            ItemStack machine = machineHatches.get(0).getStackInSlot(0);
 
             mte = GTUtility.getMetaTileEntity(machine);
 
@@ -360,12 +419,46 @@ public class MetaTileEntityProcessingArray extends RecipeMapMultiblockController
                 updateCleanroom();
             }
 
+            if (this.activeRecipeMap == null) {
+                String machineDescription = machine.isEmpty() ? "<empty>" :
+                        machine.getItem().getRegistryName() + "@" + machine.getMetadata() + "x" + machine.getCount();
+                String mteDescription = mte == null ? "<none>" : mte.getClass().getName();
+                GTLog.logger.warn("Processing Array at {} could not resolve a RecipeMap after a machine-hatch refresh: " +
+                                "machine={}, metaTileEntity={}, recipeMap=<none>",
+                        this.metaTileEntity.getPos(), machineDescription, mteDescription);
+            }
+
             // Find the voltage tier of the machine.
             this.machineTier = mte instanceof ITieredMetaTileEntity ? ((ITieredMetaTileEntity) mte).getTier() : 0;
 
             this.machineVoltage = GTValues.V[this.machineTier];
 
             this.currentMachineStack = machine;
+        }
+
+        private String getActiveRecipeMapName() {
+            return activeRecipeMap == null ? "" : activeRecipeMap.getUnlocalizedName();
+        }
+
+        private void setActiveRecipeMapFromSync(String recipeMapName) {
+            activeRecipeMap = recipeMapName.isEmpty() ? null : RecipeMap.getByName(recipeMapName);
+            // The client must keep the server-synchronized map rather than attempting to inspect its absent hatch list.
+            if (MetaTileEntityProcessingArray.this.getWorld() != null &&
+                    MetaTileEntityProcessingArray.this.getWorld().isRemote) {
+                machineChanged = false;
+            }
+        }
+
+        private void syncRecipeMapToClientIfChanged() {
+            World world = MetaTileEntityProcessingArray.this.getWorld();
+            if (world == null || world.isRemote) return;
+
+            String recipeMapName = getActiveRecipeMapName();
+            if (recipeMapName.equals(lastSyncedRecipeMapName)) return;
+
+            lastSyncedRecipeMapName = recipeMapName;
+            MetaTileEntityProcessingArray.this.writeCustomData(GregtechDataCodes.PROCESSING_ARRAY_RECIPE_MAP,
+                    buf -> buf.writeString(recipeMapName));
         }
 
         private void updateCleanroom() {
@@ -421,8 +514,9 @@ public class MetaTileEntityProcessingArray extends RecipeMapMultiblockController
         protected int getNumberOfOCs(long recipeEUt) {
             if (!isAllowOverclocking()) return 0;
 
-            int recipeTier = Math.max(0,
-                    GTUtility.getTierByVoltage(recipeEUt / Math.max(1, this.parallelRecipesPerformed)));
+            // recipeEUt is the single-recipe EUt (not multiplied by parallel).
+            // OC count is limited by the machine tier of the inserted single-block machines.
+            int recipeTier = Math.max(0, GTUtility.getTierByVoltage(recipeEUt));
             int maximumTier = Math.min(this.machineTier, GTUtility.getTierByVoltage(getMaxVoltage()));
 
             // The maximum number of overclocks is determined by the difference between the tier the recipe is running

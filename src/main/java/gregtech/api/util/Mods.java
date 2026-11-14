@@ -3,6 +3,7 @@ package gregtech.api.util;
 import gregtech.api.GTValues;
 
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraftforge.fml.client.FMLClientHandler;
 import net.minecraftforge.fml.common.FMLCommonHandler;
@@ -12,13 +13,11 @@ import net.minecraftforge.fml.common.registry.GameRegistry;
 import net.minecraftforge.fml.relauncher.FMLLaunchHandler;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
-
 import net.optifine.shaders.Shaders;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -28,11 +27,9 @@ public enum Mods {
 
     AdvancedRocketry(Names.ADVANCED_ROCKETRY),
     AppliedEnergistics2(Names.APPLIED_ENERGISTICS2),
+    AE2FluidCraft(Names.AE2_FLUID_CRAFT),
     Baubles(Names.BAUBLES),
-    BetterQuestingUnofficial(Names.BETTER_QUESTING, mod -> {
-        var container = Loader.instance().getIndexedModList().get(Names.BETTER_QUESTING);
-        return container.getVersion().startsWith("4.");
-    }),
+    BetterBuildersWands(Names.BETTER_BUILDERS_WANDS),
     BinnieCore(Names.BINNIE_CORE),
     BiomesOPlenty(Names.BIOMES_O_PLENTY),
     BuildCraftCore(Names.BUILD_CRAFT_CORE),
@@ -49,6 +46,7 @@ public enum Mods {
     Forestry(Names.FORESTRY),
     ForestryApiculture(Names.FORESTRY, forestryModule(Names.FORESTRY_APICULTURE)),
     ForestryArboriculture(Names.FORESTRY, forestryModule(Names.FORESTRY_ARBORICULTURE)),
+    ForestryCharcoal(Names.FORESTRY, forestryModule(Names.FORESTRY_CHARCOAL)),
     ForestryLepidopterology(Names.FORESTRY, forestryModule(Names.FORESTRY_LEPIDOPTEROLOGY)),
     FTB_LIB(Names.FTB_LIB),
     // FTB Utilities hard deps on ftb lib so you don't have to check if both are loaded
@@ -59,31 +57,33 @@ public enum Mods {
     GregTechFoodOption(Names.GREGTECH_FOOD_OPTION),
     GroovyScript(Names.GROOVY_SCRIPT),
     GTCE2OC(Names.GTCE_2_OC),
-    HWYLA(Names.HWYLA),
+
     ImmersiveEngineering(Names.IMMERSIVE_ENGINEERING),
     IndustrialCraft2(Names.INDUSTRIAL_CRAFT2),
     InventoryTweaks(Names.INVENTORY_TWEAKS),
-    JourneyMap(Names.JOURNEY_MAP),
+
     JustEnoughItems(Names.JUST_ENOUGH_ITEMS),
-    LittleTiles(Names.LITTLE_TILES),
     MagicBees(Names.MAGIC_BEES),
     Nothirium(Names.NOTHIRIUM),
     NuclearCraft(Names.NUCLEAR_CRAFT, versionExcludes("2o")),
     NuclearCraftOverhauled(Names.NUCLEAR_CRAFT, versionContains("2o")),
     OpenComputers(Names.OPEN_COMPUTERS),
     ProjectRedCore(Names.PROJECT_RED_CORE),
+    ProjectRedIllumination(Names.PROJECT_RED_ILLUMINATION),
     Railcraft(Names.RAILCRAFT),
     RefinedStorage(Names.REFINED_STORAGE),
     TechReborn(Names.TECH_REBORN),
     TheOneProbe(Names.THE_ONE_PROBE),
     TinkersConstruct(Names.TINKERS_CONSTRUCT),
     TOPAddons(Names.TOP_ADDONS),
-    VoxelMap(Names.VOXEL_MAP),
+
     XaerosMinimap(Names.XAEROS_MINIMAP),
     Vintagium(Names.VINTAGIUM),
+    GTQT_TEST(Names.GTQT_TEST),
     GTQTCore(Names.GTQT_CORE),
     Alfheim(Names.ALFHEIM),
     Loliasm(Names.LOLIASM),
+    ModNameTooltip(Names.MOD_NAME_TOOLTIP),
 
     // Special Optifine handler, but consolidated here for simplicity
     OptiFine(null) {
@@ -112,8 +112,10 @@ public enum Mods {
 
         public static final String ADVANCED_ROCKETRY = "advancedrocketry";
         public static final String APPLIED_ENERGISTICS2 = "appliedenergistics2";
+        public static final String AE2_FLUID_CRAFT = "ae2fc";
         public static final String BAUBLES = "baubles";
-        public static final String BETTER_QUESTING = "betterquesting";
+        public static final String BETTER_BUILDERS_WANDS = "betterbuilderswands";
+
         public static final String BINNIE_CORE = "binniecore";
         public static final String BIOMES_O_PLENTY = "biomesoplenty";
         public static final String BUILD_CRAFT_CORE = "buildcraftcore";
@@ -130,6 +132,7 @@ public enum Mods {
         public static final String FORESTRY = "forestry";
         public static final String FORESTRY_APICULTURE = "apiculture";
         public static final String FORESTRY_ARBORICULTURE = "arboriculture";
+        public static final String FORESTRY_CHARCOAL = "charcoal";
         public static final String FORESTRY_LEPIDOPTEROLOGY = "lepidopterology";
         public static final String FTB_LIB = "ftblib";
         public static final String FTB_UTILITIES = "ftbutilities";
@@ -139,30 +142,34 @@ public enum Mods {
         public static final String GREGTECH_FOOD_OPTION = "gregtechfoodoption";
         public static final String GROOVY_SCRIPT = "groovyscript";
         public static final String GTCE_2_OC = "gtce2oc";
-        public static final String HWYLA = "hwyla";
+
         public static final String IMMERSIVE_ENGINEERING = "immersiveengineering";
         public static final String INDUSTRIAL_CRAFT2 = "ic2";
         public static final String INVENTORY_TWEAKS = "inventorytweaks";
-        public static final String JOURNEY_MAP = "journeymap";
+
         public static final String JUST_ENOUGH_ITEMS = "jei";
-        public static final String LITTLE_TILES = "littletiles";
         public static final String MAGIC_BEES = "magicbees";
         public static final String NOTHIRIUM = "nothirium";
         public static final String NUCLEAR_CRAFT = "nuclearcraft";
         public static final String OPEN_COMPUTERS = "opencomputers";
         public static final String PROJECT_RED_CORE = "projred-core";
+        public static final String PROJECT_RED_ILLUMINATION = "projred-illumination";
         public static final String RAILCRAFT = "railcraft";
         public static final String REFINED_STORAGE = "refinedstorage";
         public static final String TECH_REBORN = "techreborn";
         public static final String THE_ONE_PROBE = "theoneprobe";
         public static final String TINKERS_CONSTRUCT = "tconstruct";
         public static final String TOP_ADDONS = "topaddons";
-        public static final String VOXEL_MAP = "voxelmap";
+
         public static final String XAEROS_MINIMAP = "xaerominimap";
         public static final String VINTAGIUM = "vintagium";
+        public static final String GTQT_TEST = "test_gtqt";
         public static final String GTQT_CORE = "gtqtcore";
+        public static final String GTFO = "gregtechfoodoption";
+        public static final String GT_STEAM = "gtsteam";
         public static final String ALFHEIM = "alfheim";
         public static final String LOLIASM = "loliasm";
+        public static final String MOD_NAME_TOOLTIP = "modnametooltip";
         public static final String VINTAGE = "vintagefix";
     }
 
@@ -277,5 +284,10 @@ public enum Mods {
         } else {
             return $ -> false;
         }
+    }
+
+    @NotNull
+    public ResourceLocation getResource(@NotNull String path) {
+        return new ResourceLocation(ID, path);
     }
 }

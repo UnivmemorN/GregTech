@@ -1,7 +1,11 @@
 package gregtech.common.metatileentities.multi.electric;
 
 import gregtech.api.GTValues;
-import gregtech.api.capability.*;
+import gregtech.api.capability.GregtechDataCodes;
+import gregtech.api.capability.GregtechTileCapabilities;
+import gregtech.api.capability.IControllable;
+import gregtech.api.capability.IDataAccessHatch;
+import gregtech.api.capability.IEnergyContainer;
 import gregtech.api.capability.impl.EnergyContainerList;
 import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.metatileentity.interfaces.IGregTechTileEntity;
@@ -9,9 +13,11 @@ import gregtech.api.metatileentity.multiblock.IMultiblockPart;
 import gregtech.api.metatileentity.multiblock.MultiblockAbility;
 import gregtech.api.metatileentity.multiblock.MultiblockWithDisplayBase;
 import gregtech.api.metatileentity.multiblock.ui.MultiblockUIBuilder;
-import gregtech.api.pattern.BlockPattern;
-import gregtech.api.pattern.FactoryBlockPattern;
-import gregtech.api.pattern.PatternMatchContext;
+import gregtech.api.pattern.FormedStructureView;
+import gregtech.api.pattern.casing.DeclarativePatternBuilder;
+import gregtech.api.pattern.casing.GTStructureChannels;
+import gregtech.api.pattern.element.Elements;
+import gregtech.api.pattern.element.StructureDefinition;
 import gregtech.api.util.TextFormattingUtil;
 import gregtech.client.renderer.ICubeRenderer;
 import gregtech.client.renderer.texture.Textures;
@@ -49,17 +55,57 @@ public class MetaTileEntityDataBank extends MultiblockWithDisplayBase implements
     private static final int EUT_PER_HATCH = GTValues.VA[GTValues.EV];
     private static final int EUT_PER_HATCH_CHAINED = GTValues.VA[GTValues.LuV];
 
+    private static final StructureDefinition<?> STRUCTURE_DEFINITION = StructureDefinition.getOrBuild(
+            "gregtech:data_bank", () -> DeclarativePatternBuilder.start(BACK, UP, RIGHT)
+                    .piece("top")
+                    .aisle("XXX", "XXX", "XXX")
+                    .repeatablePiece("body1", 1, 3)
+                    .aisle("CDD", "CAD", "CDD")
+                    .withAisleChannel(GTStructureChannels.STRUCTURE_LENGTH.getName())
+                    .piece("middle")
+                    .aisle("CDD", "SAD", "CDD")
+                    .repeatablePiece("body2", 1, 3)
+                    .aisle("CDD", "CAD", "CDD")
+                    .withAisleChannel(GTStructureChannels.STRUCTURE_LENGTH.getName())
+                    .piece("bottom")
+                    .aisle("XXX", "XXX", "XXX")
+                    .self('S', MetaTileEntityDataBank.class)
+                    .block('X', getOuterState())
+                    .block('A', getInnerState())
+                    .casing('D', getInnerState())
+                    .optionalHatch(MultiblockAbility.DATA_ACCESS_HATCH, 9)
+                    .custom(
+                            Elements.abilities(1, -1, 1,
+                                    MultiblockAbility.OPTICAL_DATA_TRANSMISSION), 1)
+                    .custom(
+                            Elements.abilities(0, -1, 1,
+                                    MultiblockAbility.OPTICAL_DATA_RECEPTION), 3)
+                    .casing('C', getCasingState())
+                    .energyInput(1, 2)
+                    .buildStructureDefinition());
+    protected boolean hasNotEnoughEnergy;
     private IEnergyContainer energyContainer;
-
     private boolean isActive = false;
     private boolean isWorkingEnabled = true;
-    protected boolean hasNotEnoughEnergy;
-
     private int energyUsage = 0;
 
     public MetaTileEntityDataBank(ResourceLocation metaTileEntityId) {
         super(metaTileEntityId);
         this.energyContainer = new EnergyContainerList(new ArrayList<>());
+    }
+
+    @NotNull
+    private static IBlockState getOuterState() {
+        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.COMPUTER_HEAT_VENT);
+    }
+
+    @NotNull
+    private static IBlockState getInnerState() {
+        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.COMPUTER_CASING);
+    }
+
+    public static IBlockState getCasingState() {
+        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.HIGH_POWER_CASING);
     }
 
     @Override
@@ -68,8 +114,14 @@ public class MetaTileEntityDataBank extends MultiblockWithDisplayBase implements
     }
 
     @Override
-    protected void formStructure(PatternMatchContext context) {
-        super.formStructure(context);
+    @NotNull
+    public EnumFacing getPreviewFrontFacing() {
+        return EnumFacing.SOUTH;
+    }
+
+    @Override
+    protected void formStructure(@NotNull FormedStructureView formed) {
+        formStructureWithDisplay(formed);
         this.energyContainer = new EnergyContainerList(getAbilities(MultiblockAbility.INPUT_ENERGY));
         this.energyUsage = calculateEnergyUsage();
     }
@@ -162,40 +214,14 @@ public class MetaTileEntityDataBank extends MultiblockWithDisplayBase implements
 
     @NotNull
     @Override
-    protected BlockPattern createStructurePattern() {
-        FactoryBlockPattern pattern = FactoryBlockPattern.start(FRONT, UP, RIGHT)
-                .aisle("XXX", "XXX", "XXX")
-                .aisle("CDD", "CAD", "CDD").setRepeatable(1, 3)
-                .aisle("CDD", "SAD", "CDD")
-                .aisle("CDD", "CAD", "CDD").setRepeatable(1, 3)
-                .aisle("XXX", "XXX", "XXX")
-                .where('S', selfPredicate())
-                .where('X', states(getOuterState()))
-                .where('D', states(getInnerState()).setMinGlobalLimited(3)
-                        .or(abilities(MultiblockAbility.DATA_ACCESS_HATCH).setPreviewCount(3))
-                        .or(abilities(MultiblockAbility.OPTICAL_DATA_TRANSMISSION).setMinGlobalLimited(1, 1))
-                        .or(abilities(MultiblockAbility.OPTICAL_DATA_RECEPTION).setPreviewCount(1)))
-                .where('A', states(getInnerState()))
-                .where('C', states(getFrontState())
-                        .setMinGlobalLimited(4)
-                        .or(autoAbilities())
-                        .or(abilities(MultiblockAbility.INPUT_ENERGY)
-                                .setMinGlobalLimited(1).setMaxGlobalLimited(2).setPreviewCount(1)));
-        return pattern.build();
-    }
-
-    @NotNull
-    private static IBlockState getOuterState() {
-        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.COMPUTER_HEAT_VENT);
-    }
-
-    @NotNull
-    private static IBlockState getInnerState() {
-        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.COMPUTER_CASING);
-    }
-
-    private static IBlockState getFrontState() {
-        return MetaBlocks.COMPUTER_CASING.getState(BlockComputerCasing.CasingType.HIGH_POWER_CASING);
+    // Migrated to createStructureDefinition(): structure is split into five
+    // named pieces ("top" cap, "body1" repeatable, "middle" with controller,
+    // "body2" repeatable, "bottom" cap) so each section can be checked
+    // independently by the sharded checker. Cached via
+    // StructureDefinition.getOrBuild() since the structure has no
+    // runtime-editable dimensions.
+    protected StructureDefinition<?> createStructureDefinition() {
+        return STRUCTURE_DEFINITION;
     }
 
     @SideOnly(Side.CLIENT)
@@ -264,7 +290,7 @@ public class MetaTileEntityDataBank extends MultiblockWithDisplayBase implements
                         "gregtech.multiblock.data_bank.providing")
                 .addWorkingStatusLine();
 
-        if(isWorkingEnabled() && isActive())
+        if (isWorkingEnabled() && isActive())
             builder.addEnergyUsageExactLine(getEnergyUsage());
     }
 

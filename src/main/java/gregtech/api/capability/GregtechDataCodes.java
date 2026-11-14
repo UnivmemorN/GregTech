@@ -24,10 +24,12 @@ public class GregtechDataCodes {
     public static final int COVER_REMOVED_MTE = assignId();
     public static final int UPDATE_COVER_DATA_MTE = assignId();
     public static final int UPDATE_SOUND_MUFFLED = assignId();
+    public static final int OVERLOAD_WARNING = assignId();
 
     public static final int UPDATE_OUTPUT_FACING = assignId();
     public static final int UPDATE_AUTO_OUTPUT_ITEMS = assignId();
     public static final int UPDATE_AUTO_OUTPUT_FLUIDS = assignId();
+    public static final int UPDATE_DISALLOW_SAME_ITEM = assignId();
     public static final int UPDATE_IS_VOIDING = assignId();
 
     // Robotic Arm
@@ -85,6 +87,7 @@ public class GregtechDataCodes {
     public static final int PIPE_OPTICAL_ACTIVE = assignId();
     public static final int PIPE_LASER_ACTIVE = assignId();
     public static final int CABLE_TEMPERATURE = assignId();
+    public static final int CONDUCTOR_TEMPERATURE = assignId();
 
     // Multiblock implementation update codes
     public static final int SYNC_CONTROLLER = assignId();
@@ -107,11 +110,22 @@ public class GregtechDataCodes {
     // Item Bus Item Stack Auto Collapsing
     public static final int TOGGLE_COLLAPSE_ITEMS = assignId();
 
+    // Reverse Control
+    public static final int TOGGLE_REVERSE = assignId();
+
     // Fusion Reactor
     public static final int UPDATE_COLOR = assignId();
 
     // Assembly Line
     public static final int UPDATE_PARTICLE = assignId();
+
+    // Fission Hatches
+    public static final int FISSION_LOCK_UPDATE = assignId();
+
+    // Fission Reactor
+    public static final int SYNC_REACTOR_STATS = assignId();
+    public static final int SYNC_LOCKING_STATE = assignId();
+    public static final int SYNC_REACTOR_STATE = assignId();
 
     // Central Monitor
     public static final int UPDATE_ALL = assignId();
@@ -148,6 +162,12 @@ public class GregtechDataCodes {
     public static final int WORKABLE_ACTIVE = assignId();
     public static final int WORKING_ENABLED = assignId();
     public static final int WORKING_BATCH = assignId();
+    public static final int WORKING_RECIPE_LOCK = assignId();
+    public static final int OVERFLOW_MODE = assignId();
+    public static final int LACK_ENERGY_WARNING = assignId();
+
+    // Battery Accumulator
+    public static final int WORKING_MODE = assignId();
 
     // Creative Energy
     public static final int UPDATE_IO_SPEED = assignId();
@@ -174,6 +194,7 @@ public class GregtechDataCodes {
 
     //多线程
     public static final int UPDATE_THREAD_STATE = assignId();
+    public static final int UPDATE_SHOW_NAME = assignId();
 
     // NBT Keys
 
@@ -202,6 +223,13 @@ public class GregtechDataCodes {
     // ME Parts
     public static final int UPDATE_AUTO_PULL = assignId();
     public static final int UPDATE_ONLINE_STATUS = assignId();
+    public static final int UPDATE_ME_POS= assignId();
+
+    // Processing Array
+    public static final int PROCESSING_ARRAY_RECIPE_MAP = assignId();
+
+    // Cover Copy/Paste tool: pushes the full NBT of a pasted cover to clients
+    public static final int UPDATE_COVER_NBT = assignId();
 
     // Everything below MUST be last in the class!
     public static final Int2ObjectMap<String> NAMES = new Int2ObjectArrayMap<>();
